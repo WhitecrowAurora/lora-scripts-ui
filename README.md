@@ -217,6 +217,4 @@ python app.py
 - Firefox 90+
 - Safari 15+
 
-## 许可证
 
-本项目基于 lora-scripts (Mikazuki) 训练包开发，遵循其原始许可证。
