@@ -338,6 +338,7 @@ function renderField(field) {
   const label = field.label;
   const defaultValue = field.defaultValue ?? '';
   const isPicker = field.type === 'file' || field.type === 'folder';
+  const isModified = String(value ?? '') !== String(defaultValue);
   const showBuiltinPicker = canUseBuiltinPicker(field);
   const canUndo = Object.hasOwn(state.fieldUndo, field.key);
   const canReset = String(value ?? '') !== String(defaultValue ?? '');
@@ -353,9 +354,10 @@ function renderField(field) {
     </div>
   `;
 
+  const modCls = isModified ? ' field-modified' : '';
   if (field.type === 'boolean') {
     return `
-      <div class="config-group row boolean-card">
+      <div class="config-group row boolean-card${modCls}">
         <div class="label-col">
           ${renderHeader()}
           <p class="field-desc">${escapeHtml(field.desc || '')}</p>
@@ -379,7 +381,7 @@ function renderField(field) {
       if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
     }
     return `
-      <div class="config-group">
+      <div class="config-group${modCls}">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <select onchange="updateConfigValue('${field.key}', this.value)">
@@ -391,7 +393,7 @@ function renderField(field) {
 
   if (field.type === 'textarea') {
     return `
-      <div class="config-group">
+      <div class="config-group${modCls}">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <textarea class="text-area" oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(value || '')}</textarea>
@@ -404,7 +406,7 @@ function renderField(field) {
 
   if (isPicker) {
     return `
-      <div class="config-group">
+      <div class="config-group${modCls}">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <div class="input-picker">
@@ -418,7 +420,7 @@ function renderField(field) {
   }
 
   return `
-    <div class="config-group">
+    <div class="config-group${modCls}">
       ${renderHeader()}
       <p class="field-desc">${escapeHtml(field.desc || '')}</p>
       <input class="text-input" type="${inputType}" value="${escapeHtml(inputValue)}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} oninput="updateConfigValue('${field.key}', this.value)">
@@ -987,8 +989,8 @@ function renderTagger() {
         </div>
         <div class="config-group">
           <label>置信度阈值</label>
-          <p class="field-desc">模型对标签的最低置信度，低于此值的标签不会写入。推荐 0.35，调低可获得更多标签但可能不准。</p>
-          <input class="text-input" type="number" id="tagger-threshold" value="0.35" min="0" max="1" step="0.01">
+          <p class="field-desc">模型对标签的最低置信度，低于此值的标签不会写入，简单来说，数值越低打出的标越多。一般推荐 0.5，调低可获得更多标签但可能不准。</p>
+          <input class="text-input" type="number" id="tagger-threshold" value="0.5" min="0" max="1" step="0.01">
         </div>
         <div class="config-group">
           <label>冲突处理</label>
@@ -1108,7 +1110,7 @@ window.runLlmTagger = async () => {
     llm_temperature: parseFloat($('#llm-temperature')?.value) || 0.2,
     llm_max_tokens: parseInt($('#llm-max-tokens')?.value) || 300,
     batch_input_recursive: $('#llm-recursive')?.checked || false,
-    threshold: 0.35,
+    threshold: 0.5,
   };
   try {
     await api.runInterrogate(params);
@@ -1126,7 +1128,7 @@ window.runTagger = async () => {
   const params = {
     path: pathVal,
     interrogator_model: $('#tagger-model')?.value || 'wd14-convnextv2-v2',
-    threshold: parseFloat($('#tagger-threshold')?.value) || 0.35,
+    threshold: parseFloat($('#tagger-threshold')?.value) || 0.5,
     additional_tags: $('#tagger-additional')?.value || '',
     exclude_tags: $('#tagger-exclude')?.value || '',
     batch_input_recursive: $('#tagger-recursive')?.checked || false,
@@ -1210,11 +1212,13 @@ function renderImageResize() {
       <div class="section-content tool-fields">
         <div class="config-group" style="grid-column:1/-1;">
           <label>输入目录</label>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <select id="resize-input-select" style="flex:1;"><option value="">加载中...</option></select>
-            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器" onclick="pickPathForInput('resize-input-select', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('resize-input-path', 'folder')">
+              <svg class="icon"><use href="#icon-folder"></use></svg>
+            </button>
+            <input class="text-input" type="text" id="resize-input-path" placeholder="选择或输入数据集文件夹路径">
           </div>
-          <p class="field-desc">选择 train 目录下的数据集文件夹。</p>
+          <p class="field-desc">选择或手动输入 train 目录下的数据集文件夹路径。</p>
         </div>
         <div class="config-group" style="grid-column:1/-1;">
           <label>输出目录（留空则覆盖原文件）</label>
@@ -1274,27 +1278,11 @@ function renderImageResize() {
       </div>
     </section>
   `;
-  loadResizeInputDirs();
 }
 
-async function loadResizeInputDirs() {
-  const sel = $('#resize-input-select');
-  if (!sel) return;
-  try {
-    const response = await api.getBuiltinPicker('folder');
-    const items = response?.data?.items || [];
-    if (!items.length) {
-      sel.innerHTML = '<option value="">未检测到数据集目录</option>';
-      return;
-    }
-    sel.innerHTML = items.map((d) => `<option value="./train/${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
-  } catch (e) {
-    sel.innerHTML = '<option value="">读取失败</option>';
-  }
-}
 
 window.runImageResize = async () => {
-  const inputDir = $('#resize-input-select')?.value?.trim();
+  const inputDir = $('#resize-input-path')?.value?.trim();
   if (!inputDir) { showToast('请先填写输入目录。'); return; }
   const params = {
     script_name: '_image_resize',
@@ -2172,7 +2160,10 @@ function renderBuiltinPickerModal() {
   const path = $('#builtin-picker-path');
   const list = $('#builtin-picker-list');
   const footer = document.querySelector('.builtin-picker-footer');
-  if (footer) footer.innerHTML = `<button class="btn btn-outline btn-sm" type="button" id="builtin-picker-cancel" onclick="closeBuiltinPicker()">取消</button>`;
+  if (footer) footer.innerHTML = `
+    <button class="btn btn-outline btn-sm" type="button" onclick="refreshBuiltinPicker()">🔄 刷新</button>
+    <button class="btn btn-outline btn-sm" type="button" onclick="closeBuiltinPicker()">取消</button>
+  `;
   if (!modal || !title || !path || !list) {
     return;
   }
@@ -2183,7 +2174,11 @@ function renderBuiltinPickerModal() {
   const pt = state.builtinPicker.pickerType;
   title.textContent = (pt === 'folder' || pt === 'output-folder') ? '请选择目录' : '请选择模型文件';
   path.textContent = state.builtinPicker.rootLabel;
-  if (!state.builtinPicker.items.length) {
+  if (state.builtinPicker.loading) {
+    list.innerHTML = `<div class="builtin-picker-empty"><span>⏳ 加载中...</span></div>`;
+    return;
+  }
+  if (!state.builtinPicker.items || !state.builtinPicker.items.length) {
     list.innerHTML = `
       <div class="builtin-picker-empty">
         <span>未检测到内容</span>
@@ -2199,6 +2194,8 @@ function renderBuiltinPickerModal() {
 }
 
 window.openNativePicker = (fieldKey, pickerType) => {
+  state.builtinPicker = { open: true, fieldKey, pickerType, rootLabel: '', items: [], loading: true };
+  renderBuiltinPickerModal();
   api.getBuiltinPicker(pickerType)
     .then((response) => {
       state.builtinPicker = {
@@ -2207,10 +2204,13 @@ window.openNativePicker = (fieldKey, pickerType) => {
         pickerType,
         rootLabel: response?.data?.rootLabel || '',
         items: response?.data?.items || [],
+        loading: false,
       };
       renderBuiltinPickerModal();
     })
     .catch((error) => {
+      state.builtinPicker.open = false;
+      renderBuiltinPickerModal();
       showToast(error.message || '打开内置文件选择器失败。');
     });
 };
@@ -2219,6 +2219,30 @@ window.closeBuiltinPicker = () => {
   state.builtinPicker.open = false;
   renderBuiltinPickerModal();
 };
+window.refreshBuiltinPicker = () => {
+  if (!state.builtinPicker.open) return;
+  const { fieldKey, pickerType } = state.builtinPicker;
+  state.builtinPicker.loading = true;
+  state.builtinPicker.items = [];
+  renderBuiltinPickerModal();
+  api.getBuiltinPicker(pickerType)
+    .then((response) => {
+      state.builtinPicker = {
+        open: true, fieldKey, pickerType,
+        rootLabel: response?.data?.rootLabel || '',
+        items: response?.data?.items || [],
+        loading: false,
+      };
+      renderBuiltinPickerModal();
+    })
+    .catch(() => {
+      state.builtinPicker.loading = false;
+      renderBuiltinPickerModal();
+      showToast('刷新失败');
+    });
+};
+
+
 
 window.selectBuiltinPickerItem = (item) => {
   const root = state.builtinPicker.rootLabel.replaceAll('\\', '/');

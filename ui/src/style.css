@@ -605,6 +605,17 @@ body.compact-layout .form-container {
   margin-bottom: 18px;
 }
 
+.config-group.field-modified {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+  border-radius: 6px;
+  background: var(--bg-field-modified, rgba(99, 102, 241, 0.04));
+}
+
+[data-theme="dark"] .config-group.field-modified {
+  background: rgba(99, 102, 241, 0.08);
+}
+
 .config-group label {
   display: block;
   font-size: 0.98rem;
