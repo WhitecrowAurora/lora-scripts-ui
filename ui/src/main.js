@@ -789,14 +789,10 @@ function renderAbout(container) {
         <div class="section-content" style="display:block;">
           <p style="margin-bottom:16px;">SD-reScripts v1.0.9</p>
           <p style="margin-bottom:16px;">由 <a href="https://github.com/Akegarasu/lora-scripts" target="_blank" rel="noopener" style="color:var(--accent);">schemastery</a> 强力驱动</p>
-          <h3 style="margin:24px 0 8px;font-size:1.1rem;">反馈</h3>
-          <p>请前往 GitHub 提交 <a href="https://github.com/Akegarasu/lora-scripts/issues" target="_blank" rel="noopener" style="color:var(--accent);">issue</a></p>
+          <h3 style="margin:24px 0 8px;font-size:1.1rem;">下载地址</h3>
+          <p>GitHub 地址：<a href="https://github.com/WhitecrowAurora/lora-rescripts" target="_blank" rel="noopener" style="color:var(--accent);">https://github.com/WhitecrowAurora/lora-rescripts</a></p>
           <h3 style="margin:24px 0 8px;font-size:1.1rem;">本前端反馈</h3>
-          <p>本前端反馈请前往此处</p>
-          <p style="margin-top:4px;"><a href="https://github.com/LichiTI/lora-scripts-ui" target="_blank" rel="noopener" style="color:var(--accent);">GitHub</a></p>
-          <h3 style="margin:24px 0 8px;font-size:1.1rem;">联系方式</h3>
-          <p>邮箱：work@anzu.link</p>
-          <p style="margin-top:8px;"><a href="https://discord.gg/lora-scripts" target="_blank" rel="noopener" style="color:var(--accent);">discord 频道</a></p>
+          <p>GitHub 地址：<a href="https://github.com/LichiTI/lora-scripts-ui" target="_blank" rel="noopener" style="color:var(--accent);">https://github.com/LichiTI/lora-scripts-ui</a></p>
         </div>
       </section>
     </div>
