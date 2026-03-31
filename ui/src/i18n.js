@@ -8,7 +8,7 @@ const translations = {
       logs: '日志',
       tools: '工具',
       settings: '设置',
-      support: '支持',
+      about: '关于',
     },
     navigator: {
       header: '资源管理器',
@@ -64,7 +64,7 @@ const translations = {
       logs: '日志',
       tools: '工具',
       settings: '设置',
-      support: '支持',
+      about: '关于',
     },
     navigator: {
       header: '资源管理器',

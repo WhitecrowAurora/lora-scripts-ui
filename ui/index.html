@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoRA v2.4.0 | RE-SCRIPTS</title>
+    <title>LoRA v1.0.9 | RE-SCRIPTS</title>
     <link rel="stylesheet" href="/src/style.css">
 </head>
 
@@ -14,7 +14,7 @@
         <aside class="sidebar">
             <div class="logo">
                 <div class="logo-text">LORA<span>RESCRIPTS</span></div>
-                <div class="logo-version">V2.0.0</div>
+                <div class="logo-version">v1.0.9</div>
             </div>
             <nav class="nav-links">
                 <div class="expand-toggle-btn" id="navigator-expand-btn">
@@ -60,11 +60,11 @@
                 </a>
             </nav>
             <div class="sidebar-footer">
-                <a href="#" class="nav-item" data-module="support" title="Support">
+                <a href="#" class="nav-item" data-module="about" title="About">
                     <svg class="icon">
                         <use href="#icon-support"></use>
                     </svg>
-                    <span data-i18n="nav.support">SUPPORT</span>
+                    <span data-i18n="nav.about">ABOUT</span>
                 </a>
                 <div class="theme-toggle" id="theme-toggle">
                     <svg class="icon moon-icon">
@@ -89,11 +89,8 @@
             </div>
 
             <section class="nav-section" id="section-training-types">
-                <div class="section-header collapsible">
+                <div class="section-header">
                     <h4 data-i18n="navigator.training_types">TRAINING TYPES</h4>
-                    <span class="chevron"><svg class="icon">
-                            <use href="#icon-chevron-down"></use>
-                        </svg></span>
                 </div>
                 <div class="section-content">
                     <div class="nav-group">
@@ -106,21 +103,6 @@
                             <li>ANIME</li>
                             <li>NEWBIE</li>
                         </ul>
-                    </div>
-                </div>
-            </section>
-
-            <section class="nav-section" id="section-preset-list">
-                <div class="section-header collapsible">
-                    <h4 data-i18n="navigator.preset_list">参数管理</h4>
-                    <span class="chevron"><svg class="icon">
-                            <use href="#icon-chevron-down"></use>
-                        </svg></span>
-                </div>
-                <div class="section-content">
-                    <div class="workspace-item active">
-                        <span class="status-indicator"></span>
-                        <span class="label" data-i18n="navigator.editing">EDITING...</span>
                     </div>
                 </div>
             </section>
@@ -142,17 +124,6 @@
                     <a href="#" class="top-nav-item" data-i18n="topbar.tools">Tools</a>
                     <a href="#" class="top-nav-item" data-i18n="topbar.help">Help</a>
                 </nav>
-                <div class="top-actions">
-                    <button class="icon-btn" title="终端"><svg class="icon">
-                            <use href="#icon-terminal"></use>
-                        </svg></button>
-                    <button class="icon-btn" title="翻译"><svg class="icon">
-                            <use href="#icon-translate"></use>
-                        </svg></button>
-                    <button class="icon-btn" title="主题"><svg class="icon">
-                            <use href="#icon-theme"></use>
-                        </svg></button>
-                </div>
             </header>
 
             <!-- Configuration Form -->
@@ -260,6 +231,7 @@
   }
 }</code></pre>
             </div>
+            <div class="panel-preset-actions" id="panel-preset-actions"></div>
         </aside>
     </div>
     <input type="file" id="config-file-input" accept="application/json,.json" hidden>
@@ -380,6 +352,25 @@
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
         </symbol>
+        <symbol id="icon-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" x2="20" y1="19" y2="19" />
+        </symbol>
+        <symbol id="icon-translate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" />
+            <path d="m22 22-5-10-5 10" /><path d="M14 18h6" />
+        </symbol>
+        <symbol id="icon-theme" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" /><path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" /><path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
+        </symbol>
+
     </svg>
 
     <script type="module" src="/src/main.js"></script>

@@ -3,10 +3,13 @@ import { api } from './api.js';
 import {
   UI_TABS,
   SDXL_SECTIONS,
+  TRAINING_TYPES,
   buildRunConfig,
   createDefaultConfig,
+  getAvailableTabs,
   getFieldDefinition,
   getSectionsForTab,
+  getSectionsForType,
   isFieldVisible,
   normalizeDraftValue,
 } from './sdxlSchema.js';
@@ -36,6 +39,7 @@ const state = {
   fieldUndo: {},
   activeFieldMenu: null,
   datasetSubTab: 'tagger',
+  selectedTool: '',
   builtinPicker: {
     open: false,
     fieldKey: '',
@@ -59,10 +63,12 @@ const state = {
     'preset-list': true,
   },
   accentColor: localStorage.getItem('accentColor') || null,
-  config: createDefaultConfig(),
+  activeTrainingType: localStorage.getItem('sd-rescripts:training-type') || 'sdxl-lora',
+  config: createDefaultConfig(localStorage.getItem('sd-rescripts:training-type') || 'sdxl-lora'),
   hasLocalDraft: false,
   presets: [],
   tasks: [],
+  interrogators: null,
   runtime: null,
   preflight: null,
   samplePrompt: null,
@@ -171,11 +177,12 @@ async function loadBootstrapData() {
   state.loading.runtime = true;
   updateJSONPreview();
 
-  const [runtimeResult, presetsResult, savedParamsResult, tasksResult] = await Promise.allSettled([
+  const [runtimeResult, presetsResult, savedParamsResult, tasksResult, interrogatorsResult] = await Promise.allSettled([
     api.getGraphicCards(),
     api.getPresets(),
     api.getSavedParams(),
     api.getTasks(),
+    api.getInterrogators(),
   ]);
 
   if (runtimeResult.status === 'fulfilled') {
@@ -197,6 +204,11 @@ async function loadBootstrapData() {
   if (tasksResult.status === 'fulfilled') {
     state.tasks = tasksResult.value?.data?.tasks || [];
   }
+  if (interrogatorsResult.status === 'fulfilled') {
+    state.interrogators = interrogatorsResult.value?.data || null;
+  }
+
+
 
   state.loading.runtime = false;
   if (state.activeModule === 'config') {
@@ -207,7 +219,7 @@ async function loadBootstrapData() {
 }
 
 function startTaskPolling() {
-  window.sttInterval(async () => {
+  setInterval(async () => {
     try {
       const response = await api.getTasks();
       state.tasks = response?.data?.tasks || [];
@@ -225,6 +237,7 @@ function renderView(module) {
     return;
   }
   applyLayoutPreferences();
+  syncFooterAction();
 
   if (module === 'config') {
     renderConfig(container);
@@ -247,6 +260,10 @@ function renderView(module) {
     renderDataset(container);
     return;
   }
+  if (module === 'about') {
+    renderAbout(container);
+    return;
+  }
 
   container.innerHTML = `
     <div class="form-container">
@@ -263,7 +280,9 @@ function renderView(module) {
 }
 
 function renderConfig(container) {
-  const sections = getSectionsForTab(state.activeTab);
+  const tt = state.activeTrainingType;
+  const typeLabel = TRAINING_TYPES.find((t) => t.id === tt)?.label || tt;
+  const sections = getSectionsForTab(state.activeTab, tt);
   const visibleSections = sections.filter((section) =>
     section.fields.some((field) => field.type !== 'hidden' && isFieldVisible(field, state.config))
   );
@@ -271,7 +290,7 @@ function renderConfig(container) {
   container.innerHTML = `
     <div class="form-container">
       <header class="section-title">
-        <h2>SDXL LoRA 模式</h2>
+        <h2>${typeLabel} LoRA 模式</h2>
         <p></p>
       </header>
       <div class="status-deck" id="status-deck">${renderStatusDeck()}</div>
@@ -350,12 +369,21 @@ function renderField(field) {
   }
 
   if (field.type === 'select') {
+    let filteredOptions = field.options;
+    if (field.key === 'optimizer_type') {
+      const vis = JSON.parse(localStorage.getItem('sd-rescripts:visible-optimizers') || '[]');
+      if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
+    }
+    if (field.key === 'lr_scheduler') {
+      const vis = JSON.parse(localStorage.getItem('sd-rescripts:visible-schedulers') || '[]');
+      if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
+    }
     return `
       <div class="config-group">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <select onchange="updateConfigValue('${field.key}', this.value)">
-          ${field.options.map((option) => `<option value="${escapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${escapeHtml(option || '默认')}</option>`).join('')}
+          ${filteredOptions.map((option) => `<option value="${escapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${escapeHtml(option || '默认')}</option>`).join('')}
         </select>
       </div>
     `;
@@ -426,9 +454,34 @@ function renderStatusDeck() {
     : state.runtime?.cards?.length
       ? `${state.runtime.cards.length} 张显卡`
       : '检测中';
-  const xformersLabel = state.runtime?.xformers?.installed
-    ? `${state.runtime.xformers.version || '已安装'}`
-    : '未安装';
+
+  // === 注意力后端检测 ===
+  const xf = state.runtime?.xformers;
+  const rt = state.runtime?.runtime;
+  const sagePkg = rt?.packages?.sageattention;
+  const xfInstalled = xf?.installed;
+  const xfSupported = xf?.supported;
+  const sageInstalled = sagePkg?.importable;
+
+  let attnLabel = '检测中';
+  let attnDetail = '暂无状态信息';
+  if (xf || sagePkg) {
+    const parts = [];
+    if (xfInstalled) {
+      parts.push(`xFormers ${xf.version || ''} ${xfSupported ? '✓' : '(不支持)'}`);
+    } else {
+      parts.push('xFormers 未安装');
+    }
+    if (sageInstalled) {
+      parts.push(`SageAttention ${sagePkg.version || ''} ✓`);
+    } else {
+      parts.push('SageAttention 未安装');
+    }
+    attnLabel = (xfSupported || sageInstalled) ? '可用' : '受限';
+    attnDetail = parts.join(' · ');
+    if (xf?.reason) attnDetail += ` — ${xf.reason}`;
+  }
+
   const preflightLabel = state.preflight
     ? state.preflight.can_start
       ? '可以启动'
@@ -443,9 +496,9 @@ function renderStatusDeck() {
       <span class="status-sub">${escapeHtml(renderGpuInfo())}</span>
     </div>
     <div class="status-card">
-      <span class="status-label">xFormers</span>
-      <strong class="status-value">${escapeHtml(xformersLabel)}</strong>
-      <span class="status-sub">${escapeHtml(state.runtime?.xformers?.reason || '暂无状态信息')}</span>
+      <span class="status-label">注意力后端</span>
+      <strong class="status-value">${escapeHtml(attnLabel)}</strong>
+      <span class="status-sub">${escapeHtml(attnDetail)}</span>
     </div>
     <div class="status-card">
       <span class="status-label">训练预检</span>
@@ -463,26 +516,33 @@ function renderStatusDeck() {
 function renderNavigator() {
   const trainingTypeList = $('#section-training-types .group-list');
   if (trainingTypeList) {
-    trainingTypeList.innerHTML = `
-      <li class="active">SDXL</li>
-      <li class="disabled">SD1.5</li>
-      <li class="disabled">FLUX</li>
-      <li class="disabled">SD3.5</li>
-    `;
+    const groups = {};
+    for (const tt of TRAINING_TYPES) {
+      if (!groups[tt.group]) groups[tt.group] = [];
+      groups[tt.group].push(tt);
+    }
+    trainingTypeList.innerHTML = Object.entries(groups).map(([group, items]) =>
+      `<li class="group-header" style="pointer-events:none;user-select:none;">${group}</li>` +
+      items.map((tt) =>
+        `<li class="${tt.id === state.activeTrainingType ? 'active' : ''}" onclick="switchTrainingType('${tt.id}')">${tt.label}</li>`
+      ).join('')
+    ).join('');
   }
 
-  const presetSection = $('#section-preset-list .section-content');
-  if (presetSection) {
-    presetSection.innerHTML = `
-      <div class="preset-actions-grid">
-        <button class="btn btn-outline btn-sm" type="button" onclick="resetAllParams()">重置所有参数</button>
+  const presetPanel = $('#panel-preset-actions');
+  if (presetPanel) {
+    presetPanel.innerHTML = `
+      <div class="panel-preset-title">参数管理</div>
+      <div class="panel-preset-grid">
+        <button class="btn btn-outline btn-sm" type="button" onclick="resetAllParams()">重置参数</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="saveCurrentParams()">保存参数</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="loadSavedParams()">读取参数</button>
-        <button class="btn btn-outline btn-sm" type="button" onclick="downloadConfigFile()">导出配置文件</button>
-        <button class="btn btn-outline btn-sm" type="button" onclick="importConfigFile()">导入配置文件</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="downloadConfigFile()">导出文件</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="importConfigFile()">导入文件</button>
       </div>
     `;
   }
+
 }
 
 function applyLayoutPreferences() {
@@ -530,9 +590,10 @@ function getPresetLabel(preset, index) {
 
 function syncFooterAction() {
   const bar = $('.bottom-bar');
-  if (!bar) {
-    return;
-  }
+  if (!bar) return;
+  // 仅在 config 模块显示
+  bar.style.display = state.activeModule === 'config' ? '' : 'none';
+  if (state.activeModule !== 'config') return;
   const hasRunningTask = state.tasks.some((task) => task.status === 'RUNNING');
   bar.innerHTML = `
     <button class="btn btn-primary btn-execute" onclick="executeTraining()" ${state.loading.run ? 'disabled' : ''}>
@@ -551,8 +612,22 @@ function syncTopbarState() {
     state.activeFieldMenu = null;
   }
   applyLayoutPreferences();
+
+  // 根据当前训练类型决定哪些 tab 可见
+  const availTabs = getAvailableTabs(state.activeTrainingType);
+  const availKeys = new Set(availTabs.map((t) => t.key));
+
+  // 如果当前 activeTab 在此类型下不存在，回退到第一个可用 tab
+  if (!availKeys.has(state.activeTab)) {
+    state.activeTab = availTabs[0]?.key || 'model';
+    localStorage.setItem('sdxl_ui_tab', state.activeTab);
+  }
+
   $$('.top-nav-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.tab === state.activeTab);
+    const tab = item.dataset.tab;
+    const visible = availKeys.has(tab);
+    item.style.display = visible ? '' : 'none';
+    item.classList.toggle('active', tab === state.activeTab);
   });
 }
 
@@ -654,12 +729,10 @@ function setupNavigator() {
   });
   updateNavUI();
 
-  $$('.nav-section .section-header').forEach((header) => {
+  $$('.nav-section .section-header.collapsible').forEach((header) => {
     header.addEventListener('click', () => {
       const section = header.closest('.nav-section');
-      if (!section) {
-        return;
-      }
+      if (!section) return;
       const sectionId = section.id.replace('section-', '');
       state.sections[sectionId] = !state.sections[sectionId];
       section.classList.toggle('collapsed', !state.sections[sectionId]);
@@ -672,7 +745,7 @@ function updateJSONPreview() {
     return;
   }
 
-  const payload = buildRunConfig(state.config);
+  const payload = buildRunConfig(state.config, state.activeTrainingType);
   jsonViewer.textContent = JSON.stringify(payload, null, 2);
 }
 
@@ -706,57 +779,134 @@ function toggleTheme() {
   applyTheme();
 }
 
+function renderAbout(container) {
+  container.innerHTML = `
+    <div class="form-container">
+      <header class="section-title">
+        <h2>关于</h2>
+      </header>
+      <section class="form-section">
+        <div class="section-content" style="display:block;">
+          <p style="margin-bottom:16px;">SD-reScripts v1.0.9</p>
+          <p style="margin-bottom:16px;">由 <a href="https://github.com/Akegarasu/lora-scripts" target="_blank" rel="noopener" style="color:var(--accent);">schemastery</a> 强力驱动</p>
+          <h3 style="margin:24px 0 8px;font-size:1.1rem;">反馈</h3>
+          <p>请前往 GitHub 提交 <a href="https://github.com/Akegarasu/lora-scripts/issues" target="_blank" rel="noopener" style="color:var(--accent);">issue</a></p>
+          <h3 style="margin:24px 0 8px;font-size:1.1rem;">本前端反馈</h3>
+          <p>本前端反馈请前往此处</p>
+          <p style="margin-top:4px;"><a href="https://github.com/LichiTI/lora-scripts-ui" target="_blank" rel="noopener" style="color:var(--accent);">GitHub</a></p>
+          <h3 style="margin:24px 0 8px;font-size:1.1rem;">联系方式</h3>
+          <p>邮箱：work@anzu.link</p>
+          <p style="margin-top:8px;"><a href="https://discord.gg/lora-scripts" target="_blank" rel="noopener" style="color:var(--accent);">discord 频道</a></p>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+
 function renderSettings(container) {
+  const allOptimizers = ['AdamW','AdamW8bit','PagedAdamW8bit','Lion','Lion8bit','SGDNesterov','SGDNesterov8bit','DAdaptation','DAdaptAdam','DAdaptAdaGrad','DAdaptAdan','DAdaptLion','DAdaptSGD','Adafactor','AdaFactor','Prodigy','pytorch_optimizer.CAME','pytorch_optimizer.Adan','pytorch_optimizer.AdaPNM','pytorch_optimizer.ADOPT','pytorch_optimizer.Lamb','pytorch_optimizer.MADGRAD','pytorch_optimizer.Ranger','pytorch_optimizer.Ranger21','pytorch_optimizer.Tiger'];
+  const allSchedulers = ['linear','cosine','cosine_with_restarts','polynomial','constant','constant_with_warmup','adafactor','cosine_annealing','cosine_annealing_with_warmup','cosine_annealing_warm_restarts','rex','inverse_sqrt','warmup_stable_decay'];
+  const savedTbUrl = localStorage.getItem('sd-rescripts:tensorboard-url') || '';
+  const savedOptimizers = JSON.parse(localStorage.getItem('sd-rescripts:visible-optimizers') || '[]');
+  const savedSchedulers = JSON.parse(localStorage.getItem('sd-rescripts:visible-schedulers') || '[]');
+
   container.innerHTML = `
     <div class="form-container">
       <header class="section-title">
         <h2>${t('settings.title', state.lang)}</h2>
-        <p>这里统一控制界面布局，适配不同分辨率。点击重置即可恢复默认布局。</p>
+        <p>控制界面布局、训练 UI 配置等。</p>
       </header>
-      <div class="settings-row">
-        <label>${t('settings.theme', state.lang)}</label>
-        <select id="theme-select">
-          <option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${t('settings.dark', state.lang)}</option>
-          <option value="light" ${state.theme === 'light' ? 'selected' : ''}>${t('settings.light', state.lang)}</option>
-        </select>
-      </div>
-      <div class="settings-row settings-slider-row">
-        <label>左侧资源管理器宽度</label>
-        <div class="settings-slider-control">
-          <input type="range" id="navigator-width-slider" min="180" max="420" step="10" value="${state.navigatorWidth}">
-          <strong id="navigator-width-value">${state.navigatorWidth}px</strong>
+
+      <section class="form-section">
+        <header class="section-header"><h3>界面布局</h3></header>
+        <div class="section-content" style="display:block;">
+          <div class="settings-row">
+            <label>${t('settings.theme', state.lang)}</label>
+            <select id="theme-select">
+              <option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${t('settings.dark', state.lang)}</option>
+              <option value="light" ${state.theme === 'light' ? 'selected' : ''}>${t('settings.light', state.lang)}</option>
+            </select>
+          </div>
+          <div class="settings-row settings-slider-row">
+            <label>左侧资源管理器宽度</label>
+            <div class="settings-slider-control">
+              <input type="range" id="navigator-width-slider" min="180" max="420" step="10" value="${state.navigatorWidth}">
+              <strong id="navigator-width-value">${state.navigatorWidth}px</strong>
+            </div>
+          </div>
+          <div class="settings-row settings-slider-row">
+            <label>右侧参数预览宽度</label>
+            <div class="settings-slider-control">
+              <input type="range" id="json-width-slider" min="220" max="460" step="10" value="${state.jsonPanelWidth}">
+              <strong id="json-width-value">${state.jsonPanelWidth}px</strong>
+            </div>
+          </div>
+          <div class="settings-row">
+            <label>布局重置</label>
+            <button class="btn btn-outline btn-sm" type="button" id="reset-layout-btn">恢复默认</button>
+          </div>
         </div>
-      </div>
-      <div class="settings-row settings-slider-row">
-        <label>右侧参数预览宽度</label>
-        <div class="settings-slider-control">
-          <input type="range" id="json-width-slider" min="220" max="460" step="10" value="${state.jsonPanelWidth}">
-          <strong id="json-width-value">${state.jsonPanelWidth}px</strong>
+      </section>
+
+      <section class="form-section">
+        <header class="section-header"><h3>训练 UI 设置</h3></header>
+        <div class="section-content" style="display:block;">
+          <div class="settings-row">
+            <div>
+              <label>tensorboard_url</label>
+              <p class="field-desc">TensorBoard 地址，留空则使用默认端口 6006。</p>
+            </div>
+            <input class="text-input" type="text" id="settings-tb-url" value="${escapeHtml(savedTbUrl)}" placeholder="http://127.0.0.1:6006" style="width:280px;">
+          </div>
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+            <div>
+              <label>visible_optimizers</label>
+              <p class="field-desc">优化器显示列表（可多选，留空=显示全部）</p>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;" id="settings-optimizers">
+              ${allOptimizers.map((o) => `<label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" value="${o}" ${savedOptimizers.includes(o) ? 'checked' : ''}>${o}</label>`).join('')}
+            </div>
+          </div>
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+            <div>
+              <label>visible_lr_schedulers</label>
+              <p class="field-desc">调度器显示列表（可多选，留空=显示全部）</p>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;" id="settings-schedulers">
+              ${allSchedulers.map((s) => `<label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" value="${s}" ${savedSchedulers.includes(s) ? 'checked' : ''}>${s}</label>`).join('')}
+            </div>
+          </div>
+          <div class="settings-row">
+            <button class="btn btn-primary btn-sm" type="button" id="save-ui-settings-btn">保存训练 UI 设置</button>
+          </div>
         </div>
-      </div>
-      <div class="settings-row">
-        <label>布局重置</label>
-        <button class="btn btn-outline btn-sm" type="button" id="reset-layout-btn">恢复默认</button>
-      </div>
+      </section>
     </div>
   `;
 
-  $('#theme-select')?.addEventListener('change', (event) => {
-    state.theme = event.target.value;
-    localStorage.setItem('theme', state.theme);
-    applyTheme();
-  });
-  $('#navigator-width-slider')?.addEventListener('input', (event) => updateLayoutWidth('navigator', event.target.value, false));
-  $('#navigator-width-slider')?.addEventListener('change', (event) => updateLayoutWidth('navigator', event.target.value, true));
-  $('#json-width-slider')?.addEventListener('input', (event) => updateLayoutWidth('json', event.target.value, false));
-  $('#json-width-slider')?.addEventListener('change', (event) => updateLayoutWidth('json', event.target.value, true));
+  $('#theme-select')?.addEventListener('change', (e) => { state.theme = e.target.value; localStorage.setItem('theme', state.theme); applyTheme(); });
+  $('#navigator-width-slider')?.addEventListener('input', (e) => updateLayoutWidth('navigator', e.target.value, false));
+  $('#navigator-width-slider')?.addEventListener('change', (e) => updateLayoutWidth('navigator', e.target.value, true));
+  $('#json-width-slider')?.addEventListener('input', (e) => updateLayoutWidth('json', e.target.value, false));
+  $('#json-width-slider')?.addEventListener('change', (e) => updateLayoutWidth('json', e.target.value, true));
   $('#reset-layout-btn')?.addEventListener('click', () => {
     state.navigatorWidth = state.layoutDefaults.navigatorWidth;
     state.jsonPanelWidth = state.layoutDefaults.jsonPanelWidth;
     applyAndPersistLayout();
     renderView('settings');
   });
+  $('#save-ui-settings-btn')?.addEventListener('click', () => {
+    localStorage.setItem('sd-rescripts:tensorboard-url', $('#settings-tb-url')?.value?.trim() || '');
+    const checkedOpts = [...$$('#settings-optimizers input:checked')].map((i) => i.value);
+    localStorage.setItem('sd-rescripts:visible-optimizers', JSON.stringify(checkedOpts));
+    const checkedScheds = [...$$('#settings-schedulers input:checked')].map((i) => i.value);
+    localStorage.setItem('sd-rescripts:visible-schedulers', JSON.stringify(checkedScheds));
+    showToast('训练 UI 设置已保存。');
+  });
 }
+
+
 
 function renderDataset(container) {
   const activeTab = state.datasetSubTab || 'tagger';
@@ -764,23 +914,30 @@ function renderDataset(container) {
     <div class="form-container">
       <header class="section-title">
         <h2>数据集处理</h2>
-        <p>图片标注、标签编辑与图像预处理。</p>
+        <p>图片标注、标签编辑、图像预处理、数据集分析与 Caption 清洗。</p>
       </header>
       <div class="dataset-tabs">
         <button class="dataset-tab ${activeTab === 'tagger' ? 'active' : ''}" type="button" onclick="switchDatasetTab('tagger')">标签器</button>
         <button class="dataset-tab ${activeTab === 'editor' ? 'active' : ''}" type="button" onclick="switchDatasetTab('editor')">标签编辑器</button>
         <button class="dataset-tab ${activeTab === 'resize' ? 'active' : ''}" type="button" onclick="switchDatasetTab('resize')">图像预处理</button>
+        <button class="dataset-tab ${activeTab === 'analysis' ? 'active' : ''}" type="button" onclick="switchDatasetTab('analysis')">数据集分析</button>
+        <button class="dataset-tab ${activeTab === 'cleanup' ? 'active' : ''}" type="button" onclick="switchDatasetTab('cleanup')">Caption 清洗</button>
+        <button class="dataset-tab ${activeTab === 'backups' ? 'active' : ''}" type="button" onclick="switchDatasetTab('backups')">Caption 备份</button>
+        <button class="dataset-tab ${activeTab === 'maskedloss' ? 'active' : ''}" type="button" onclick="switchDatasetTab('maskedloss')">蒙版损失审查</button>
       </div>
       <div id="dataset-content"></div>
     </div>
   `;
-  if (activeTab === 'tagger') {
-    renderTagger();
-  } else if (activeTab === 'editor') {
-    renderTagEditor();
-  } else {
-    renderImageResize();
-  }
+  const renderers = {
+    tagger: renderTagger,
+    editor: renderTagEditor,
+    resize: renderImageResize,
+    analysis: renderDatasetAnalysis,
+    cleanup: renderCaptionCleanup,
+    backups: renderCaptionBackups,
+    maskedloss: renderMaskedLossAudit,
+  };
+  (renderers[activeTab] || renderTagger)();
 }
 
 window.switchDatasetTab = (tab) => {
@@ -788,28 +945,39 @@ window.switchDatasetTab = (tab) => {
   if (state.activeModule === 'dataset') renderView('dataset');
 };
 
+
 function renderTagger() {
   const content = $('#dataset-content');
   if (!content) return;
 
-  const models = [
-    'wd14-convnextv2-v2', 'wd-convnext-v3', 'wd-swinv2-v3', 'wd-vit-v3',
-    'wd14-swinv2-v2', 'wd14-vit-v2', 'wd14-moat-v2',
+  const allInterrogators = state.interrogators?.interrogators || [];
+  const defaultModel = state.interrogators?.default || 'wd14-convnextv2-v2';
+  const wdModels = allInterrogators.filter((m) => m.kind === 'wd' || m.kind === 'cl');
+  const llmModels = allInterrogators.filter((m) => m.kind === 'llm');
+  const fallbackModels = [
+    'wd-convnext-v3', 'wd-swinv2-v3', 'wd-vit-v3',
+    'wd14-convnextv2-v2', 'wd14-swinv2-v2', 'wd14-vit-v2', 'wd14-moat-v2',
     'wd-eva02-large-tagger-v3', 'wd-vit-large-tagger-v3',
-    'cl-tagger-1.00', 'cl-tagger-1.01', 'cl-tagger-1.02',
+    'eva02_large_E621_FULL_V1', 'cl_tagger_1_01',
   ];
+  const models = wdModels.length > 0 ? wdModels.map((m) => m.name) : fallbackModels;
   const conflicts = ['ignore', 'copy', 'prepend', 'append'];
   const conflictLabels = { ignore: '跳过已有', copy: '覆盖', prepend: '前置追加', append: '后置追加' };
+  const presets = state.interrogators?.llm_template_presets || [
+    { id: 'anime-tags', label: '动漫标签 / Anime Tags' },
+    { id: 'natural-caption', label: '自然语言描述 / Natural Caption' },
+  ];
 
   content.innerHTML = `
+    <!-- WD14 / CL 标签器 -->
     <section class="form-section">
       <header class="section-header"><h3>WD14 / CL 标签器</h3></header>
-      <div class="section-summary">对训练数据集进行自动标注，为每张图片生成 .txt 标签文件。</div>
+      <div class="section-summary">对训练数据集进行自动标注，为每张图片生成 .txt 标签文件。使用本地 ONNX 模型运行，无需网络。</div>
       <div class="section-content tool-fields">
-        <div class="config-group">
+        <div class="config-group" style="grid-column:1/-1;">
           <label>数据集路径</label>
           <div class="input-picker">
-            <button class="picker-icon" type="button" onclick="openNativePicker('tagger-path', 'folder')">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('tagger-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
             <input class="text-input" type="text" id="tagger-path" placeholder="./train/your_dataset">
@@ -818,11 +986,12 @@ function renderTagger() {
         <div class="config-group">
           <label>标注模型</label>
           <select id="tagger-model">
-            ${models.map((m) => `<option value="${m}" ${m === 'wd14-convnextv2-v2' ? 'selected' : ''}>${m}</option>`).join('')}
+            ${models.map((m) => `<option value="${m}" ${m === defaultModel ? 'selected' : ''}>${m}</option>`).join('')}
           </select>
         </div>
         <div class="config-group">
           <label>置信度阈值</label>
+          <p class="field-desc">模型对标签的最低置信度，低于此值的标签不会写入。推荐 0.35，调低可获得更多标签但可能不准。</p>
           <input class="text-input" type="number" id="tagger-threshold" value="0.35" min="0" max="1" step="0.01">
         </div>
         <div class="config-group">
@@ -840,39 +1009,120 @@ function renderTagger() {
           <input class="text-input" type="text" id="tagger-exclude" placeholder="tag_to_remove">
         </div>
         <div class="config-group row boolean-card">
-          <div class="label-col">
-            <label>递归扫描子目录</label>
-          </div>
-          <label class="switch switch-compact">
-            <input type="checkbox" id="tagger-recursive">
-            <span class="slider round"></span>
-          </label>
+          <div class="label-col"><label>递归扫描子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="tagger-recursive"><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
-          <div class="label-col">
-            <label>替换下划线为空格</label>
-          </div>
-          <label class="switch switch-compact">
-            <input type="checkbox" id="tagger-underscore" checked>
-            <span class="slider round"></span>
-          </label>
+          <div class="label-col"><label>替换下划线为空格</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="tagger-underscore" checked><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
-          <div class="label-col">
-            <label>转义括号</label>
-          </div>
-          <label class="switch switch-compact">
-            <input type="checkbox" id="tagger-escape" checked>
-            <span class="slider round"></span>
-          </label>
+          <div class="label-col"><label>转义括号</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="tagger-escape" checked><span class="slider round"></span></label>
         </div>
       </div>
       <div class="tool-actions">
         <button class="btn btn-primary btn-sm" type="button" onclick="runTagger()">开始标注</button>
       </div>
     </section>
+
+    <!-- LLM 标签器 -->
+    <section class="form-section">
+      <header class="section-header"><h3>LLM 标签器（大语言模型）</h3></header>
+      <div class="section-summary">使用 OpenAI / Claude / 自定义 API 的视觉语言模型对图片进行标注。需要填写 API Key，会消耗 API 额度。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('llm-tagger-path', 'folder')">
+              <svg class="icon"><use href="#icon-folder"></use></svg>
+            </button>
+            <input class="text-input" type="text" id="llm-tagger-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group">
+          <label>LLM 提供商</label>
+          <select id="llm-provider">
+            ${llmModels.length > 0
+              ? llmModels.map((m) => `<option value="${m.name}">${m.name}</option>`).join('')
+              : '<option value="llm-openai">llm-openai</option><option value="llm-claude">llm-claude</option><option value="llm-custom">llm-custom</option>'
+            }
+          </select>
+        </div>
+        <div class="config-group">
+          <label>API Key</label>
+          <input class="text-input" type="password" id="llm-api-key" placeholder="sk-...">
+        </div>
+        <div class="config-group">
+          <label>模型名称</label>
+          <input class="text-input" type="text" id="llm-model" placeholder="gpt-4o-mini / claude-sonnet-4-20250514">
+        </div>
+        <div class="config-group">
+          <label>API 地址</label>
+          <p class="field-desc">自定义提供商时必填，OpenAI/Claude 可留空用默认。</p>
+          <input class="text-input" type="text" id="llm-api-base" placeholder="https://api.openai.com/v1">
+        </div>
+        <div class="config-group">
+          <label>模板预设</label>
+          <select id="llm-preset">
+            ${presets.map((p) => `<option value="${p.id}">${escapeHtml(p.label || p.id)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="config-group">
+          <label>冲突处理</label>
+          <select id="llm-conflict">
+            ${conflicts.map((c) => `<option value="${c}" ${c === 'ignore' ? 'selected' : ''}>${conflictLabels[c]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="config-group">
+          <label>Temperature</label>
+          <input class="text-input" type="number" id="llm-temperature" value="0.2" min="0" max="2" step="0.1">
+        </div>
+        <div class="config-group">
+          <label>最大 Tokens</label>
+          <input class="text-input" type="number" id="llm-max-tokens" value="300" min="1" max="8192">
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>递归扫描子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="llm-recursive"><span class="slider round"></span></label>
+        </div>
+      </div>
+      <div class="tool-actions">
+        <button class="btn btn-primary btn-sm" type="button" onclick="runLlmTagger()">LLM 开始标注</button>
+      </div>
+    </section>
   `;
 }
+
+window.runLlmTagger = async () => {
+  const pathVal = $('#llm-tagger-path')?.value?.trim();
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  const apiKey = $('#llm-api-key')?.value?.trim();
+  if (!apiKey) { showToast('请填写 API Key。'); return; }
+  const model = $('#llm-model')?.value?.trim();
+  if (!model) { showToast('请填写模型名称。'); return; }
+  const params = {
+    path: pathVal,
+    interrogator_model: $('#llm-provider')?.value || 'llm-openai',
+    llm_api_key: apiKey,
+    llm_model: model,
+    llm_api_base: $('#llm-api-base')?.value?.trim() || '',
+    llm_template_preset: $('#llm-preset')?.value || 'anime-tags',
+    batch_output_action_on_conflict: $('#llm-conflict')?.value || 'ignore',
+    llm_temperature: parseFloat($('#llm-temperature')?.value) || 0.2,
+    llm_max_tokens: parseInt($('#llm-max-tokens')?.value) || 300,
+    batch_input_recursive: $('#llm-recursive')?.checked || false,
+    threshold: 0.35,
+  };
+  try {
+    await api.runInterrogate(params);
+    showToast('LLM 标注任务已提交，正在后台运行...');
+  } catch (error) {
+    showToast(error.message || 'LLM 标注任务启动失败。');
+  }
+};
+
+
 
 window.runTagger = async () => {
   const pathVal = $('#tagger-path')?.value?.trim();
@@ -899,22 +1149,54 @@ window.runTagger = async () => {
 function renderTagEditor() {
   const content = $('#dataset-content');
   if (!content) return;
+  const teUrl = `http://${location.hostname}:28001`;
   content.innerHTML = `
-    <section class="form-section">
-      <header class="section-header"><h3>标签编辑器</h3></header>
-      <div class="section-summary">推荐使用外部标签编辑器工具，可以获得更完整的批量编辑体验。</div>
-      <div class="empty-state" style="margin-top:16px;">
-        <strong>请使用外部工具</strong>
-        <span>训练包内附带 <code>1BooruDatasetTagManager</code>，双击 <code>BooruDatasetTagManager.exe</code> 即可启动。<br>支持批量查看、编辑、搜索替换标签，比内置编辑器更高效。</span>
-        <button class="btn btn-outline btn-sm" type="button" style="margin-top:12px;" onclick="openExternalTagEditor()">了解更多</button>
-      </div>
+    <div id="tageditor-status" style="padding:4px 0 12px;font-size:0.85rem;color:var(--text-dim);"></div>
+    <section class="form-section" style="padding:0;overflow:hidden;">
+      <header class="section-header">
+        <h3>标签编辑器 (Tag Editor)</h3>
+        <div style="display:flex;gap:8px;">
+          <a class="btn btn-outline btn-sm" href="${teUrl}" target="_blank" rel="noopener">新窗口打开</a>
+          <button class="btn btn-outline btn-sm" type="button" onclick="refreshTagEditorIframe()">刷新</button>
+        </div>
+      </header>
+      <iframe id="tageditor-iframe" src="${teUrl}" style="width:100%;height:calc(100vh - 340px);min-height:500px;border:none;background:var(--bg-panel);"></iframe>
     </section>
   `;
+  pollTagEditorStatus();
 }
 
-window.openExternalTagEditor = () => {
-  showToast('请在训练包目录下找到 1BooruDatasetTagManager 文件夹并双击 exe 启动。');
+
+async function pollTagEditorStatus() {
+  const statusEl = $('#tageditor-status');
+  if (!statusEl) return;
+  try {
+    const data = await api.getTagEditorStatus();
+    const labels = {
+      ready: '✅ 标签编辑器已就绪',
+      starting: '⏳ 标签编辑器正在启动...',
+      queued: '⏳ 标签编辑器即将启动...',
+      disabled: '⛔ 标签编辑器已禁用（启动时添加了 --disable-tageditor）',
+      missing_dependencies: '❌ 依赖未安装，请先运行 install_tageditor',
+      missing_launcher: '❌ 文件缺失',
+      failed: '❌ 启动失败',
+    };
+    const text = labels[data.status] || `状态: ${data.status}`;
+    statusEl.textContent = text + (data.detail ? ` — ${data.detail}` : '');
+    if (!['ready','disabled','failed','missing_dependencies','missing_launcher'].includes(data.status)) {
+      setTimeout(pollTagEditorStatus, 2000);
+    }
+  } catch (e) {
+    statusEl.textContent = '无法获取状态';
+  }
+}
+
+window.refreshTagEditorIframe = () => {
+  const iframe = $('#tageditor-iframe');
+  if (iframe) iframe.src = `http://${location.hostname}:28001`;
 };
+
+
 
 function renderImageResize() {
   const content = $('#dataset-content');
@@ -934,14 +1216,14 @@ function renderImageResize() {
           <label>输入目录</label>
           <div style="display:flex;gap:8px;align-items:center;">
             <select id="resize-input-select" style="flex:1;"><option value="">加载中...</option></select>
-            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器" onclick="openNativePicker('resize-input-select', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器" onclick="pickPathForInput('resize-input-select', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
           </div>
           <p class="field-desc">选择 train 目录下的数据集文件夹。</p>
         </div>
         <div class="config-group" style="grid-column:1/-1;">
           <label>输出目录（留空则覆盖原文件）</label>
           <div class="input-picker">
-            <button class="picker-icon" type="button" onclick="openNativePicker('resize-output', 'folder')">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('resize-output', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
             <input class="text-input" type="text" id="resize-output" placeholder="留空则在原目录生成">
@@ -1044,86 +1326,420 @@ window.openResizeGui = () => {
   showToast('请在 train 目录下双击「训练图像缩放预处理工具.py」打开独立图形界面。');
 };
 
+// ========== 数据集分析 ==========
+function renderDatasetAnalysis() {
+  const content = $('#dataset-content');
+  if (!content) return;
+  content.innerHTML = `
+    <section class="form-section">
+      <header class="section-header"><h3>数据集分析</h3></header>
+      <div class="section-summary">分析数据集的图片分布、标签统计、分辨率分布等信息。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('analysis-path', 'folder')">
+              <svg class="icon"><use href="#icon-folder"></use></svg>
+            </button>
+            <input class="text-input" type="text" id="analysis-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group">
+          <label>Caption 扩展名</label>
+          <input class="text-input" type="text" id="analysis-ext" value=".txt">
+        </div>
+        <div class="config-group">
+          <label>Top 标签数</label>
+          <input class="text-input" type="number" id="analysis-top" value="40" min="1" max="200">
+        </div>
+      </div>
+      <div class="tool-actions">
+        <button class="btn btn-primary btn-sm" type="button" onclick="runDatasetAnalysis()">开始分析</button>
+      </div>
+      <div id="analysis-result" style="margin-top:16px;"></div>
+    </section>
+  `;
+}
+
+window.runDatasetAnalysis = async () => {
+  const pathVal = $('#analysis-path')?.value?.trim();
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  const result = $('#analysis-result');
+  if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>分析中...</span></div>';
+  try {
+    const response = await api.analyzeDataset({
+      path: pathVal,
+      caption_extension: $('#analysis-ext')?.value || '.txt',
+      top_tags: parseInt($('#analysis-top')?.value) || 40,
+    });
+    const data = response?.data;
+    if (!data) { if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>无结果</span></div>'; return; }
+    if (result) result.innerHTML = `
+      <div class="module-list">
+        <div class="module-list-item module-list-item-static">
+          <div class="module-list-main">
+            <strong>图片数量: ${data.total_images ?? '-'}</strong>
+            <span class="module-list-meta">有标注: ${data.captioned_images ?? '-'} | 无标注: ${data.uncaptioned_images ?? '-'}</span>
+          </div>
+        </div>
+        ${(data.top_tags || []).map((t) => `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main"><strong>${escapeHtml(t.tag)}</strong></div>
+            <span class="module-list-time">${t.count} 次</span>
+          </div>
+        `).join('')}
+        ${(data.resolution_distribution || []).map((r) => `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main"><strong>${escapeHtml(r.resolution)}</strong></div>
+            <span class="module-list-time">${r.count} 张</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (error) {
+    if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '分析失败')}</span></div>`;
+  }
+};
+
+// ========== Caption 清洗 ==========
+function renderCaptionCleanup() {
+  const content = $('#dataset-content');
+  if (!content) return;
+  content.innerHTML = `
+    <section class="form-section">
+      <header class="section-header"><h3>Caption 清洗</h3></header>
+      <div class="section-summary">批量清理数据集中的 caption 文件：去重、排序、搜索替换、追加/删除标签等。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('cleanup-path', 'folder')">
+              <svg class="icon"><use href="#icon-folder"></use></svg>
+            </button>
+            <input class="text-input" type="text" id="cleanup-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group">
+          <label>Caption 扩展名</label>
+          <input class="text-input" type="text" id="cleanup-ext" value=".txt">
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>递归处理子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-recursive" checked><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>去除重复标签</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-dedupe" checked><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>标签排序</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-sort"><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>合并空白字符</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-collapse-ws" checked><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>下划线转空格</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-underscore"><span class="slider round"></span></label>
+        </div>
+        <div class="config-group">
+          <label>前置追加标签</label>
+          <input class="text-input" type="text" id="cleanup-prepend" placeholder="tag1, tag2">
+        </div>
+        <div class="config-group">
+          <label>后置追加标签</label>
+          <input class="text-input" type="text" id="cleanup-append" placeholder="tag1, tag2">
+        </div>
+        <div class="config-group">
+          <label>删除指定标签</label>
+          <input class="text-input" type="text" id="cleanup-remove" placeholder="tag_to_remove">
+        </div>
+        <div class="config-group">
+          <label>搜索文本</label>
+          <input class="text-input" type="text" id="cleanup-search" placeholder="搜索内容">
+        </div>
+        <div class="config-group">
+          <label>替换文本</label>
+          <input class="text-input" type="text" id="cleanup-replace" placeholder="替换为">
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>使用正则表达式</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-regex"><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>应用前自动备份</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="cleanup-backup" checked><span class="slider round"></span></label>
+        </div>
+      </div>
+      <div class="tool-actions" style="display:flex;gap:8px;">
+        <button class="btn btn-outline btn-sm" type="button" onclick="runCaptionCleanupPreview()">预览变更</button>
+        <button class="btn btn-primary btn-sm" type="button" onclick="runCaptionCleanupApply()">应用清洗</button>
+      </div>
+      <div id="cleanup-result" style="margin-top:16px;"></div>
+    </section>
+  `;
+}
+
+function gatherCleanupParams() {
+  return {
+    path: $('#cleanup-path')?.value?.trim() || '',
+    caption_extension: $('#cleanup-ext')?.value || '.txt',
+    recursive: $('#cleanup-recursive')?.checked ?? true,
+    dedupe_tags: $('#cleanup-dedupe')?.checked ?? true,
+    sort_tags: $('#cleanup-sort')?.checked || false,
+    collapse_whitespace: $('#cleanup-collapse-ws')?.checked ?? true,
+    replace_underscore: $('#cleanup-underscore')?.checked || false,
+    prepend_tags: $('#cleanup-prepend')?.value || '',
+    append_tags: $('#cleanup-append')?.value || '',
+    remove_tags: $('#cleanup-remove')?.value || '',
+    search_text: $('#cleanup-search')?.value || '',
+    replace_text: $('#cleanup-replace')?.value || '',
+    use_regex: $('#cleanup-regex')?.checked || false,
+    create_backup_before_apply: $('#cleanup-backup')?.checked ?? true,
+  };
+}
+
+window.runCaptionCleanupPreview = async () => {
+  const params = gatherCleanupParams();
+  if (!params.path) { showToast('请先填写数据集路径。'); return; }
+  const result = $('#cleanup-result');
+  if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>预览中...</span></div>';
+  try {
+    const response = await api.captionCleanupPreview(params);
+    const data = response?.data;
+    if (!data) { if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>无结果</span></div>'; return; }
+    const summary = data.summary || {};
+    const samples = data.samples || [];
+    if (result) result.innerHTML = `
+      <div class="module-list">
+        <div class="module-list-item module-list-item-static">
+          <div class="module-list-main">
+            <strong>扫描文件: ${summary.total_file_count ?? '-'}</strong>
+            <span class="module-list-meta">将变更: ${summary.changed_file_count ?? '-'} | 无变化: ${summary.unchanged_file_count ?? '-'}</span>
+          </div>
+        </div>
+        ${samples.map((s) => `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main">
+              <strong>${escapeHtml(s.file)}</strong>
+              <span class="module-list-meta">前: ${escapeHtml(s.before || '')}</span>
+              <span class="module-list-meta" style="color:var(--accent);">后: ${escapeHtml(s.after || '')}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (error) {
+    if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '预览失败')}</span></div>`;
+  }
+};
+
+window.runCaptionCleanupApply = async () => {
+  const params = gatherCleanupParams();
+  if (!params.path) { showToast('请先填写数据集路径。'); return; }
+  try {
+    const response = await api.captionCleanupApply(params);
+    showToast(response?.message || 'Caption 清洗已应用。');
+    window.runCaptionCleanupPreview();
+  } catch (error) {
+    showToast(error.message || 'Caption 清洗失败。');
+  }
+};
+
+// ========== Caption 备份 ==========
+function renderCaptionBackups() {
+  const content = $('#dataset-content');
+  if (!content) return;
+  content.innerHTML = `
+    <section class="form-section">
+      <header class="section-header"><h3>Caption 备份与恢复</h3></header>
+      <div class="section-summary">创建数据集 caption 的快照备份，或从已有备份恢复。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('backup-path', 'folder')">
+              <svg class="icon"><use href="#icon-folder"></use></svg>
+            </button>
+            <input class="text-input" type="text" id="backup-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group">
+          <label>备份名称</label>
+          <input class="text-input" type="text" id="backup-name" placeholder="my-backup">
+        </div>
+        <div class="config-group">
+          <label>Caption 扩展名</label>
+          <input class="text-input" type="text" id="backup-ext" value=".txt">
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>递归子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="backup-recursive" checked><span class="slider round"></span></label>
+        </div>
+      </div>
+      <div class="tool-actions" style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" type="button" onclick="createCaptionBackup()">创建备份</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="listCaptionBackups()">查看已有备份</button>
+      </div>
+      <div id="backup-result" style="margin-top:16px;"></div>
+    </section>
+  `;
+}
+
+window.createCaptionBackup = async () => {
+  const pathVal = $('#backup-path')?.value?.trim();
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  try {
+    const response = await api.captionBackupCreate({
+      path: pathVal,
+      caption_extension: $('#backup-ext')?.value || '.txt',
+      recursive: $('#backup-recursive')?.checked ?? true,
+      snapshot_name: $('#backup-name')?.value?.trim() || '',
+    });
+    showToast(response?.message || '备份已创建。');
+    window.listCaptionBackups();
+  } catch (error) {
+    showToast(error.message || '备份创建失败。');
+  }
+};
+
+window.listCaptionBackups = async () => {
+  const pathVal = $('#backup-path')?.value?.trim();
+  const result = $('#backup-result');
+  if (!result) return;
+  result.innerHTML = '<div class="builtin-picker-empty"><span>加载中...</span></div>';
+  try {
+    const response = await api.captionBackupList({ path: pathVal || '' });
+    const backups = response?.data?.backups || [];
+    if (!backups.length) {
+      result.innerHTML = '<div class="builtin-picker-empty"><span>未找到备份</span></div>';
+      return;
+    }
+    result.innerHTML = `
+      <div class="module-list">
+        ${backups.map((b) => `
+          <div class="module-list-item">
+            <div class="module-list-main">
+              <strong>${escapeHtml(b.archive_name || b.name || '-')}</strong>
+              <span class="module-list-meta">${b.file_count ?? '-'} 个文件</span>
+            </div>
+            <span class="module-list-time">${b.created_at ? new Date(b.created_at).toLocaleString('zh-CN') : '-'}</span>
+            <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="restoreCaptionBackup('${escapeHtml(b.archive_name || b.name)}')">恢复</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (error) {
+    result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '读取备份列表失败')}</span></div>`;
+  }
+};
+
+window.restoreCaptionBackup = async (archiveName) => {
+  const pathVal = $('#backup-path')?.value?.trim();
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  try {
+    const response = await api.captionBackupRestore({ path: pathVal, archive_name: archiveName });
+    showToast(response?.message || '备份已恢复。');
+  } catch (error) {
+    showToast(error.message || '备份恢复失败。');
+  }
+};
+
+// ========== 蒙版损失审查 ==========
+function renderMaskedLossAudit() {
+  const content = $('#dataset-content');
+  if (!content) return;
+  content.innerHTML = `
+    <section class="form-section">
+      <header class="section-header"><h3>蒙版损失数据集审查</h3></header>
+      <div class="section-summary">检查数据集中的图像是否包含 Alpha 通道 / 蒙版，用于 masked_loss 训练。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('maskedloss-path', 'folder')">
+              <svg class="icon"><use href="#icon-folder"></use></svg>
+            </button>
+            <input class="text-input" type="text" id="maskedloss-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>递归扫描子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="maskedloss-recursive" checked><span class="slider round"></span></label>
+        </div>
+      </div>
+      <div class="tool-actions">
+        <button class="btn btn-primary btn-sm" type="button" onclick="runMaskedLossAudit()">开始审查</button>
+      </div>
+      <div id="maskedloss-result" style="margin-top:16px;"></div>
+    </section>
+  `;
+}
+
+window.runMaskedLossAudit = async () => {
+  const pathVal = $('#maskedloss-path')?.value?.trim();
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  const result = $('#maskedloss-result');
+  if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>审查中...</span></div>';
+  try {
+    const response = await api.maskedLossAudit({
+      path: pathVal,
+      recursive: $('#maskedloss-recursive')?.checked ?? true,
+    });
+    const data = response?.data;
+    if (!data) { if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>无结果</span></div>'; return; }
+    if (result) result.innerHTML = `
+      <div class="module-list">
+        <div class="module-list-item module-list-item-static">
+          <div class="module-list-main">
+            <strong>总图片: ${data.total_images ?? '-'}</strong>
+            <span class="module-list-meta">包含 Alpha/Mask: ${data.with_alpha ?? '-'} | 无 Mask: ${data.without_alpha ?? '-'}</span>
+          </div>
+        </div>
+        ${(data.samples || []).map((s) => `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main">
+              <strong>${escapeHtml(s.file || s.name || '-')}</strong>
+              <span class="module-list-meta">${s.has_alpha ? '✅ 包含 Alpha' : '❌ 无 Alpha'} | ${s.width}x${s.height}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (error) {
+    if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '审查失败')}</span></div>`;
+  }
+};
+
+
 
 function renderLogs(container) {
+  const customTbUrl = localStorage.getItem('sd-rescripts:tensorboard-url')?.trim();
+  const tbUrl = customTbUrl || `http://${location.hostname}:6006`;
   container.innerHTML = `
     <div class="form-container">
       <header class="section-title">
-        <h2>训练日志</h2>
-        <p>查看 TensorBoard 日志目录。可通过 TensorBoard 可视化训练过程中的损失曲线和样本图。</p>
+        <h2>TensorBoard</h2>
+        <p>训练日志可视化，查看损失曲线、学习率变化与样本图。TensorBoard 已随训练器自动启动。</p>
       </header>
-      <div class="section-toolbar">
-        <div class="toolbar-actions toolbar-actions-only">
-          <button class="btn btn-outline btn-sm" type="button" onclick="refreshLogDirs()">刷新日志列表</button>
-          <button class="btn btn-outline btn-sm" type="button" onclick="openTensorBoard()">启动 TensorBoard</button>
-        </div>
+      <section class="form-section" style="padding:0;overflow:hidden;">
+        <iframe id="tb-iframe" src="${tbUrl}" style="width:100%;height:calc(100vh - 240px);min-height:500px;border:none;border-radius:12px;background:var(--bg-panel);"></iframe>
+      </section>
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <a class="btn btn-outline btn-sm" href="${tbUrl}" target="_blank" rel="noopener">在新窗口中打开 TensorBoard</a>
+        <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('tb-iframe').src='${tbUrl}'">刷新</button>
       </div>
-      <div id="logs-list" class="module-list"><div class="builtin-picker-empty"><span>加载中...</span></div></div>
     </div>
   `;
-  window.refreshLogDirs();
 }
-
-window.refreshLogDirs = async () => {
-  const list = $('#logs-list');
-  if (!list) return;
-  list.innerHTML = '<div class="builtin-picker-empty"><span>加载中...</span></div>';
-  try {
-    const response = await api.getLogDirs();
-    const dirs = response?.data?.dirs || [];
-    if (!dirs.length) {
-      list.innerHTML = '<div class="builtin-picker-empty"><span>未检测到日志目录</span></div>';
-      return;
-    }
-    list.innerHTML = dirs.map((d) => `
-      <div class="module-list-item" onclick="viewLogDetail('${escapeHtml(d.name)}')">
-        <div class="module-list-main">
-          <strong>${escapeHtml(d.name)}</strong>
-          <span class="module-list-meta">${d.hasEvents ? '包含 TensorBoard 事件文件' : '无事件文件'}</span>
-        </div>
-        <span class="module-list-time">${new Date(d.time).toLocaleString('zh-CN')}</span>
-      </div>
-    `).join('');
-  } catch (error) {
-    list.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '读取日志目录失败')}</span></div>`;
-  }
-};
-
-window.viewLogDetail = async (dirName) => {
-  const list = $('#logs-list');
-  if (!list) return;
-  list.innerHTML = '<div class="builtin-picker-empty"><span>加载中...</span></div>';
-  try {
-    const response = await api.getLogDetail(dirName);
-    const files = response?.data?.files || [];
-    list.innerHTML = `
-      <div style="padding:0 0 12px;"><button class="btn btn-outline btn-sm" type="button" onclick="refreshLogDirs()">← 返回列表</button></div>
-      <h3 style="margin-bottom:12px;font-size:1rem;">${escapeHtml(dirName)}</h3>
-      ${files.length ? files.map((f) => `
-        <div class="module-list-item module-list-item-static">
-          <div class="module-list-main">
-            <strong>${escapeHtml(f.name)}</strong>
-            <span class="module-list-meta">${(f.size / 1024).toFixed(1)} KB</span>
-          </div>
-          <span class="module-list-time">${new Date(f.time).toLocaleString('zh-CN')}</span>
-        </div>
-      `).join('') : '<div class="builtin-picker-empty"><span>该目录为空</span></div>'}
-    `;
-  } catch (error) {
-    list.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '读取失败')}</span></div>`;
-  }
-};
-
-window.openTensorBoard = () => {
-  showToast('TensorBoard 需要通过后端启动，请在终端执行：tensorboard --logdir=./logs');
-};
 
 function renderTools(container) {
   const tools = [
     {
       id: 'extract_lora',
       title: '从模型提取 LoRA',
-      desc: '从两个模型的差异中提取 LoRA 网络权重。需要指定原始模型、微调模型和输出路径。',
+      desc: '从两个模型的差异中提取 LoRA 网络权重。',
       script: 'networks/extract_lora_from_models.py',
       fields: [
         { key: 'model_org', label: '原始模型路径', type: 'text', placeholder: './sd-models/original.safetensors' },
@@ -1146,13 +1762,108 @@ function renderTools(container) {
     {
       id: 'merge_lora',
       title: '合并 LoRA',
-      desc: '将多个 LoRA 按指定权重合并为一个。支持 2~4 个 LoRA 输入。',
+      desc: '将多个 LoRA 按指定权重合并为一个。',
       script: 'networks/merge_lora.py',
       fields: [
         { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/merged.safetensors' },
         { key: 'models', label: 'LoRA 路径（空格分隔）', type: 'text', placeholder: './output/a.safetensors ./output/b.safetensors' },
         { key: 'ratios', label: '合并权重（空格分隔）', type: 'text', placeholder: '0.5 0.5' },
         { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
+      ],
+    },
+    {
+      id: 'sdxl_merge_lora',
+      title: 'SDXL 合并 LoRA',
+      desc: 'SDXL 专用的 LoRA 合并工具。',
+      script: 'networks/sdxl_merge_lora.py',
+      fields: [
+        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/merged_sdxl.safetensors' },
+        { key: 'models', label: 'LoRA 路径（空格分隔）', type: 'text', placeholder: './output/a.safetensors ./output/b.safetensors' },
+        { key: 'ratios', label: '合并权重（空格分隔）', type: 'text', placeholder: '0.5 0.5' },
+        { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
+      ],
+    },
+    {
+      id: 'flux_merge_lora',
+      title: 'FLUX 合并 LoRA',
+      desc: 'FLUX 专用的 LoRA 合并工具。',
+      script: 'networks/flux_merge_lora.py',
+      fields: [
+     { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/merged_flux.safetensors' },
+        { key: 'models', label: 'LoRA 路径（空格分隔）', type: 'text', placeholder: './output/a.safetensors ./output/b.safetensors' },
+        { key: 'ratios', label: '合并权重（空格分隔）', type: 'text', placeholder: '0.5 0.5' },
+        { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
+      ],
+    },
+    {
+      id: 'flux_extract_lora',
+      title: 'FLUX 提取 LoRA',
+      desc: '从 FLUX 模型差异中提取 LoRA。',
+      script: 'networks/flux_extract_lora.py',
+      fields: [
+        { key: 'model_org', label: '原始模型路径', type: 'text', placeholder: '' },
+        { key: 'model_tuned', label: '微调模型路径', type: 'text', placeholder: '' },
+        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/flux_extracted.safetensors' },
+        { key: 'dim', label: '网络维度', type: 'number', placeholder: '16' },
+      ],
+    },
+    {
+      id: 'resize_lora',
+      title: 'LoRA 缩放 (Resize)',
+      desc: '将 LoRA 权重缩放到不同的 dim / rank。',
+      script: 'networks/resize_lora.py',
+      fields: [
+        { key: 'model', label: 'LoRA 模型路径', type: 'text', placeholder: './output/my_lora.safetensors' },
+        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/resized.safetensors' },
+        { key: 'new_rank', label: '目标 Rank', type: 'number', placeholder: '16' },
+        { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
+      ],
+    },
+    {
+      id: 'check_lora_weights',
+      title: '检查 LoRA 权重',
+      desc: '查看 LoRA 文件的权重统计信息。',
+      script: 'networks/check_lora_weights.py',
+      fields: [
+        { key: 'file', label: 'LoRA 文件路径', type: 'text', placeholder: './output/my_lora.safetensors' },
+      ],
+    },
+    {
+      id: 'convert_flux_lora',
+      title: '转换 FLUX LoRA 格式',
+      desc: '转换 FLUX LoRA 到其他格式。',
+      script: 'networks/convert_flux_lora.py',
+      fields: [
+        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/converted.safetensors' },
+      ],
+    },
+    {
+      id: 'convert_hunyuan_lora',
+      title: '转换混元图像 LoRA 到 ComfyUI',
+      desc: '将混元图像 LoRA 转换为 ComfyUI 可用格式。',
+      script: 'networks/convert_hunyuan_image_lora_to_comfy.py',
+      fields: [
+        { key: 'src_path', label: '源文件路径', type: 'text', placeholder: './output/hunyuan_lora.safetensors' },
+        { key: 'dst_path', label: '输出路径', type: 'text', placeholder: './output/hunyuan_comfy.safetensors' },
+      ],
+    },
+    {
+      id: 'convert_anima_lora',
+      title: '转换 Anima LoRA 到 ComfyUI',
+      desc: '将 Anima LoRA 转换为 ComfyUI 可用格式。',
+      script: 'networks/convert_anima_lora_to_comfy.py',
+      fields: [
+        { key: 'src_path', label: '源文件路径', type: 'text', placeholder: '' },
+        { key: 'dst_path', label: '输出路径', type: 'text', placeholder: '' },
+      ],
+    },
+    {
+      id: 'show_metadata',
+      title: '查看模型元数据',
+      desc: '显示 safetensors/ckpt 文件的元数据信息。',
+      script: 'tools/show_metadata.py',
+      fields: [
+        { key: 'model', label: '模型文件路径', type: 'text', placeholder: './output/model.safetensors' },
       ],
     },
     {
@@ -1168,36 +1879,93 @@ function renderTools(container) {
         { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
       ],
     },
+    {
+      id: 'merge_sd3',
+      title: '合并 SD3 模型',
+      desc: '合并 SD3 safetensors 文件。',
+      script: 'tools/merge_sd3_safetensors.py',
+      fields: [
+        { key: 'model_0', label: '模型 A', type: 'text', placeholder: '' },
+        { key: 'model_1', label: '模型 B', type: 'text', placeholder: '' },
+        { key: 'save_to', label: '输出路径', type: 'text', placeholder: '' },
+      ],
+    },
+    {
+      id: 'convert_diffusers_to_flux',
+      title: 'Diffusers 转 FLUX',
+      desc: '将 Diffusers 格式转换为 FLUX 格式。',
+      script: 'tools/convert_diffusers_to_flux.py',
+      fields: [
+        { key: 'model_to_load', label: '输入模型路径', type: 'text', placeholder: '' },
+        { key: 'model_to_save', label: '输出路径', type: 'text', placeholder: '' },
+      ],
+    },
+    {
+      id: 'lora_interrogator',
+      title: 'LoRA 识别器',
+      desc: '检测 LoRA 网络的训练信息。',
+      script: 'networks/lora_interrogator.py',
+      fields: [
+        { key: 'model', label: 'LoRA 文件路径', type: 'text', placeholder: '' },
+      ],
+    },
   ];
+
+
+  const selectedId = state.selectedTool || '';
+  const selectedTool = tools.find((t) => t.id === selectedId);
 
   container.innerHTML = `
     <div class="form-container">
       <header class="section-title">
         <h2>工具箱</h2>
-        <p>LoRA 提取、合并等实用工具。参数填写后点击运行，脚本将在后端执行。</p>
+        <p>LoRA 提取、合并等实用工具。选择工具后填写参数并运行。</p>
       </header>
-      ${tools.map((tool) => `
-        <section class="form-section tool-section" id="tool-${tool.id}">
-          <header class="section-header">
-            <h3>${escapeHtml(tool.title)}</h3>
-          </header>
-          <div class="section-summary">${escapeHtml(tool.desc)}</div>
-          <div class="section-content tool-fields">
-            ${tool.fields.map((f) => `
-              <div class="config-group">
-                <label>${escapeHtml(f.label)}</label>
-                <input class="text-input" type="${f.type}" id="tool-${tool.id}-${f.key}" placeholder="${escapeHtml(f.placeholder || '')}">
-              </div>
-            `).join('')}
-          </div>
-          <div class="tool-actions">
-            <button class="btn btn-primary btn-sm" type="button" onclick="runTool('${tool.id}', '${escapeHtml(tool.script)}', ${JSON.stringify(tool.fields.map((f) => f.key)).replaceAll('"', '&quot;')})">运行</button>
-          </div>
-        </section>
-      `).join('')}
+      <div class="config-group">
+        <label>选择工具</label>
+        <select id="tool-selector">
+          <option value="">—— 请选择工具 ——</option>
+          ${tools.map((t) => `<option value="${t.id}" ${t.id === selectedId ? 'selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="tool-detail">
+        ${selectedTool ? renderToolDetail(selectedTool) : '<div class="empty-state" style="margin-top:12px;"><strong>请在上方下拉菜单中选择一个工具</strong></div>'}
+      </div>
     </div>
   `;
+
+  $('#tool-selector')?.addEventListener('change', (e) => {
+    state.selectedTool = e.target.value;
+    const detail = $('#tool-detail');
+    const tool = tools.find((t) => t.id === e.target.value);
+    if (detail) {
+      detail.innerHTML = tool ? renderToolDetail(tool) : '<div class="empty-state"><strong>请在上方下拉菜单中选择一个工具</strong></div>';
+    }
+  });
 }
+
+function renderToolDetail(tool) {
+  return `
+    <section class="form-section tool-section" id="tool-${tool.id}" style="margin-top:16px;">
+      <header class="section-header">
+        <h3>${escapeHtml(tool.title)}</h3>
+      </header>
+      <div class="section-summary">${escapeHtml(tool.desc)}</div>
+      <div class="section-content tool-fields">
+        ${tool.fields.map((f) => `
+          <div class="config-group">
+            <label>${escapeHtml(f.label)}</label>
+            <input class="text-input" type="${f.type}" id="tool-${tool.id}-${f.key}" placeholder="${escapeHtml(f.placeholder || '')}">
+          </div>
+        `).join('')}
+      </div>
+      <div class="tool-actions">
+        <button class="btn btn-primary btn-sm" type="button" onclick="runTool('${tool.id}', '${escapeHtml(tool.script)}', ${JSON.stringify(tool.fields.map((f) => f.key)).replaceAll('"', '&quot;')})">运行</button>
+      </div>
+    </section>
+  `;
+}
+
 
 window.runTool = async (toolId, scriptName, keys) => {
   const params = { script_name: scriptName };
@@ -1233,6 +2001,24 @@ window.updateConfigValue = (key, rawValue) => {
   syncConfigState();
 };
 
+window.pickPathForInput = async (inputId, pickerType) => {
+  try {
+    const response = await api.pickFile(pickerType);
+    if (response.status !== 'success') {
+      showToast(response.message || '选择路径失败。');
+      return;
+    }
+    const input = $(`#${inputId}`);
+    if (input) {
+      input.value = response.data.path;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (error) {
+    showToast(error.message || '选择路径失败。');
+  }
+};
+
+
 window.pickPath = async (key, pickerType) => {
   try {
     const response = await api.pickFile(pickerType);
@@ -1254,7 +2040,7 @@ window.runPreflight = async () => {
   updateJSONPreview();
 
   try {
-    const response = await api.runPreflight(buildRunConfig(state.config));
+    const response = await api.runPreflight(buildRunConfig(state.config, state.activeTrainingType));
     if (response.status !== 'success') {
       state.preflight = {
         can_start: false,
@@ -1285,7 +2071,7 @@ window.runSelfCheck = async () => {
   try {
     const [runtimeRes, preflightRes] = await Promise.allSettled([
       api.getGraphicCards(),
-      api.runPreflight(buildRunConfig(state.config)),
+      api.runPreflight(buildRunConfig(state.config, state.activeTrainingType)),
     ]);
     if (runtimeRes.status === 'fulfilled') {
       state.runtime = runtimeRes.value.data || null;
@@ -1505,8 +2291,33 @@ function setupFieldMenus() {
   });
 }
 
+window.switchTrainingType = (typeId) => {
+  if (typeId === state.activeTrainingType) return;
+  state.activeTrainingType = typeId;
+  localStorage.setItem('sd-rescripts:training-type', typeId);
+  // 重建配置，保留共用字段的当前值
+  const oldConfig = { ...state.config };
+  state.config = createDefaultConfig(typeId);
+  for (const key of Object.keys(state.config)) {
+    if (key === 'model_train_type') continue;
+    if (oldConfig[key] !== undefined && oldConfig[key] !== '') {
+      state.config[key] = oldConfig[key];
+    }
+  }
+  state.hasLocalDraft = false;
+  localStorage.removeItem(DRAFT_STORAGE_KEY);
+  resetTransientState();
+  saveDraft();
+  if (state.activeModule === 'config') {
+    renderView('config');
+  } else {
+    updateJSONPreview();
+  }
+};
+
+
 window.resetAllParams = () => {
-  state.config = createDefaultConfig();
+  state.config = createDefaultConfig(state.activeTrainingType);
   state.hasLocalDraft = false;
   localStorage.removeItem(DRAFT_STORAGE_KEY);
   resetTransientState();
@@ -1546,7 +2357,9 @@ window.saveCurrentParams = () => {
       return;
     }
     try {
-      await api.saveConfig(name, buildRunConfig(state.config));
+      const payload = buildRunConfig(state.config, state.activeTrainingType);
+      payload.__training_type__ = state.activeTrainingType;
+      await api.saveConfig(name, payload);
       saveDraft();
       state.hasLocalDraft = true;
       modal.classList.remove('open');
@@ -1621,12 +2434,23 @@ window.loadNamedConfig = async (name) => {
     if (!data) {
       throw new Error('参数内容为空。');
     }
+    // 自动切换训练类型
+    const savedType = data.__training_type__ || data.model_train_type || '';
+    delete data.__training_type__;
+    if (savedType && savedType !== state.activeTrainingType) {
+      const typeExists = TRAINING_TYPES.some((t) => t.id === savedType);
+      if (typeExists) {
+        state.activeTrainingType = savedType;
+        localStorage.setItem('sd-rescripts:training-type', savedType);
+        state.config = createDefaultConfig(savedType);
+      }
+    }
     mergeConfigPatch(data);
     state.hasLocalDraft = true;
     resetTransientState();
     saveDraft();
     window.closeBuiltinPicker();
-    showToast('已载入参数：' + name);
+    showToast(`已载入参数：${name}${savedType ? ` (${savedType})` : ''}`);
     if (state.activeModule === 'config') {
       renderView('config');
     } else {
@@ -1681,7 +2505,7 @@ window.previewSavedConfig = async (name) => {
 };
 
 window.downloadConfigFile = () => {
-  const blob = new Blob([JSON.stringify(buildRunConfig(state.config), null, 2)], { type: 'application/json;charset=utf-8' });
+  const blob = new Blob([JSON.stringify(buildRunConfig(state.config, state.activeTrainingType), null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const link = document.createElement('a');
@@ -1745,7 +2569,7 @@ window.executeTraining = async () => {
   syncFooterAction();
 
   try {
-    const preflightResponse = await api.runPreflight(buildRunConfig(state.config));
+    const preflightResponse = await api.runPreflight(buildRunConfig(state.config, state.activeTrainingType));
     if (preflightResponse.status !== 'success' || !preflightResponse.data?.can_start) {
       state.preflight = preflightResponse.data || {
         can_start: false,
@@ -1757,7 +2581,7 @@ window.executeTraining = async () => {
     }
 
     state.preflight = preflightResponse.data;
-    const response = await api.runTraining(buildRunConfig(state.config));
+    const response = await api.runTraining(buildRunConfig(state.config, state.activeTrainingType));
     if (response.status !== 'success') {
       showToast(response.message || '训练启动失败。');
       return;
