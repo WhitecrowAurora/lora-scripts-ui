@@ -1082,6 +1082,36 @@ input[type="range"]::-webkit-slider-thumb {
   letter-spacing: 1.5px;
 }
 
+.btn-training-active {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  box-shadow: 0 4px 25px rgba(245, 158, 11, 0.3) !important;
+  cursor: wait !important;
+  animation: training-pulse 2s ease-in-out infinite;
+}
+
+.btn-training-active .btn-main {
+  font-size: 1.1rem;
+  font-weight: 850;
+  letter-spacing: 1.5px;
+}
+
+@keyframes training-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+.btn-training-failed {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  box-shadow: 0 4px 25px rgba(239, 68, 68, 0.3) !important;
+  cursor: pointer !important;
+}
+
+.btn-training-failed .btn-main {
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: 1px;
+}
+
 .btn-terminate {
   height: 56px;
   min-width: 120px;

@@ -50,11 +50,11 @@ echo.
 echo [1/4] 检查 GUI 服务依赖...
 
 :: 检测 uvicorn 是否可用（它是最关键的 GUI 依赖）
-"%SA_PYTHON%" -c "import uvicorn; assert hasattr(uvicorn,'run'); import cv2; assert hasattr(cv2,'IMREAD_UNCHANGED'); import pytz" >nul 2>&1
+"%SA_PYTHON%" -c "import uvicorn; assert hasattr(uvicorn,'run'); import cv2; assert hasattr(cv2,'IMREAD_UNCHANGED'); import pytz; import accelerate" >nul 2>&1
 if %errorlevel% neq 0 (
     echo       GUI 依赖不完整，正在补装（仅首次需要，约 1~2 分钟）...
     echo.
-    "%SA_PYTHON%" -m pip install uvicorn fastapi httpx toml requests rich psutil websockets pillow packaging pyyaml pandas scipy imagesize sentencepiece voluptuous safetensors huggingface-hub wandb pytz opencv-python==4.10.0.84 2>&1
+    "%SA_PYTHON%" -m pip install uvicorn fastapi httpx toml requests rich psutil websockets pillow packaging pyyaml "pandas>=2,<3" "scipy>=1.13,<2" imagesize sentencepiece voluptuous safetensors "huggingface-hub==0.36.2" wandb pytz opencv-python==4.10.0.84 "accelerate==1.6.0" "transformers==4.54.1" "diffusers[torch]==0.32.1" ftfy einops lion-pytorch schedulefree pytorch-optimizer prodigyopt "prodigy-plus-schedule-free>=1.9" "tensorboard>=2.17,<3" open-clip-torch lycoris-lora dadaptation 2>&1
     if %errorlevel% neq 0 (
         echo.
         echo [警告] 部分依赖安装可能失败，尝试继续启动...

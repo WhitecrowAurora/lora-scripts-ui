@@ -68,6 +68,7 @@ const state = {
   hasLocalDraft: false,
   presets: [],
   tasks: [],
+  trainingFailed: false,
   interrogators: null,
   runtime: null,
   preflight: null,
@@ -221,10 +222,38 @@ async function loadBootstrapData() {
 function startTaskPolling() {
   setInterval(async () => {
     try {
+      const hadRunning = state.tasks.some((t) => t.status === 'RUNNING');
       const response = await api.getTasks();
       state.tasks = response?.data?.tasks || [];
+      const hasRunning = state.tasks.some((t) => t.status === 'RUNNING');
+
+      // 检测训练结束：之前有运行中的任务，现在没了
+      if (hadRunning && !hasRunning) {
+        const lastTask = state.tasks[state.tasks.length - 1];
+        const failed = lastTask && (lastTask.status === 'TERMINATED' || lastTask.returncode !== 0);
+        state.trainingFailed = !!failed;
+        if (!failed) showToast('✅ 训练已完成');
+        else showToast('❌ 训练失败');
+      }
+
       updateJSONPreview();
       renderTaskStatus();
+      syncFooterAction();
+      // 训练模块的状态卡片也需要实时刷新
+      if (state.activeModule === 'training') {
+        const badge = $('#training-status-badge');
+        if (badge) {
+          const r = state.tasks.some((t) => t.status === 'RUNNING');
+          if (r) badge.innerHTML = '<span style="color:#f59e0b;font-weight:700;">🔄 训练中</span>';
+          else if (state.trainingFailed) badge.innerHTML = '<span style="color:#ef4444;font-weight:700;">❌ 训练失败</span>';
+          else if (state.tasks.some((t) => t.status === 'FINISHED')) badge.innerHTML = '<span style="color:#22c55e;font-weight:700;">✅ 已完成</span>';
+          else badge.innerHTML = '<span style="color:var(--text-dim);">空闲</span>';
+        }
+        // 如果有运行中的任务且在训练模块，自动启动日志轮询
+        if (hasRunning && !_trainingLogPollTimer) {
+          startTrainingLogPolling();
+        }
+      }
     } catch (error) {
       console.warn('Task polling failed:', error);
     }
@@ -262,6 +291,10 @@ function renderView(module) {
   }
   if (module === 'about') {
     renderAbout(container);
+    return;
+  }
+  if (module === 'training') {
+    renderTraining(container);
     return;
   }
 
@@ -357,7 +390,7 @@ function renderField(field) {
   const modCls = isModified ? ' field-modified' : '';
   if (field.type === 'boolean') {
     return `
-      <div class="config-group row boolean-card${modCls}">
+      <div class="config-group row boolean-card${modCls}" data-field-key="${field.key}">
         <div class="label-col">
           ${renderHeader()}
           <p class="field-desc">${escapeHtml(field.desc || '')}</p>
@@ -381,7 +414,7 @@ function renderField(field) {
       if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
     }
     return `
-      <div class="config-group${modCls}">
+      <div class="config-group${modCls}" data-field-key="${field.key}">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <select onchange="updateConfigValue('${field.key}', this.value)">
@@ -393,7 +426,7 @@ function renderField(field) {
 
   if (field.type === 'textarea') {
     return `
-      <div class="config-group${modCls}">
+      <div class="config-group${modCls}" data-field-key="${field.key}">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <textarea class="text-area" oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(value || '')}</textarea>
@@ -406,7 +439,7 @@ function renderField(field) {
 
   if (isPicker) {
     return `
-      <div class="config-group${modCls}">
+      <div class="config-group${modCls}" data-field-key="${field.key}">
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <div class="input-picker">
@@ -420,7 +453,7 @@ function renderField(field) {
   }
 
   return `
-    <div class="config-group${modCls}">
+    <div class="config-group${modCls}" data-field-key="${field.key}">
       ${renderHeader()}
       <p class="field-desc">${escapeHtml(field.desc || '')}</p>
       <input class="text-input" type="${inputType}" value="${escapeHtml(inputValue)}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} oninput="updateConfigValue('${field.key}', this.value)">
@@ -578,6 +611,19 @@ function resetTransientState() {
 function syncConfigState() {
   saveDraft();
   updateJSONPreview();
+  refreshFieldHighlights();
+}
+
+function refreshFieldHighlights() {
+  document.querySelectorAll('.config-group[data-field-key]').forEach((el) => {
+    const key = el.dataset.fieldKey;
+    const field = getFieldDefinition(key);
+    if (!field) return;
+    const value = state.config[key];
+    const defaultValue = field.defaultValue ?? '';
+    const isModified = String(value ?? '') !== String(defaultValue);
+    el.classList.toggle('field-modified', isModified);
+  });
 }
 
 function getPresetLabel(preset, index) {
@@ -593,20 +639,35 @@ function getPresetLabel(preset, index) {
 function syncFooterAction() {
   const bar = $('.bottom-bar');
   if (!bar) return;
-  // 仅在 config 模块显示
-  bar.style.display = state.activeModule === 'config' ? '' : 'none';
-  if (state.activeModule !== 'config') return;
+  // 在 config 和 training 模块显示
+  const showBar = state.activeModule === 'config' || state.activeModule === 'training';
+  bar.style.display = showBar ? '' : 'none';
+  if (!showBar) return;
   const hasRunningTask = state.tasks.some((task) => task.status === 'RUNNING');
-  bar.innerHTML = `
-    <button class="btn btn-primary btn-execute" onclick="executeTraining()" ${state.loading.run ? 'disabled' : ''}>
-      <span class="btn-main">${state.loading.run ? '正在启动训练...' : '开始训练'}</span>
-    </button>
-    ${hasRunningTask ? `
-      <button class="btn btn-danger btn-terminate" onclick="terminateAllTasks()">
+  const hasFailedRecent = state.trainingFailed;
+
+  if (hasRunningTask) {
+    bar.innerHTML = `
+      <button class="btn btn-execute btn-training-active" disabled>
+        <span class="btn-main">🔄 训练中...</span>
+      </button>
+      <button class="btn btn-terminate" onclick="terminateAllTasks()">
         <span class="btn-main">终止训练</span>
       </button>
-    ` : ''}
-  `;
+    `;
+  } else if (hasFailedRecent) {
+    bar.innerHTML = `
+      <button class="btn btn-execute btn-training-failed" onclick="state.trainingFailed=false;syncFooterAction();">
+        <span class="btn-main">❌ 训练失败 — 点击重试</span>
+      </button>
+    `;
+  } else {
+    bar.innerHTML = `
+      <button class="btn btn-primary btn-execute" onclick="executeTraining()" ${state.loading.run ? 'disabled' : ''}>
+        <span class="btn-main">${state.loading.run ? '正在启动训练...' : '开始训练'}</span>
+      </button>
+    `;
+  }
 }
 
 function syncTopbarState() {
@@ -781,6 +842,138 @@ function toggleTheme() {
   applyTheme();
 }
 
+function renderTraining(container) {
+  const running = state.tasks.filter((t) => t.status === 'RUNNING');
+  const finished = state.tasks.filter((t) => t.status === 'FINISHED');
+  const terminated = state.tasks.filter((t) => t.status === 'TERMINATED');
+  const lastTask = state.tasks[state.tasks.length - 1];
+  const hasRunning = running.length > 0;
+
+  let statusBadge = '<span style="color:var(--text-dim);">空闲</span>';
+  if (hasRunning) {
+    statusBadge = '<span style="color:#f59e0b;font-weight:700;">🔄 训练中</span>';
+  } else if (state.trainingFailed) {
+    statusBadge = '<span style="color:#ef4444;font-weight:700;">❌ 上次训练失败</span>';
+  } else if (finished.length > 0) {
+    statusBadge = '<span style="color:#22c55e;font-weight:700;">✅ 上次训练已完成</span>';
+  }
+
+
+  container.innerHTML = `
+    <div class="form-container">
+      <header class="section-title">
+        <h2>训练监控</h2>
+        <p>查看训练状态与实时输出。</p>
+      </header>
+
+      <!-- 状态概览 -->
+      <section class="form-section">
+        <header class="section-header"><h3>状态概览</h3></header>
+        <div class="section-content" style="display:flex;gap:24px;flex-wrap:wrap;">
+          <div class="status-card" style="flex:1;min-width:160px;">
+            <div class="status-label">当前状态</div>
+            <div class="status-value" id="training-status-badge">${statusBadge}</div>
+          </div>
+          <div class="status-card" style="flex:1;min-width:160px;">
+            <div class="status-label">总任务数</div>
+            <div class="status-value">${state.tasks.length}</div>
+          </div>
+          <div class="status-card" style="flex:1;min-width:160px;">
+            <div class="status-label">运行中</div>
+            <div class="status-value" style="color:#f59e0b;">${running.length}</div>
+          </div>
+          <div class="status-card" style="flex:1;min-width:160px;">
+            <div class="status-label">已完成</div>
+            <div class="status-value" style="color:#22c55e;">${finished.length}</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 实时输出 -->
+      <section class="form-section">
+        <header class="section-header">
+          <h3>训练输出</h3>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingLog()">刷新</button>
+            <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;color:var(--text-dim);">
+              <input type="checkbox" id="training-log-autoscroll" checked> 自动滚动
+            </label>
+          </div>
+        </header>
+        <div id="training-log-container" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:12px;height:400px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--text-main);">
+          ${hasRunning ? '<span style="color:var(--text-dim);">正在加载训练输出...</span>' : '<span style="color:var(--text-dim);">暂无训练任务运行中。点击「开始训练」启动训练后，输出将在此实时显示。</span>'}
+        </div>
+      </section>
+
+      <!-- 任务历史 -->
+      <section class="form-section">
+        <header class="section-header"><h3>任务历史</h3></header>
+        <div class="section-content" style="display:block;">
+          ${state.tasks.length === 0 ? '<p style="color:var(--text-dim);">暂无任务记录</p>' : state.tasks.slice().reverse().map((task) => {
+            const statusMap = { RUNNING: '🔄 运行中', FINISHED: '✅ 已完成', TERMINATED: '⛔ 已终止', CREATED: '⏳ 已创建' };
+            const statusColor = { RUNNING: '#f59e0b', FINISHED: '#22c55e', TERMINATED: '#ef4444', CREATED: 'var(--text-dim)' };
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+                <div>
+                  <code style="font-size:0.78rem;color:var(--text-dim);">${escapeHtml(task.id)}</code>
+                </div>
+                <span style="color:${statusColor[task.status] || 'var(--text-dim)'};font-weight:600;font-size:0.85rem;">${statusMap[task.status] || task.status}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </section>
+    </div>
+  `;
+
+  syncFooterAction();
+  if (hasRunning) startTrainingLogPolling();
+}
+
+let _trainingLogPollTimer = null;
+
+function startTrainingLogPolling() {
+  if (_trainingLogPollTimer) return;
+  _trainingLogPollTimer = setInterval(() => {
+    if (!state.tasks.some((t) => t.status === 'RUNNING')) {
+      clearInterval(_trainingLogPollTimer);
+      _trainingLogPollTimer = null;
+      // 最后刷一次
+      refreshTrainingLog();
+      return;
+    }
+    refreshTrainingLog();
+  }, 2000);
+}
+
+window.refreshTrainingLog = async () => {
+  const running = state.tasks.filter((t) => t.status === 'RUNNING');
+  const target = running[0] || state.tasks[state.tasks.length - 1];
+  if (!target) return;
+
+  try {
+    const resp = await api.getTaskOutput(target.id, 200);
+    const lines = resp?.data?.lines || [];
+    const logEl = $('#training-log-container');
+    if (!logEl) return;
+
+    if (lines.length === 0) {
+      logEl.innerHTML = '<span style="color:var(--text-dim);">等待训练输出...</span>';
+      return;
+    }
+
+    logEl.textContent = lines.join('\n');
+
+    const autoScroll = $('#training-log-autoscroll');
+    if (autoScroll?.checked) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  } catch (e) {
+    // 静默失败
+  }
+};
+
+
 function renderAbout(container) {
   container.innerHTML = `
     <div class="form-container">
@@ -789,7 +982,7 @@ function renderAbout(container) {
       </header>
       <section class="form-section">
         <div class="section-content" style="display:block;">
-          <p style="margin-bottom:16px;">SD-reScripts v1.0.9</p>
+          <p style="margin-bottom:16px;">SD-reScripts v2.0.0</p>
           <p style="margin-bottom:16px;">由 <a href="https://github.com/Akegarasu/lora-scripts" target="_blank" rel="noopener" style="color:var(--accent);">schemastery</a> 强力驱动</p>
           <h3 style="margin:24px 0 8px;font-size:1.1rem;">下载地址</h3>
           <p>GitHub 地址：<a href="https://github.com/WhitecrowAurora/lora-rescripts" target="_blank" rel="noopener" style="color:var(--accent);">https://github.com/WhitecrowAurora/lora-rescripts</a></p>
@@ -1929,6 +2122,7 @@ function renderTools(container) {
 }
 
 function renderToolDetail(tool) {
+  const isPathField = (f) => /model|path|save_to|file|src_|dst_/.test(f.key);
   return `
     <section class="form-section tool-section" id="tool-${tool.id}" style="margin-top:16px;">
       <header class="section-header">
@@ -1936,12 +2130,26 @@ function renderToolDetail(tool) {
       </header>
       <div class="section-summary">${escapeHtml(tool.desc)}</div>
       <div class="section-content tool-fields">
-        ${tool.fields.map((f) => `
+        ${tool.fields.map((f) => {
+          const inputId = `tool-${tool.id}-${f.key}`;
+          if (isPathField(f)) {
+            return `
           <div class="config-group">
             <label>${escapeHtml(f.label)}</label>
-            <input class="text-input" type="${f.type}" id="tool-${tool.id}-${f.key}" placeholder="${escapeHtml(f.placeholder || '')}">
-          </div>
-        `).join('')}
+            <div class="input-picker">
+              <button class="picker-icon" type="button" onclick="pickPathForInput('${inputId}', '${f.key.includes('save') || f.key.includes('dst') ? 'folder' : 'model-file'}')">
+                <svg class="icon"><use href="#icon-folder"></use></svg>
+              </button>
+              <input class="text-input" type="${f.type}" id="${inputId}" placeholder="${escapeHtml(f.placeholder || '')}">
+            </div>
+          </div>`;
+          }
+          return `
+          <div class="config-group">
+            <label>${escapeHtml(f.label)}</label>
+            <input class="text-input" type="${f.type}" id="${inputId}" placeholder="${escapeHtml(f.placeholder || '')}">
+          </div>`;
+        }).join('')}
       </div>
       <div class="tool-actions">
         <button class="btn btn-primary btn-sm" type="button" onclick="runTool('${tool.id}', '${escapeHtml(tool.script)}', ${JSON.stringify(tool.fields.map((f) => f.key)).replaceAll('"', '&quot;')})">运行</button>
@@ -2546,6 +2754,7 @@ window.resetFieldValue = (key) => {
   if (!field) return;
   state.activeFieldMenu = null;
   window.updateConfigValue(key, field.defaultValue ?? '');
+  if (state.activeModule === 'config') renderView('config');
 };
 
 window.undoFieldValue = (key) => {
@@ -2557,10 +2766,8 @@ window.undoFieldValue = (key) => {
   state.activeFieldMenu = null;
   const field = getFieldDefinition(key);
   state.config[key] = normalizeDraftValue(field, previousValue);
-  if (CONDITIONAL_KEYS.has(key) && state.activeModule === 'config') {
-    return syncConfigState();
-  }
   syncConfigState();
+  if (state.activeModule === 'config') renderView('config');
 };
 
 window.updateLayoutWidth = (target, rawValue, persist = true) => {
@@ -2584,9 +2791,80 @@ window.updateLayoutWidth = (target, rawValue, persist = true) => {
   }
 };
 
+function validateConfigConflicts() {
+  const c = state.config;
+  const tt = state.activeTrainingType;
+  const errors = [];
+  const toBool = (v) => v === true || v === 'true' || v === 1;
+  const toNum = (v) => { const n = Number(v); return Number.isNaN(n) ? 0 : n; };
+
+  // 1. 缓存文本编码器输出 与 标签打乱/丢弃 冲突
+  if (toBool(c.cache_text_encoder_outputs)) {
+    const conflicts = [];
+    if (toBool(c.shuffle_caption)) conflicts.push('随机打乱标签');
+    if (toNum(c.caption_dropout_rate) > 0) conflicts.push('全部标签丢弃概率');
+    if (toNum(c.caption_tag_dropout_rate) > 0) conflicts.push('按标签丢弃概率');
+    if (toNum(c.token_warmup_step) > 0) conflicts.push('Token 预热步数');
+    if (conflicts.length > 0) {
+      errors.push(`缓存文本编码器输出时不能同时使用「${conflicts.join('」「')}」。请关闭「缓存文本编码器输出」或关闭「${conflicts.join('」「')}」。`);
+    }
+  }
+
+  // 2. 缓存文本编码器输出 与 训练文本编码器 冲突
+  if (toBool(c.cache_text_encoder_outputs) && !toBool(c.network_train_unet_only)) {
+    errors.push('训练文本编码器时不能同时启用「缓存文本编码器输出」。请先关闭该缓存或开启「仅训练 U-Net」。');
+  }
+
+  // 3. 磁盘缓存暗示内存缓存
+  if (toBool(c.cache_text_encoder_outputs_to_disk) && !toBool(c.cache_text_encoder_outputs)) {
+    errors.push('「缓存文本编码器输出到磁盘」已开启但「缓存文本编码器输出」未开启。请一并勾选「缓存文本编码器输出」。');
+  }
+
+  // 4. 注意力后端全部未开启
+  if (!toBool(c.xformers) && !toBool(c.sdpa) && !toBool(c.sageattn) && !toBool(c.mem_eff_attn)) {
+    errors.push('未启用任何注意力加速后端（xformers / SDPA / SageAttention）。训练将极度缓慢且显存占用极高。请至少开启 SDPA。');
+  }
+
+  // 5. SageAttention 训练警告
+  if (toBool(c.sageattn)) {
+    errors.push('⚠️ SageAttention v1 使用量化注意力，训练精度可能不足（loss 异常、生图全黑）。强烈建议训练时用 SDPA。');
+  }
+
+  // 6. xformers + SDPA 同时开启
+  if (toBool(c.xformers) && toBool(c.sdpa)) {
+    // 不阻断，但给提示（这里不加 error，只在 preflight 里显示 g）
+  }
+
+  // 7. 桶划分单位校验
+  const bucketStep = toNum(c.bucket_reso_steps) || 64;
+  if ((tt.startsWith('sdxl') || tt === 'sdxl-controlnet') && bucketStep % 32 !== 0) {
+    errors.push(`SDXL 训练的桶划分单位必须是 32 的倍数，当前值 ${bucketStep} 不符合。`);
+  }
+  if ((tt.startsWith('sd-') || tt === 'sd-dreambooth') && bucketStep % 64 !== 0) {
+    errors.push(`SD1.5 训练的桶划分单位必须是 64 的倍数，当前值 ${bucketStep} 不符合。`);
+  }
+
+  // 8. 仅训练 U-Net 和 仅训练文本编码器 同时勾选
+  if (toBool(c.network_train_unet_only) && toBool(c.network_train_text_encoder_only)) {
+    errors.push('不能同时勾选「仅训练 U-Net」和「仅训练文本编码器」。请只保留其中一个，或两个都不勾（即两者都训练）。');
+  }
+
+  return errors;
+}
+
+
 window.executeTraining = async () => {
   state.loading.run = true;
   syncFooterAction();
+
+  const clientErrors = validateConfigConflicts();
+  if (clientErrors.length > 0) {
+    showToast(clientErrors[0]);
+    state.preflight = { can_start: false, errors: clientErrors, warnings: [] };
+    state.loading.run = false;
+    if (state.activeModule === 'config') renderView('config');
+    return;
+  }
 
   try {
     const preflightResponse = await api.runPreflight(buildRunConfig(state.config, state.activeTrainingType));
@@ -2607,6 +2885,7 @@ window.executeTraining = async () => {
       return;
     }
 
+    state.trainingFailed = false;
     state.lastMessage = response.message || '训练已启动。';
     showToast(state.lastMessage);
     const tasksResponse = await api.getTasks();
@@ -2615,7 +2894,9 @@ window.executeTraining = async () => {
     showToast(error.message || '训练请求失败。');
   } finally {
     state.loading.run = false;
-    if (state.activeModule === 'config') {
+    if (state.activeModule === 'training') {
+      renderView('training');
+    } else if (state.activeModule === 'config') {
       renderView('config');
     } else {
       updateJSONPreview();

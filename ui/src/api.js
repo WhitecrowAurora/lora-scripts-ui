@@ -180,4 +180,9 @@ export const api = {
   getConfigSummary() {
     return request('/api/config/summary');
   },
+
+  /** 获取训练任务输出日志 */
+  getTaskOutput(taskId, tail = 100) {
+    return request(`/api/task_output/${taskId}?tail=${tail}`);
+  },
 };

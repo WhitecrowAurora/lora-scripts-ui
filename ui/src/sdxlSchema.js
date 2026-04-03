@@ -103,24 +103,24 @@ const S_SPEED_SDXL = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
   { key: 'xformers', type: 'boolean', label: '启用 xformers', desc: '启用 xformers', defaultValue: true },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', desc: '启用 sdpa', defaultValue: true },
-  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性，需要 SageAttention 专用环境）', defaultValue: false },
+  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）。⚠️ SageAttention v1 的量化精度不适合训练，推荐仅用于推理。训练请使用 SDPA', defaultValue: false },
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', desc: '启用省显存 attention（比 xformers 更兼容，但通常更慢）', defaultValue: false },
   { key: 'lowram', type: 'boolean', label: '低内存模式', desc: '低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中', defaultValue: false },
   { key: 'cache_latents', type: 'boolean', label: '缓存 Latent', desc: '缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用', defaultValue: true },
   { key: 'cache_latents_to_disk', type: 'boolean', label: '缓存 Latent 到磁盘', desc: '缓存图像 latent 到磁盘', defaultValue: true },
-  { key: 'cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', desc: '缓存文本编码器的输出，减少显存使用。使用时需要关闭 shuffle_caption', defaultValue: true },
+  { key: 'cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', desc: '缓存文本编码器的输出，减少显存使用。⚠️ 启用时必须关闭「随机打乱标签」「全部标签丢弃概率」和「按标签丢弃概率」', defaultValue: true },
   { key: 'cache_text_encoder_outputs_to_disk', type: 'boolean', label: '缓存文本编码器输出到磁盘', desc: '缓存文本编码器的输出到磁盘', defaultValue: false },
 ];
 const S_SPEED_FLOW = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
   { key: 'fp8_base', type: 'boolean', label: '基础模型使用 FP8', desc: '基础模型使用 FP8 精度', defaultValue: true },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', desc: '启用 sdpa', defaultValue: true },
-  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性，需要 SageAttention 专用环境）', defaultValue: false },
+  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）。⚠️ SageAttention v1 的量化精度不适合训练，推荐仅用于推理。训练请使用 SDPA', defaultValue: false },
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', desc: '启用省显存 attention（比 xformers 更兼容，但通常更慢）', defaultValue: false },
   { key: 'lowram', type: 'boolean', label: '低内存模式', desc: '低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中', defaultValue: false },
   { key: 'cache_latents', type: 'boolean', label: '缓存 Latent', desc: '缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用', defaultValue: true },
   { key: 'cache_latents_to_disk', type: 'boolean', label: '缓存 Latent 到磁盘', desc: '缓存图像 latent 到磁盘', defaultValue: true },
-  { key: 'cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', desc: '缓存文本编码器的输出，减少显存使用。使用时需要关闭 shuffle_caption', defaultValue: true },
+  { key: 'cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', desc: '缓存文本编码器的输出，减少显存使用。⚠️ 启用时必须关闭「随机打乱标签」「全部标签丢弃概率」和「按标签丢弃概率」', defaultValue: true },
   { key: 'cache_text_encoder_outputs_to_disk', type: 'boolean', label: '缓存文本编码器输出到磁盘', desc: '缓存文本编码器的输出到磁盘', defaultValue: true },
   { key: 'blocks_to_swap', type: 'number', label: 'Block 交换数', desc: '在 CPU/GPU 间交换的 block 数量，省显存。', defaultValue: '', min: 1 },
   { key: 'disable_mmap_load_safetensors', type: 'boolean', label: '禁用 mmap 加载', desc: '禁用 mmap 方式加载 safetensors，减少共享内存占用', defaultValue: false },
@@ -169,6 +169,9 @@ const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = []) => [
   { key: 'lycoris_algo', type: 'select', label: 'LyCORIS 算法', desc: 'LyCORIS 网络算法', defaultValue: 'locon', options: ['locon', 'loha', 'lokr', 'ia3', 'dylora', 'glora', 'diag-oft', 'boft'], visibleWhen: when('network_module', 'lycoris.kohya') },
   { key: 'conv_dim', type: 'number', label: '卷积维度', desc: 'LyCORIS 卷积维度', defaultValue: 4, min: 1, visibleWhen: when('network_module', 'lycoris.kohya') },
   { key: 'conv_alpha', type: 'number', label: '卷积 Alpha', desc: 'LyCORIS 卷积 Alpha', defaultValue: 1, min: 1, visibleWhen: when('network_module', 'lycoris.kohya') },
+  { key: 'dropout', type: 'number', label: 'LyCORIS Dropout', desc: 'LyCORIS 专用 dropout 概率。推荐 0~0.5，LoHa/LoKr/(IA)^3 暂不支持', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: when('network_module', 'lycoris.kohya') },
+  { key: 'train_norm', type: 'boolean', label: '训练 Norm 层', desc: '训练 Norm 层，不支持 (IA)^3', defaultValue: false, visibleWhen: when('network_module', 'lycoris.kohya') },
+  { key: 'lokr_factor', type: 'number', label: 'LoKr 系数', desc: '常用 4~无穷（填写 -1 为无穷）', defaultValue: -1, min: -1, visibleWhen: all(when('network_module', 'lycoris.kohya'), when('lycoris_algo', 'lokr')) },
   { key: 'enable_base_weight', type: 'boolean', label: '启用基础权重', desc: '启用基础权重（差异炼丹）', defaultValue: false },
   ...extra,
 ];
@@ -736,6 +739,8 @@ export function normalizeDraftValue(field, rawValue) {
 export function buildRunConfig(config, typeId) {
   const tid = typeId || config.model_train_type || 'sdxl-lora';
   const payload = {};
+  // 学习率字段虽然 schema type='string'（支持 1e-4 输入），但传给后端必须是数字
+  const lrKeys = new Set(['learning_rate', 'unet_lr', 'text_encoder_lr', 'control_net_lr']);
   for (const s of getSectionsForType(tid)) {
     for (const f of s.fields) {
       if (f.type !== 'hidden' && !isFieldVisible(f, config)) continue;
@@ -746,6 +751,10 @@ export function buildRunConfig(config, typeId) {
         const p = Number(v); if (!Number.isNaN(p)) payload[f.key] = p; continue;
       }
       if (v === '' || v == null) continue;
+      if (lrKeys.has(f.key)) {
+        const n = Number(v);
+        if (!Number.isNaN(n)) { payload[f.key] = n; continue; }
+      }
       payload[f.key] = v;
     }
   }
