@@ -185,4 +185,16 @@ export const api = {
   getTaskOutput(taskId, tail = 100) {
     return request(`/api/task_output/${taskId}?tail=${tail}`);
   },
+
+  /** GPU 实时状态 (VRAM 占用等) */
+  getGpuStatus() {
+    return request('/api/gpu_status');
+  },
+
+  /** 列出数据集文件夹中的图片 */
+  listDatasetImages(folder, limit = 6) {
+    return request(`/api/dataset/list_images?folder=${encodeURIComponent(folder)}&limit=${limit}`);
+  },
+
+
 };

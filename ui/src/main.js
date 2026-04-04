@@ -39,6 +39,7 @@ const state = {
   fieldUndo: {},
   activeFieldMenu: null,
   datasetSubTab: 'tagger',
+  trainSubTab: 'monitor',
   selectedTool: '',
   builtinPicker: {
     open: false,
@@ -82,6 +83,7 @@ const state = {
   interrogators: null,
   runtime: null,
   preflight: null,
+  datasetAnalysis: null,
   samplePrompt: null,
   runtimeError: '',
   lastMessage: '',
@@ -247,8 +249,8 @@ function startTaskPolling() {
           saveTaskSummary(lastTask.id, state.trainingSummary);
         }
         state.trainingFailed = !!failed;
-        if (!failed) showToast('✅ 训练已完成');
-        else showToast('❌ 训练失败');
+        if (!failed) showToast('' + _ico('check-circle') + ' 训练已完成');
+        else showToast('' + _ico('x-circle') + ' 训练失败');
         if (state.activeModule === 'training') {
           renderView('training');
         }
@@ -262,9 +264,9 @@ function startTaskPolling() {
         const badge = $('#training-status-badge');
         if (badge) {
           const r = state.tasks.some((t) => t.status === 'RUNNING');
-          if (r) badge.innerHTML = '<span style="color:#f59e0b;font-weight:700;">🔄 训练中</span>';
-          else if (state.trainingFailed) badge.innerHTML = '<span style="color:#ef4444;font-weight:700;">❌ 训练失败</span>';
-          else if (state.tasks.some((t) => t.status === 'FINISHED')) badge.innerHTML = '<span style="color:#22c55e;font-weight:700;">✅ 已完成</span>';
+          if (r) badge.innerHTML = '<span style="color:#f59e0b;font-weight:700;">' + _ico('loader') + ' 训练中</span>';
+          else if (state.trainingFailed) badge.innerHTML = '<span style="color:#ef4444;font-weight:700;">' + _ico('x-circle') + ' 训练失败</span>';
+          else if (state.tasks.some((t) => t.status === 'FINISHED')) badge.innerHTML = '<span style="color:#22c55e;font-weight:700;">' + _ico('check-circle') + ' 已完成</span>';
           else badge.innerHTML = '<span style="color:var(--text-dim);">空闲</span>';
         }
         // 如果有运行中的任务且在训练模块，自动启动日志轮询
@@ -280,6 +282,9 @@ function startTaskPolling() {
 
 function renderView(module) {
   const container = $('.content-area');
+  if (container) {
+    container.classList.toggle('train-fullbleed', module === 'training');
+  }
   if (!container) {
     return;
   }
@@ -667,7 +672,7 @@ function syncFooterAction() {
   if (hasRunningTask) {
     bar.innerHTML = `
       <button class="btn btn-execute btn-training-active" disabled>
-        <span class="btn-main">🔄 训练中...</span>
+        <span class="btn-main">' + _ico('loader') + ' 训练中...</span>
       </button>
       <button class="btn btn-terminate" onclick="terminateAllTasks()">
         <span class="btn-main">终止训练</span>
@@ -676,7 +681,7 @@ function syncFooterAction() {
   } else if (hasFailedRecent) {
     bar.innerHTML = `
       <button class="btn btn-execute btn-training-failed" onclick="state.trainingFailed=false;syncFooterAction();">
-        <span class="btn-main">❌ 训练失败 — 点击重试</span>
+        <span class="btn-main">' + _ico('x-circle') + ' 训练失败 — 点击重试</span>
       </button>
     `;
   } else {
@@ -961,6 +966,13 @@ function parseLinesIntoMetrics(lines) {
   return m;
 }
 
+/** Inline SVG icon helper for summary cards */
+function _ico(id, size) {
+  var sz = size || 16;
+  return '<svg class="icon" style="width:' + sz + 'px;height:' + sz + 'px;vertical-align:middle;display:inline-block;flex-shrink:0;"><use href="#icon-' + id + '"></use></svg>';
+}
+
+
 /** Pure analysis: metrics object -> summary object */
 function buildSummaryFromMetrics(m, elapsedMs) {
   let avgSpeed = 0;
@@ -971,11 +983,11 @@ function buildSummaryFromMetrics(m, elapsedMs) {
     const stable = m.speeds.slice(warmupCut);
     avgSpeed = stable.reduce(function(sum, v) { return sum + v.itPerSec; }, 0) / (stable.length || 1);
   }
-  if (avgSpeed >= 3)        { speedRating = '\u26a1 \u6781\u5feb'; speedColor = '#22c55e'; }
-  else if (avgSpeed >= 1.5) { speedRating = '\ud83d\ude80 \u8f83\u5feb'; speedColor = '#22c55e'; }
-  else if (avgSpeed >= 0.5) { speedRating = '\u2705 \u6b63\u5e38'; speedColor = '#3b82f6'; }
-  else if (avgSpeed >= 0.2) { speedRating = '\ud83d\udc22 \u8f83\u6162'; speedColor = '#f59e0b'; }
-  else                      { speedRating = '\ud83d\udc0c \u6781\u6162'; speedColor = '#ef4444'; }
+  if (avgSpeed >= 3)        { speedRating = _ico('zap') + ' 极快'; speedColor = '#22c55e'; }
+  else if (avgSpeed >= 1.5) { speedRating = _ico('zap') + ' 较快'; speedColor = '#22c55e'; }
+  else if (avgSpeed >= 0.5) { speedRating = _ico('check-circle') + ' 正常'; speedColor = '#3b82f6'; }
+  else if (avgSpeed >= 0.2) { speedRating = _ico('clock') + ' 较慢'; speedColor = '#f59e0b'; }
+  else                      { speedRating = _ico('alert-tri') + ' 极慢'; speedColor = '#ef4444'; }
 
   let lossTrend = '';
   let lossColor = '';
@@ -1003,32 +1015,32 @@ function buildSummaryFromMetrics(m, elapsedMs) {
     const volatility = latterMean > 0 ? latterStd / latterMean : 0;
 
     if (lossDelta < -0.15) {
-      lossTrend = '\ud83d\udcc9 \u6301\u7eed\u4e0b\u964d'; lossColor = '#22c55e';
+      lossTrend = _ico('trending-down') + ' 持续下降'; lossColor = '#22c55e';
       lossDetail = 'Loss \u4e0b\u964d\u4e86 ' + Math.abs(lossDelta * 100).toFixed(1) + '%\uff0c\u8bad\u7ec3\u6536\u655b\u826f\u597d\u3002';
     } else if (lossDelta < -0.03) {
-      lossTrend = '\ud83d\udcc9 \u7f13\u6162\u4e0b\u964d'; lossColor = '#3b82f6';
+      lossTrend = _ico('trending-down') + ' 缓慢下降'; lossColor = '#3b82f6';
       lossDetail = 'Loss \u4e0b\u964d\u4e86 ' + Math.abs(lossDelta * 100).toFixed(1) + '%\uff0c\u6536\u655b\u8d8b\u52bf\u6b63\u5e38\u3002';
     } else if (lossDelta <= 0.03) {
       if (volatility > 0.15) {
-        lossTrend = '\ud83d\udcca \u6ce2\u52a8\u8f83\u5927'; lossColor = '#f59e0b';
+        lossTrend = _ico('activity') + ' 波动较大'; lossColor = '#f59e0b';
         lossDetail = 'Loss \u5747\u503c\u57fa\u672c\u6301\u5e73\u4f46\u6ce2\u52a8\u7387 ' + (volatility * 100).toFixed(1) + '% \u504f\u9ad8\uff0c\u53ef\u5c1d\u8bd5\u964d\u4f4e\u5b66\u4e60\u7387\u3002';
       } else {
-        lossTrend = '\u27a1\ufe0f \u57fa\u672c\u6301\u5e73'; lossColor = '#f59e0b';
+        lossTrend = _ico('minus-line') + ' 基本持平'; lossColor = '#f59e0b';
         lossDetail = 'Loss \u53d8\u5316\u4ec5 ' + Math.abs(lossDelta * 100).toFixed(1) + '%\uff0c\u53ef\u80fd\u5df2\u63a5\u8fd1\u6536\u655b\u6216\u5b66\u4e60\u7387\u4e0d\u8db3\u3002';
       }
     } else if (lossDelta <= 0.15) {
-      lossTrend = '\ud83d\udcc8 \u8f7b\u5fae\u4e0a\u5347'; lossColor = '#ef4444';
+      lossTrend = _ico('trending-up') + ' 轻微上升'; lossColor = '#ef4444';
       lossDetail = 'Loss \u4e0a\u5347\u4e86 ' + (lossDelta * 100).toFixed(1) + '%\uff0c\u53ef\u80fd\u51fa\u73b0\u8fc7\u62df\u5408\u8ff9\u8c61\u3002';
     } else {
-      lossTrend = '\ud83d\udd3a \u660e\u663e\u4e0a\u5347'; lossColor = '#ef4444';
+      lossTrend = _ico('trending-up') + ' 明显上升'; lossColor = '#ef4444';
       lossDetail = 'Loss \u4e0a\u5347\u4e86 ' + (lossDelta * 100).toFixed(1) + '%\uff0c\u8bad\u7ec3\u53ef\u80fd\u53d1\u6563\uff0c\u5efa\u8bae\u68c0\u67e5\u5b66\u4e60\u7387\u548c\u6570\u636e\u96c6\u3002';
     }
   } else if (m.losses.length === 1) {
     lastLoss = m.losses[0].loss;
-    lossTrend = '\u26a0\ufe0f \u6570\u636e\u4e0d\u8db3'; lossColor = 'var(--text-dim)';
+    lossTrend = _ico('alert-tri') + ' 数据不足'; lossColor = 'var(--text-dim)';
     lossDetail = '\u4ec5\u91c7\u96c6\u5230 1 \u4e2a loss \u6570\u636e\u70b9\uff0c\u65e0\u6cd5\u5224\u65ad\u8d8b\u52bf\u3002';
   } else {
-    lossTrend = '\u26a0\ufe0f \u65e0\u6570\u636e'; lossColor = 'var(--text-dim)';
+    lossTrend = _ico('alert-tri')+ ' 无数据'; lossColor = 'var(--text-dim)';
     lossDetail = '\u672a\u80fd\u89e3\u6790\u5230 loss \u6570\u636e\u3002';
   }
 
@@ -1041,7 +1053,7 @@ function buildSummaryFromMetrics(m, elapsedMs) {
   let lossLevelTag = '';
   let lossLevelColor = '';
   if (m.losses.length < 2) {
-    overallRating = '\u26a0\ufe0f \u6570\u636e\u4e0d\u8db3\uff0c\u65e0\u6cd5\u7efc\u5408\u8bc4\u4ef7';
+    overallRating = _ico('alert-tri') + ' 数据不足，无法综合评价';
     overallColor = 'var(--text-dim)';
     lossLevelTag = '\u2014';
     lossLevelColor = 'var(--text-dim)';
@@ -1084,26 +1096,26 @@ function buildSummaryFromMetrics(m, elapsedMs) {
       else if (lastLoss < 0.06)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u4f4e\uff0c\u8d28\u91cf\u826f\u597d\u3002';
       else if (lastLoss < 0.08)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u5728\u6b63\u5e38\u8303\u56f4\u3002';
       else if (lastLoss < 0.10)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u6570\u636e\u96c6\u6216\u589e\u52a0\u6b65\u6570\u3002';
-      else if (lastLoss < 0.15)  lvlNote = '\u26a0\ufe0f \u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u8f83\u9ad8\uff0c\u6a21\u578b\u53ef\u80fd\u6b20\u62df\u5408\u3002';
-      else                       lvlNote = '\u274c \u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u8fc7\u9ad8\uff0c\u8bad\u7ec3\u6548\u679c\u5f88\u53ef\u80fd\u4e0d\u53ef\u7528\u3002';
+      else if (lastLoss < 0.15)  lvlNote = _ico('alert-tri') + ' 最终 Loss ' + lastLoss.toFixed(4) + ' \u8f83\u9ad8\uff0c\u6a21\u578b\u53ef\u80fd\u6b20\u62df\u5408\u3002';
+      else                       lvlNote = _ico('x-circle') + ' 最终 Loss ' + lastLoss.toFixed(4) + ' \u8fc7\u9ad8\uff0c\u8bad\u7ec3\u6548\u679c\u5f88\u53ef\u80fd\u4e0d\u53ef\u7528\u3002';
       lossDetail = lossDetail + ' ' + lvlNote;
     }
 
     score = Math.max(score, 0);
     if (score >= 6) {
-      overallRating = '\ud83c\udfc6 \u4f18\u79c0 \u2014 Loss \u6301\u7eed\u6536\u655b\u4e14\u7edd\u5bf9\u503c\u4f4e\uff0c\u8bad\u7ec3\u5145\u5206\u5b8c\u6210';
+      overallRating = _ico('trophy') + ' 优秀 \u2014 Loss \u6301\u7eed\u6536\u655b\u4e14\u7edd\u5bf9\u503c\u4f4e\uff0c\u8bad\u7ec3\u5145\u5206\u5b8c\u6210';
       overallColor = '#22c55e';
     } else if (score >= 4) {
-      overallRating = '\u2705 \u826f\u597d \u2014 \u57fa\u672c\u6536\u655b\uff0c\u7ed3\u679c\u53ef\u7528';
+      overallRating = _ico('check-circle') + ' 良好 \u2014 \u57fa\u672c\u6536\u655b\uff0c\u7ed3\u679c\u53ef\u7528';
       overallColor = '#22c55e';
     } else if (score >= 3) {
-      overallRating = '\ud83d\udcca \u4e00\u822c \u2014 \u6709\u6536\u655b\u8d8b\u52bf\uff0c\u5efa\u8bae\u9002\u5f53\u589e\u52a0\u8bad\u7ec3\u6b65\u6570\u6216\u8c03\u6574\u5b66\u4e60\u7387';
+      overallRating = _ico('bar-chart') + ' 一般 \u2014 \u6709\u6536\u655b\u8d8b\u52bf\uff0c\u5efa\u8bae\u9002\u5f53\u589e\u52a0\u8bad\u7ec3\u6b65\u6570\u6216\u8c03\u6574\u5b66\u4e60\u7387';
       overallColor = '#3b82f6';
     } else if (score >= 1) {
-      overallRating = '\u26a0\ufe0f \u6b20\u4f73 \u2014 \u6536\u655b\u4e0d\u660e\u663e\u6216 Loss \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u5b66\u4e60\u7387\u3001\u6570\u636e\u96c6\u548c\u8bad\u7ec3\u53c2\u6570';
+      overallRating = _ico('alert-tri') + ' 欠佳 \u2014 \u6536\u655b\u4e0d\u660e\u663e\u6216 Loss \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u5b66\u4e60\u7387\u3001\u6570\u636e\u96c6\u548c\u8bad\u7ec3\u53c2\u6570';
       overallColor = '#f59e0b';
     } else {
-      overallRating = '\u274c \u5f02\u5e38 \u2014 Loss \u672a\u6536\u655b\u6216\u8fc7\u9ad8\uff0c\u8bad\u7ec3\u7ed3\u679c\u53ef\u80fd\u4e0d\u53ef\u7528';
+      overallRating = _ico('x-circle') + ' 异常 \u2014 Loss \u672a\u6536\u655b\u6216\u8fc7\u9ad8\uff0c\u8bad\u7ec3\u7ed3\u679c\u53ef\u80fd\u4e0d\u53ef\u7528';
       overallColor = '#ef4444';
     }
   }
@@ -1130,7 +1142,20 @@ function buildSummaryFromMetrics(m, elapsedMs) {
 function generateTrainingSummary() {
   var m = state.trainingMetrics;
   var elapsed = m.startTime ? Date.now() - m.startTime : 0;
-  return buildSummaryFromMetrics(m, elapsed);
+  var summary = buildSummaryFromMetrics(m, elapsed);
+  _appendSageEnvNote(summary);
+  return summary;
+}
+
+function _appendSageEnvNote(summary) {
+  var env = (state.runtime && state.runtime.runtime && state.runtime.runtime.environment) || '';
+  if (!env.includes('sageattention')) return;
+  var note = '\u26a0\ufe0f \u672c\u6b21\u8bad\u7ec3\u5728 SageAttention \u4e13\u7528\u73af\u5883\u4e2d\u8fd0\u884c\u3002SageAttention v1 \u7684 Triton kernel \u5728\u6a21\u5757\u52a0\u8f7d\u65f6\u5c31\u4f1a\u88ab import\uff0c\u53ef\u80fd\u5e72\u6270\u68af\u5ea6\u8ba1\u7b97\uff0c\u5bfc\u81f4\u751f\u56fe\u5f02\u5e38\u3002\u5982\u679c\u7ed3\u679c\u4e0d\u4f73\uff0c\u8bf7\u6539\u7528\u4e3b\u73af\u5883\u91cd\u65b0\u8bad\u7ec3\u3002';
+  summary.lossDetail = (summary.lossDetail || '') + ' ' + note;
+  if (summary.overallColor === '#22c55e') {
+    // sage env + seemingly good result is suspicious
+    summary.overallRating = summary.overallRating + ' (\u6ce8\u610f: SageAttention \u73af\u5883\u7ed3\u679c\u53ef\u80fd\u4e0d\u53ef\u9760)';
+  }
 }
 
 /** Generate summary from full log lines (for historical tasks) */
@@ -1260,105 +1285,406 @@ window.showTaskSummary = async function(taskId) {
 };
 
 
-function renderTraining(container) {
-  const running = state.tasks.filter((t) => t.status === 'RUNNING');
-  const finished = state.tasks.filter((t) => t.status === 'FINISHED');
-  const terminated = state.tasks.filter((t) => t.status === 'TERMINATED');
-  const lastTask = state.tasks[state.tasks.length - 1];
-  const hasRunning = running.length > 0;
+/** Render dataset visualization sub-tab */
+function renderPreflightPanel() {
+  var da = state.datasetAnalysis;
+  var loading = state.loading.preflight;
+  var dataDir = state.config.train_data_dir || '';
 
-  let statusBadge = '<span style="color:var(--text-dim);">空闲</span>';
-  if (hasRunning) {
-    statusBadge = '<span style="color:#f59e0b;font-weight:700;">🔄 训练中</span>';
-  } else if (state.trainingFailed) {
-    statusBadge = '<span style="color:#ef4444;font-weight:700;">❌ 上次训练失败</span>';
-  } else if (finished.length > 0) {
-    statusBadge = '<span style="color:#22c55e;font-weight:700;">✅ 上次训练已完成</span>';
+  if (!da && !loading) {
+    return '<div class="train-pf-empty"><div style="text-align:center;padding:48px 20px;">'
+      + _ico('folder', 40) + '<br><br>'
+      + '<div style="font-size:0.88rem;color:var(--text-main);font-weight:600;margin-bottom:6px;">\u6570\u636e\u96c6\u9884\u89c8</div>'
+      + '<div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:16px;max-width:360px;">'
+      + (dataDir ? escapeHtml(dataDir) : '\u8bf7\u5148\u5728\u914d\u7f6e\u9875\u8bbe\u7f6e train_data_dir') + '</div>'
+      + '<button class="btn btn-primary btn-sm" type="button" onclick="scanDataset()" style="padding:8px 24px;"'
+      + (dataDir ? '' : ' disabled') + '>\u626b\u63cf\u6570\u636e\u96c6</button></div></div>';
+  }
+  if (loading) {
+    return '<div class="train-pf-empty"><div style="text-align:center;padding:48px 20px;">'
+      + _ico('loader', 24) + '<br><br><div style="font-size:0.82rem;color:var(--text-muted);">\u6b63\u5728\u626b\u63cf\u6570\u636e\u96c6...</div></div></div>';
   }
 
+  var s = da.summary || {};
+  var folders = da.folders || [];
+  var topReso = da.top_resolutions || [];
+  var batchSize = Number(state.config.train_batch_size) || 1;
+  var epochs = Number(state.config.max_train_epochs) || 1;
+  var estSteps = Math.ceil((s.effective_image_count || 0) / batchSize) * epochs;
 
-  container.innerHTML = `
-    <div class="form-container">
-      <header class="section-title">
-        <h2>训练监控</h2>
-        <p>查看训练状态与实时输出。</p>
-      </header>
+  var metricsHtml = '<div class="train-pf-metrics">'
+    + _pfMetric('\u56fe\u7247\u603b\u6570', s.image_count || 0, '')
+    + _pfMetric('\u6709\u6548\u56fe\u7247 (\u00d7Repeats)', s.effective_image_count || 0, '')
+    + _pfMetric('\u9884\u4f30\u6b65\u6570', estSteps.toLocaleString(), 'accent')
+    + '</div>';
 
-      <!-- 状态概览 -->
-      <section class="form-section">
-        <header class="section-header"><h3>状态概览</h3></header>
-        <div class="section-content" style="display:flex;gap:24px;flex-wrap:wrap;">
-          <div class="status-card" style="flex:1;min-width:160px;">
-            <div class="status-label">当前状态</div>
-            <div class="status-value" id="training-status-badge">${statusBadge}</div>
-          </div>
-          <div class="status-card" style="flex:1;min-width:160px;">
-            <div class="status-label">总任务数</div>
-            <div class="status-value">${state.tasks.length}</div>
-          </div>
-          <div class="status-card" style="flex:1;min-width:160px;">
-            <div class="status-label">运行中</div>
-            <div class="status-value" style="color:#f59e0b;">${running.length}</div>
-          </div>
-          <div class="status-card" style="flex:1;min-width:160px;">
-            <div class="status-label">已完成</div>
-            <div class="status-value" style="color:#22c55e;">${finished.length}</div>
-          </div>
-        </div>
-      </section>
+  // Resolution bar chart
+  var resoHtml = '';
+  if (topReso.length > 0) {
+    var maxCount = Math.max.apply(null, topReso.map(function(r) { return r.count || 0; }));
+    var bars = topReso.slice(0, 6).map(function(r) {
+      var cnt = r.count || 0;
+      var pct = maxCount > 0 ? Math.round(cnt / maxCount * 100) : 0;
+      return '<div class="train-reso-bar-col"><div class="train-reso-count">' + cnt
+        + '</div><div class="train-reso-bar" style="height:' + pct + '%"></div>'
+        + '<div class="train-reso-label">' + escapeHtml(r.name || '') + '</div></div>';
+    }).join('');
+    resoHtml = '<div class="train-pf-card"><div class="train-pf-card-hdr"><span>\u5206\u8fa8\u7387\u5206\u5e03</span>'
+      + '<span class="train-tag">' + topReso.length + ' \u4e2a\u6876</span></div>'
+      + '<div class="train-reso-chart">' + bars + '</div></div>';
+  }
 
-      ${renderTrainingSummaryHTML()}
+  // Diagnostics
+  var diags = [];
+  var alphaCount = s.alpha_capable_image_count || 0;
+  if (s.caption_count > 0) diags.push({ok: true, text: '\u6807\u6ce8\u6587\u4ef6\u5df2\u627e\u5230 (' + (s.caption_coverage * 100).toFixed(0) + '% \u8986\u76d6\u7387)'});
+  else diags.push({ok: false, warn: true, text: '\u672a\u627e\u5230\u6807\u6ce8\u6587\u4ef6'});
+  if (s.broken_image_count === 0) diags.push({ok: true, text: '\u65e0\u635f\u574f\u56fe\u7247'});
+  else diags.push({ok: false, text: s.broken_image_count + ' \u5f20\u635f\u574f\u56fe\u7247'});
+  if (alphaCount > 0) diags.push({ok: false, warn: true, text: alphaCount + ' \u5f20\u56fe\u7247\u542b\u900f\u660e\u901a\u9053 (PNG/WebP)\uff0c\u53ef\u80fd\u5f71\u54cd\u8bad\u7ec3\u7ed3\u679c'});
+  else diags.push({ok: true, text: '\u65e0\u900f\u660e\u901a\u9053\u56fe\u7247'});
+  if (s.images_without_caption_count > 0) diags.push({ok: false, warn: true, text: s.images_without_caption_count + ' \u5f20\u56fe\u7247\u7f3a\u5c11\u6807\u6ce8'});
+  if (s.empty_caption_count > 0) diags.push({ok: false, warn: true, text: s.empty_caption_count + ' \u4e2a\u7a7a\u6807\u6ce8\u6587\u4ef6'});
+  if (diags.length === 0) diags.push({ok: true, text: '\u5168\u90e8\u68c0\u67e5\u901a\u8fc7'});
 
-      <!-- 实时输出 -->
-      <section class="form-section">
-        <header class="section-header">
-          <h3>训练输出</h3>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingLog()">刷新</button>
-            <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;color:var(--text-dim);">
-              <input type="checkbox" id="training-log-autoscroll" checked> 自动滚动
-            </label>
-          </div>
-        </header>
-        <div id="training-log-container" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:12px;height:400px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--text-main);">
-          ${hasRunning ? '<span style="color:var(--text-dim);">正在加载训练输出...</span>' : '<span style="color:var(--text-dim);">暂无训练任务运行中。点击「开始训练」启动训练后，输出将在此实时显示。</span>'}
-        </div>
-      </section>
 
-      <!-- 任务历史 -->
-      <section class="form-section">
-        <header class="section-header"><h3>任务历史</h3></header>
-        <div class="section-content" style="display:block;">
-          ${state.tasks.length === 0 ? '<p style="color:var(--text-dim);">\u6682\u65e0\u4efb\u52a1\u8bb0\u5f55</p>' : state.tasks.slice().reverse().map((task) => {
-            const statusMap = { RUNNING: '\ud83d\udd04 \u8fd0\u884c\u4e2d', FINISHED: '\u2705 \u5df2\u5b8c\u6210', TERMINATED: '\u26d4 \u5df2\u7ec8\u6b62', CREATED: '\u23f3 \u5df2\u521b\u5efa' };
-            const statusColor = { RUNNING: '#f59e0b', FINISHED: '#22c55e', TERMINATED: '#ef4444', CREATED: 'var(--text-dim)' };
-            const hasCached = !!(state.taskSummaries[task.id] && state.taskSummaries[task.id]._v >= 2);
-            const canScore = task.status === 'FINISHED' || task.status === 'TERMINATED';
-            const badge = hasCached ? '\ud83d\udcca' : (canScore ? '\u70b9\u51fb\u8bc4\u5206' : '');
-            return `
-              <div style="border-bottom:1px solid var(--border);padding:6px 0;">
-                <div style="display:flex;justify-content:space-between;align-items:center;${canScore ? 'cursor:pointer;' : ''}" ${canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : ''}>
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <code style="font-size:0.78rem;color:var(--text-dim);">${escapeHtml(task.id)}</code>
-                    ${badge ? '<span style="font-size:0.72rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : ''}
-                  </div>
-                  <span style="color:${statusColor[task.status] || 'var(--text-dim)'};font-weight:600;font-size:0.85rem;">${statusMap[task.status] || task.status}</span>
-          </div>
-                <div id="task-summary-${task.id}" style="display:${hasCached ? 'block' : 'none'};" data-loaded="${hasCached ? 'true' : 'false'}">
-                  ${hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : ''}
-                </div>
-              </div>
-            `;
-          }).join('')}
+  var diagHtml = '<div class="train-pf-card"><div class="train-pf-card-hdr"><span>\u8bca\u65ad</span></div>'
+    + '<ul class="train-diag-list">' + diags.map(function(d) {
+        var icon = d.ok ? _ico('check-circle', 15) : (d.warn ? _ico('alert-tri', 15) : _ico('x-circle', 15));
+        var color = d.ok ? '#22c55e' : (d.warn ? '#f59e0b' : '#ef4444');
+        return '<li style="color:' + color + ';">' + icon + ' <span style="color:var(--text-main);">' + escapeHtml(d.text) + '</span></li>';
+      }).join('') + '</ul></div>';
 
-        </div>
-      </section>
-    </div>
-  `;
+  // Folder table with expandable image preview
+  var tableHtml = '<div class="train-pf-table-wrap">'
+    + '<div class="train-pf-table-hdr"><span class="train-pf-card-hdr"><span>\u6587\u4ef6\u5939\u7ed3\u6784</span></span></div>'
+    + '<div class="train-pf-table-head"><div>\u8def\u5f84</div><div>\u6982\u5ff5\u6807\u7b7e</div><div style="text-align:right;">Repeats</div><div style="text-align:right;">\u56fe\u7247\u6570</div></div>';
+  tableHtml += folders.map(function(f, idx) {
+    var tag = f.name.replace(/^\d+_/, '');
+    var repeats = f.repeats || 0;
+    var warn = f.image_count < 50;
+    var fPath = f.path || '';
+    return '<div class="train-pf-table-row' + (warn ? ' warn' : '') + '" style="cursor:pointer;" onclick="toggleFolderPreview(' + idx + ',this)">'
+      + '<div class="train-pf-folder-name">' + _ico(warn ? 'alert-tri' : 'folder', 14) + ' ' + escapeHtml(f.name) + '</div>'
+      + '<div class="train-pf-tag" id="pf-tag-' + idx + '">' + escapeHtml(tag) + '</div>'
+      + '<div style="text-align:right;font-variant-numeric:tabular-nums;">' + repeats + '</div>'
+      + '<div style="text-align:right;font-variant-numeric:tabular-nums;' + (warn ? 'color:#f59e0b;' : '') + '">' + f.image_count + '</div>'
+      + '</div>'
+      + '<div class="train-pf-thumbs" id="pf-thumbs-' + idx + '" data-folder="' + escapeHtml(fPath) + '" style="display:none;"></div>';
+  }).join('');
+  tableHtml += '</div>';
+
+  return '<div class="train-pf-scroll">'
+    + '<div class="train-pf-header"><div style="display:flex;align-items:center;gap:10px;">'
+    + _ico('bar-chart', 16) + ' <span style="font-size:0.9rem;font-weight:700;">\u6570\u636e\u96c6\u9884\u89c8</span></div>'
+    + '<div style="display:flex;align-items:center;gap:8px;">'
+    + '<span style="font-size:0.68rem;color:var(--text-muted);">' + escapeHtml(dataDir) + '</span>'
+    + '<button class="btn btn-outline btn-sm" type="button" onclick="scanDataset()" style="font-size:0.68rem;">\u91cd\u65b0\u626b\u63cf</button>'
+    + '</div></div>'
+    + metricsHtml
+    + '<div class="train-pf-row2">' + resoHtml + diagHtml + '</div>'
+    + tableHtml
+    + '</div>';
+}
+
+function _pfMetric(label, value, type) {
+  var color = type === 'accent' ? 'var(--accent)' : (type === 'ok' ? '#22c55e' : (type === 'warn' ? '#f59e0b' : (type === 'err' ? '#ef4444' : 'var(--text-main)')));
+  return '<div class="train-pf-metric"><div class="train-pf-metric-label">' + label + '</div>'
+    + '<div class="train-pf-metric-val" style="color:' + color + ';">' + value + '</div></div>';
+}
+
+window.switchTrainTab = function(tab) {
+  state.trainSubTab = tab;
+  if (state.activeModule === 'training') {
+    renderView('training');
+    if (tab === 'preflight' && !state.datasetAnalysis && !state.loading.preflight && state.config.train_data_dir) {
+      scanDataset();
+    }
+  }
+};
+
+window.scanDataset = async function() {
+  var dataDir = state.config.train_data_dir;
+  if (!dataDir) { showToast('\u8bf7\u5148\u8bbe\u7f6e train_data_dir'); return; }
+  state.loading.preflight = true;
+  if (state.activeModule === 'training') renderView('training');
+  try {
+    var resp = await api.analyzeDataset({ path: dataDir, caption_extension: state.config.caption_extension || '.txt' });
+    if (resp.status === 'success' && resp.data) {
+      state.datasetAnalysis = resp.data;
+    } else {
+      showToast(resp.message || '\u6570\u636e\u96c6\u626b\u63cf\u5931\u8d25');
+    }
+  } catch(e) {
+    showToast(e.message || '\u6570\u636e\u96c6\u626b\u63cf\u5931\u8d25');
+  } finally {
+    state.loading.preflight = false;
+    if (state.activeModule === 'training') renderView('training');
+  }
+};
+
+/** Toggle image thumbnail preview for a folder row */
+window.toggleFolderPreview = async function(idx, rowEl) {
+  var panel = document.getElementById('pf-thumbs-' + idx);
+  if (!panel) return;
+  // Toggle visibility
+  if (panel.style.display !== 'none' && panel.dataset.loaded === 'true') {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'flex';
+  if (panel.dataset.loaded === 'true') return;
+  // Load images
+  var folder = panel.dataset.folder;
+  if (!folder) return;
+  panel.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);padding:8px;">\u52a0\u8f7d\u4e2d...</span>';
+  try {
+    var resp = await api.listDatasetImages(folder, 6);
+    var images = (resp && resp.data && resp.data.images) ? resp.data.images : [];
+    var total = (resp && resp.data) ? resp.data.total : 0;
+    if (images.length === 0) {
+      panel.innerHTML = '<span style="font-size:0.72rem;color:var(--text-muted);padding:8px;">\u65e0\u56fe\u7247</span>';
+    } else {
+      panel.innerHTML = images.map(function(imgPath) {
+        var src = '/api/image_resize/file?path=' + encodeURIComponent(imgPath);
+        return '<div class="train-pf-thumb"><img src="' + src + '" loading="lazy"></div>';
+      }).join('')
+      + (total > images.length ? '<div class="train-pf-thumb train-pf-thumb-more" onclick="event.stopPropagation();loadMoreThumbs(' + idx + ',' + total + ')"data-idx="' + idx + '">+' + (total - images.length) + '</div>' : '');
+    }
+    // Update concept tag from first caption file
+    var firstTag = (resp && resp.data && resp.data.first_tag) ? resp.data.first_tag : '';
+    if (firstTag) {
+      var tagCell = document.getElementById('pf-tag-' + idx);
+      if (tagCell) tagCell.textContent = firstTag;
+    }
+    panel.dataset.loaded = 'true';
+  } catch(e) {
+    panel.innerHTML = '<span style="font-size:0.72rem;color:#ef4444;padding:8px;">\u52a0\u8f7d\u5931\u8d25</span>';
+  }
+};
+
+window.runTrainingPreflight = async function() {
+  state.loading.preflight = true;
+  if (state.activeModule === 'training') renderView('training');
+  try {
+    var response = await api.runPreflight(buildRunConfig(state.config, state.activeTrainingType));
+    state.preflight = response.status === 'success' ? response.data : { can_start: false, errors: [response.message || 'Failed'], warnings: [], notes: [] };
+  } catch(e) {
+    state.preflight = { can_start: false, errors: [e.message || 'Failed'], warnings: [], notes: [] };
+  } finally {
+    state.loading.preflight = false;
+    if (state.activeModule === 'training') renderView('training');
+    else if (state.activeModule === 'config') renderView('config');
+  }
+};
+
+
+
+function renderTraining(container) {
+  var running = state.tasks.filter(function(t) { return t.status === 'RUNNING'; });
+  var finished = state.tasks.filter(function(t) { return t.status === 'FINISHED'; });
+  var terminated = state.tasks.filter(function(t) { return t.status === 'TERMINATED'; });
+  var lastTask = state.tasks[state.tasks.length - 1];
+  var hasRunning = running.length > 0;
+  var m = state.trainingMetrics;
+  var curTask = running[0] || lastTask;
+  var taskIdShort = curTask ? curTask.id.slice(0, 8).toUpperCase() : '--------';
+
+  // Compute live metrics for header
+  var curStep = m.lastStep || 0;
+  var totalSteps = m.totalSteps || 0;
+  var lastEp = m.epochs.length > 0 ? m.epochs[m.epochs.length - 1] : null;
+  var epochStr = lastEp ? ('Epoch ' + lastEp.epoch + '/' + lastEp.total) : '';
+  var curSpeed = m.speeds.length > 0 ? m.speeds[m.speeds.length - 1].itPerSec : 0;
+  var remainSec = (curSpeed > 0 && totalSteps > curStep) ? Math.round((totalSteps - curStep) / curSpeed) : 0;
+  var remainStr = remainSec > 0 ? formatDuration(remainSec * 1000) : '--:--';
+  var curLoss = m.losses.length > 0 ? m.losses[m.losses.length - 1].loss : 0;
+  var prevLoss = m.losses.length > 1 ? m.losses[m.losses.length - 2].loss : curLoss;
+  var lossDeltaPct = prevLoss > 0 ? ((curLoss - prevLoss) / prevLoss * 100) : 0;
+  var lossArrow = lossDeltaPct < 0 ? _ico('trending-down', 12) : (lossDeltaPct > 0 ? _ico('trending-up', 12) : '');
+  var lossArrowColor = lossDeltaPct < 0 ? '#22c55e' : (lossDeltaPct > 0 ? '#ef4444' : 'var(--text-dim)');
+
+  // Status indicator
+  var statusDot = '', statusText = '';
+  if (hasRunning) {
+    statusDot = '<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:pulse-dot 1.5s ease-in-out infinite;"></span>';
+    statusText = '<span style="font-family:monospace;font-size:0.82rem;font-weight:700;color:var(--accent);">SESSION_' + taskIdShort + '</span>';
+  } else if (state.trainingFailed) {
+    statusDot = '<span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;"></span>';
+    statusText = '<span style="font-family:monospace;font-size:0.82rem;font-weight:700;color:#ef4444;">FAILED</span>';
+  } else if (finished.length > 0) {
+    statusDot = '<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span>';
+    statusText = '<span style="font-family:monospace;font-size:0.82rem;font-weight:700;color:#22c55e;">COMPLETED</span>';
+  } else {
+    statusDot = '<span style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span>';
+    statusText = '<span style="font-family:monospace;font-size:0.82rem;color:var(--text-muted);">IDLE</span>';
+  }
+
+  // Mixed precision tag
+  var precisionTag = state.config.mixed_precision ? state.config.mixed_precision.toUpperCase() : 'FP32';
+
+  // GPU info
+  var gpuName = '\u68c0\u6d4b\u4e2d...';
+  if (state.runtime && state.runtime.cards && state.runtime.cards.length > 0) {
+    var card = state.runtime.cards[0];
+    gpuName = (typeof card === 'string') ? card : (card.name || 'GPU');
+  }
+
+  // Loss sparkline SVG
+  var sparkSvg = '';
+  if (m.losses.length >= 2) {
+    var pts = m.losses.slice(-50);
+    var maxL = Math.max.apply(null, pts.map(function(p) { return p.loss; }));
+    var minL = Math.min.apply(null, pts.map(function(p) { return p.loss; }));
+    var range = maxL - minL || 0.001;
+    var pathParts = [];
+    for (var pi = 0; pi < pts.length; pi++) {
+      var px = (pi / (pts.length - 1)) * 100;
+      var py = 100 - ((pts[pi].loss - minL) / range) * 90 - 5;
+      pathParts.push((pi === 0 ? 'M' : 'L') + px.toFixed(1) + ' ' + py.toFixed(1));
+    }
+    var pathD = pathParts.join(' ');
+    sparkSvg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:100%;">'
+      + '<defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>'
+      + '<path d="' + pathD + '" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'
+      + '<path d="' + pathD + ' L100 100 L0 100 Z" fill="url(#lg)"/>'
+      + '</svg>';
+  }
+
+  // Active params
+  var cfgParams = [
+    ['LR_SCHEDULER', state.config.lr_scheduler || '\u2014'],
+    ['OPTIMIZER', state.config.optimizer_type || '\u2014'],
+    ['BATCH_SIZE', state.config.train_batch_size || '\u2014'],
+    ['LEARNING_RATE', state.config.learning_rate || '\u2014'],
+    ['NETWORK_DIM', state.config.network_dim || '\u2014'],
+    ['NETWORK_ALPHA', state.config.network_alpha || '\u2014'],
+    ['RESOLUTION', state.config.resolution || '\u2014'],
+    ['MAX_TRAIN_EPOCHS', state.config.max_train_epochs || '\u2014'],
+    ['SAVE_EVERY_N_EPOCHS', state.config.save_every_n_epochs || '\u2014'],
+    ['CLIP_SKIP', state.config.clip_skip || '\u2014'],
+    ['SEED', state.config.seed || '\u2014'],
+  ];
+  var paramsHtml = cfgParams.map(function(p) {
+    return '<div class="train-param-row">'
+      + '<span class="train-param-key">'+ p[0] + '</span>'
+      + '<span class="train-param-val">'+ escapeHtml(String(p[1])) + '</span>'
+      + '</div>';
+  }).join('');
+
+  container.innerHTML = ''
+  + '<div class="train-dashboard">'
+  + '<div class="train-exec-header">'
+  +   '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">'
+  +     '<div style="display:flex;align-items:center;gap:8px;">' + statusDot + statusText + '</div>'
+  +     '<span class="train-hdr-sep"></span>'
+  +     '<span class="train-hdr-label">\u5f53\u524d\u6b65\u6570: <span class="train-hdr-val">' + curStep.toLocaleString() + ' / ' + (totalSteps > 0 ? totalSteps.toLocaleString() : '--') + '</span></span>'
+  +     '<span class="train-hdr-label">\u5269\u4f59\u65f6\u95f4: <span class="train-hdr-val">' + remainStr + '</span></span>'
+  +     (epochStr ? '<span class="train-hdr-label">' + epochStr + '</span>' : '')
+  +   '</div>'
+  +   '<div style="display:flex;align-items:center;gap:8px;">'
+  +     '<span class="train-tag train-tag-accent">' + precisionTag + '</span>'
+  +     (hasRunning && curTask ? '<span class="train-tag">PID: ' + escapeHtml(curTask.id.slice(0, 8)) + '</span>' : '')
+  +   '</div>'
+  + '</div>'
+
+  // Tab bar
+  + '<div class="train-tabs">'
+  +   '<button class="train-tab' + (state.trainSubTab === 'monitor' ? ' active' : '') + '" onclick="switchTrainTab(\'monitor\')">' + _ico('terminal', 14) + ' \u76d1\u63a7</button>'
+  +   '<button class="train-tab' + (state.trainSubTab === 'preflight' ? ' active' : '') + '" onclick="switchTrainTab(\'preflight\')">' + _ico('check-circle', 14) + ' \u9884\u68c0</button>'
+  + '</div>'
+
+  // Body: conditional on sub-tab
+  + (state.trainSubTab === 'preflight' ? renderPreflightPanel() : '')
+  + (state.trainSubTab === 'monitor' ? (
+  '<div class="train-body">'
+  // ---- Left: Terminal ----
+  +   '<div class="train-logs-area">'
+  +     '<div class="train-panel-header">'
+  +       '<span class="train-panel-title">' + _ico('terminal', 14) + ' \u7cfb\u7edf\u6267\u884c\u65e5\u5fd7</span>'
+  +       '<div style="display:flex;gap:8px;align-items:center;">'
+  +         '<label style="display:flex;align-items:center;gap:4px;font-size:0.7rem;color:var(--text-muted);cursor:pointer;">'
+  +           '<input type="checkbox" id="training-log-autoscroll" checked style="width:13px;height:13px;"> \u81ea\u52a8\u6eda\u52a8'
+  +         '</label>'
+  +         '<button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingLog()" style="font-size:0.68rem;padding:2px 10px;">\u5237\u65b0</button>'
+  +       '</div>'
+  +     '</div>'
+  +     '<div id="training-log-container" class="train-terminal">'
+  +       (hasRunning
+            ? '<span style="color:var(--text-muted);">' + _ico('loader', 14) + ' \u6b63\u5728\u52a0\u8f7d\u8bad\u7ec3\u8f93\u51fa...</span>'
+            : '<span style="color:var(--text-muted);">\u6682\u65e0\u8bad\u7ec3\u4efb\u52a1\u8fd0\u884c\u4e2d\u3002\u70b9\u51fb\u300c\u5f00\u59cb\u8bad\u7ec3\u300d\u542f\u52a8\u540e\uff0c\u8f93\u51fa\u5c06\u5728\u6b64\u5b9e\u65f6\u663e\u793a\u3002</span>')
+  +     '</div>'
+  +   '</div>'
+
+  // ---- Right: Side Panel ----
+  +   '<div class="train-side-panel">'
+
+  // Live Loss
+  +     '<div class="train-side-section">'
+  +       '<div class="train-panel-title">LIVE LOSS</div>'
+  +       '<div style="display:flex;justify-content:space-between;align-items:flex-end;">'
+  +         '<span class="train-loss-big">' + (curLoss > 0 ? curLoss.toFixed(4) : '\u2014') + '</span>'
+  +         '<span class="train-loss-delta" style="color:' + lossArrowColor + ';">' + lossArrow + ' ' + (lossDeltaPct !== 0 ? (lossDeltaPct > 0 ? '+' : '') + lossDeltaPct.toFixed(1) + '%' : '') + '</span>'
+  +       '</div>'
+  +       '<div class="train-chart-box">'
+  +         (sparkSvg || '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.72rem;">\u7b49\u5f85\u6570\u636e...</div>')
+  +       '</div>'
+  +       (m.losses.length > 0 ? '<div class="train-chart-axis"><span>Step 0</span><span>Step ' + curStep + '</span></div>' : '')
+  +     '</div>'
+
+  // Hardware
+  +     '<div class="train-side-section">'
+  +       '<div class="train-panel-title">' + _ico('activity', 14) + ' \u786c\u4ef6 / \u8fd0\u884c\u65f6</div>'
+  +       '<div class="train-hw-card">'
+  +         '<div class="train-hw-row"><span class="hw-label">GPU</span><span class="hw-value">' + escapeHtml(gpuName) + '</span></div>'
+  +         '<div class="train-hw-row"><span class="hw-label">SPEED</span><span id="train-live-speed" class="hw-value-accent">' + (curSpeed > 0 ? curSpeed.toFixed(2) + ' it/s' : '\u2014') + '</span></div>'
+  +         '<div class="train-hw-row"><span class="hw-label">RUNTIME</span><span class="hw-value">' + (state.runtime && state.runtime.runtime ? state.runtime.runtime.environment : 'standard') + '</span></div>'
+  + '<div class="train-hw-row" style="margin-top:4px;"><span class="hw-label">PRECISION</span><span class="hw-value">' + precisionTag + '</span></div>'
+  +       '</div>'
+  +     '</div>'
+
+  // Active params
+  +     '<div class="train-side-section">'
+  +       '<div class="train-panel-title">' + _ico('settings', 14) + ' \u5f53\u524d\u53c2\u6570</div>'
+  +       '<div>' + paramsHtml + '</div>'
+  +     '</div>'
+
+  +   '</div>'
+  + '</div>'
+
+  // Training summary + Task history (monitor only)
+  + renderTrainingSummaryHTML()
+  + '<div class="train-history-section">'
+  +   '<div class="train-panel-title" style="margin-bottom:8px;">' + _ico('clock', 14) + ' \u4efb\u52a1\u5386\u53f2</div>'
+  +   (state.tasks.length === 0
+      ? '<p style="color:var(--text-muted);font-size:0.78rem;">\u6682\u65e0\u4efb\u52a1\u8bb0\u5f55</p>'
+      : state.tasks.slice().reverse().map(function(task) {
+    var statusMap = { RUNNING: _ico('loader') + ' \u8fd0\u884c\u4e2d', FINISHED: _ico('check-circle') + ' \u5df2\u5b8c\u6210', TERMINATED: _ico('stop-circle') + ' \u5df2\u7ec8\u6b62', CREATED: _ico('clock') + ' \u5df2\u521b\u5efa' };
+    var statusColor = { RUNNING: '#f59e0b', FINISHED: '#22c55e', TERMINATED: '#ef4444', CREATED: 'var(--text-dim)' };
+    var hasCached = !!(state.taskSummaries[task.id] && state.taskSummaries[task.id]._v >= 2);
+    var canScore = task.status === 'FINISHED' || task.status === 'TERMINATED';
+    var badge = hasCached ? _ico('bar-chart', 14) : (canScore ? '\u70b9\u51fb\u8bc4\u5206' : '');
+    return '<div style="border-bottom:1px solid var(--border);padding:5px 0;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;' + (canScore ? 'cursor:pointer;' : '') + '" ' + (canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : '') + '>'
+      + '<div style="display:flex;align-items:center;gap:8px;"><code style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;">' + escapeHtml(task.id) + '</code>'
+      + (badge ? '<span style="font-size:0.68rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : '')
+      + '</div>'
+      + '<span style="color:' + (statusColor[task.status] || 'var(--text-dim)') + ';font-weight:600;font-size:0.78rem;">' + (statusMap[task.status] || task.status) +'</span>'
+      + '</div>'
+      + '<div id="task-summary-' + task.id + '" style="display:' + (hasCached ? 'block' : 'none') + ';" data-loaded="' + (hasCached ? 'true' : 'false') + '">' + (hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : '') + '</div>'
+      + '</div>';
+  }).join(''))
+  + '</div>'
+  ) : '') // end monitor conditional
+  + '</div>'; // close train-dashboard
 
   syncFooterAction();
   if (hasRunning) startTrainingLogPolling();
+
+
 }
+
+
 
 let _trainingLogPollTimer = null;
 
@@ -1375,6 +1701,81 @@ function startTrainingLogPolling() {
     refreshTrainingLog();
   }, 2000);
 }
+
+/** Parse ANSI escape codes in log lines and return colorized HTML */
+function _renderLogLines(lines) {
+  return lines.map(function(line) {
+    // Strip \r leftover
+    line = line.replace(/\r/g, '');
+    // ANSI color map: \x1b[Nm
+    var COLORS = {
+      '30': '#666', '31': '#ef4444', '32': '#22c55e', '33': '#f59e0b',
+      '34': '#3b82f6', '35': '#a855f7', '36': '#06b6d4', '37': '#e0e6ed',
+      '90': '#64748b', '91': '#ff6b6b', '92': '#4ade80', '93': '#fbbf24',
+      '94': '#60a5fa', '95': '#c084fc', '96': '#22d3ee', '97': '#f8fafc',
+    };
+    // Replace ANSI sequences
+    var html = escapeHtml(line);
+    // Match \x1b[ ... m sequences (already escaped as text, won't appear after escapeHtml)
+    // Actually the raw line from backend contains literal ESC chars
+    // We need to process BEFORE escapeHtml
+    html = line;
+    var result = '';
+    var i = 0;
+    var openSpan = false;
+    while (i < html.length) {
+      if (html.charCodeAt(i) === 27 && html[i+1] === '[') {
+        // Find 'm'
+        var j = i + 2;
+        while (j < html.length && html[j] !== 'm') j++;
+        if (j < html.length) {
+          var codes = html.substring(i+2, j).split(';');
+          if (openSpan) { result += '</span>'; openSpan = false; }
+          for (var ci = 0; ci < codes.length; ci++) {
+            var c = codes[ci];
+            if (c === '0' || c === '') {
+              // Reset
+            } else if (c === '1') {
+              result += '<span style="font-weight:700;">'; openSpan = true;
+            } else if (COLORS[c]) {
+              result += '<span style="color:' + COLORS[c] + ';">'; openSpan = true;
+            }
+          }
+          i = j + 1;
+          continue;
+        }
+      }
+      // Escape HTML char
+      var ch = html[i];
+      if (ch === '<') result += '&lt;';
+      else if (ch === '>') result += '&gt;';
+      else if (ch === '&') result += '&amp;';
+      else if (ch === '"') result += '&quot;';
+      else result += ch;
+      i++;
+    }
+    if (openSpan) result += '</span>';
+    return '<div class="log-line">' + result + '</div>';
+  }).join('');
+}
+
+/** Load all remaining thumbnails for a folder */
+window.loadMoreThumbs = async function(idx, total) {
+  var panel = document.getElementById('pf-thumbs-' + idx);
+  if (!panel) return;
+  var folder = panel.dataset.folder;
+  if (!folder) return;
+  try {
+    var resp = await api.listDatasetImages(folder, total);
+    var images = (resp && resp.data && resp.data.images) ? resp.data.images : [];
+    panel.innerHTML = images.map(function(imgPath) {
+      var src = '/api/image_resize/file?path=' + encodeURIComponent(imgPath);
+      return '<div class="train-pf-thumb"><img src="' + src + '" loading="lazy"></div>';
+    }).join('');
+  } catch(e) {
+    // silent
+  }
+};
 
 window.refreshTrainingLog = async () => {
   const running = state.tasks.filter((t) => t.status === 'RUNNING');
@@ -1397,16 +1798,62 @@ window.refreshTrainingLog = async () => {
       return;
     }
 
-    logEl.textContent = lines.join('\n');
+    logEl.innerHTML = _renderLogLines(lines);
 
     const autoScroll = $('#training-log-autoscroll');
     if (autoScroll?.checked) {
       logEl.scrollTop = logEl.scrollHeight;
     }
+
+    // Live-update header metrics & right panel
+    _updateTrainingLiveMetrics();
   } catch (e) {
     // 静默失败
   }
 };
+
+function _updateTrainingLiveMetrics() {
+  var m = state.trainingMetrics;
+  if (!m) return;
+
+  // Update step count in header (find .train-hdr-val elements)
+  var hdrLabels = document.querySelectorAll('.train-hdr-label');
+  if (hdrLabels.length >= 1) {
+    var stepEl = hdrLabels[0].querySelector('.train-hdr-val');
+    if (stepEl) stepEl.textContent = m.lastStep.toLocaleString() + ' / ' + (m.totalSteps > 0 ? m.totalSteps.toLocaleString() : '--');
+  }
+  if (hdrLabels.length >= 2) {
+    var curSpeed = m.speeds.length > 0 ? m.speeds[m.speeds.length - 1].itPerSec : 0;
+    var remain = (curSpeed > 0 && m.totalSteps > m.lastStep) ? Math.round((m.totalSteps - m.lastStep) / curSpeed) : 0;
+    var remainEl = hdrLabels[1].querySelector('.train-hdr-val');
+    if (remainEl) remainEl.textContent = remain > 0 ? formatDuration(remain * 1000) : '--:--';
+  }
+
+  // Update live speed
+  var speedEl = document.getElementById('train-live-speed');
+  if (speedEl && m.speeds.length > 0) {
+    speedEl.textContent = m.speeds[m.speeds.length - 1].itPerSec.toFixed(2) + ' it/s';
+  }
+
+  
+}
+
+var _gpuPollCooldown = false;
+async function _fetchGpuStatus() {
+  if (_gpuPollCooldown) return;
+  _gpuPollCooldown = true;
+  setTimeout(function() { _gpuPollCooldown = false; }, 4000); // max once per 4s
+  try {
+    var resp = await api.getGpuStatus();
+    var d = resp && resp.data;
+    if (!d || !d.available || !d.gpus || !d.gpus.length) return;
+    var g = d.gpus[0];
+    var vramText = document.getElementById('train-vram-text');
+    var vramFill = document.getElementById('train-vram-fill');
+    if (vramText) vramText.textContent = g.allocated_mb + ' / ' + g.total_mb + ' MB (' + g.utilization_pct + '%)';
+    if (vramFill) vramFill.style.width = Math.min(g.utilization_pct, 100) + '%';
+  } catch(e) { /* silent */ }
+}
 
 
 function renderAbout(container) {
@@ -2687,6 +3134,9 @@ window.runPreflight = async () => {
     state.loading.preflight = false;
     if (state.activeModule === 'config') {
       renderView('config');
+    } else if (state.activeModule === 'training') {
+      state.trainSubTab = 'preflight';
+      renderView('training');
     } else {
       updateJSONPreview();
     }
@@ -2993,7 +3443,7 @@ window.resetAllParams = () => {
 
 
 window.saveCurrentParams = () => {
-  const defaultName = 'Angela';
+  const defaultName = state.config.output_name || state.config.pretrained_model_name_or_path?.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') || '';
   const modal = $('#builtin-picker-modal');
   const title = $('#builtin-picker-title');
   const pathEl = $('#builtin-picker-path');
@@ -3230,6 +3680,8 @@ function validateConfigConflicts() {
   const c = state.config;
   const tt = state.activeTrainingType;
   const errors = [];
+  const warnings = [];
+  const isSageEnv = (state.runtime?.runtime?.environment || '').includes('sageattention');
   const toBool = (v) => v === true || v === 'true' || v === 1;
   const toNum = (v) => { const n = Number(v); return Number.isNaN(n) ? 0 : n; };
 
@@ -3284,7 +3736,14 @@ function validateConfigConflicts() {
     errors.push('不能同时勾选「仅训练 U-Net」和「仅训练文本编码器」。请只保留其中一个，或两个都不勾（即两者都训练）。');
   }
 
-  return errors;
+  // 9. SageAttention 环境整体警告
+  if (isSageEnv) {
+    warnings.push(
+      '\u26a0\ufe0f \u5f53\u524d\u6b63\u5728\u4f7f\u7528 SageAttention \u4e13\u7528\u8fd0\u884c\u65f6\u3002SageAttention v1 \u7684 Triton kernel \u5728 import \u65f6\u5c31\u4f1a\u52a0\u8f7d\uff0c\u53ef\u80fd\u5e72\u6270 PyTorch \u7684\u68af\u5ea6\u8ba1\u7b97\uff0c\u5bfc\u81f4\u8bad\u7ec3\u7ed3\u679c\u5f02\u5e38\uff08\u751f\u56fe\u5168\u9ed1/\u8272\u5757/\u53d8\u5f62\uff09\u3002\u5982\u679c\u8bad\u7ec3\u6548\u679c\u4e0d\u4f73\uff0c\u8bf7\u6539\u7528\u4e3b\u73af\u5883\u8bad\u7ec3\u3002'
+    );
+  }
+
+  return { errors, warnings };
 }
 
 
@@ -3293,13 +3752,22 @@ window.executeTraining = async () => {
   syncFooterAction();
   resetTrainingMetrics();
 
-  const clientErrors = validateConfigConflicts();
-  if (clientErrors.length > 0) {
-    showToast(clientErrors[0]);
-    state.preflight = { can_start: false, errors: clientErrors, warnings: [] };
+  const clientCheck = validateConfigConflicts();
+  if (clientCheck.errors.length > 0) {
+    showToast(clientCheck.errors[0]);
+    state.preflight = { can_start: false, errors: clientCheck.errors, warnings: clientCheck.warnings };
     state.loading.run = false;
     if (state.activeModule === 'config') renderView('config');
     return;
+  }
+  // sage 环境警告：不阻断，但弹确认
+  if (clientCheck.warnings.length > 0) {
+    const proceed = confirm(clientCheck.warnings.join('\n\n') + '\n\n是否继续训练？');
+    if (!proceed) {
+      state.loading.run = false;
+      syncFooterAction();
+      return;
+    }
   }
 
   try {
