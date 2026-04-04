@@ -69,6 +69,16 @@ const state = {
   presets: [],
   tasks: [],
   trainingFailed: false,
+  taskSummaries: {},
+  trainingSummary: null,
+  trainingMetrics: {
+    speeds: [],       // { time, itPerSec }
+    losses: [],       // { time, step, loss }
+    epochs: [],       // { epoch, total }
+    startTime: null,
+    lastStep: 0,
+    totalSteps: 0,
+  },
   interrogators: null,
   runtime: null,
   preflight: null,
@@ -97,6 +107,7 @@ function init() {
   setupJsonPanel();
   renderView(state.activeModule);
   loadBootstrapData();
+  loadTaskSummariesFromCache();
   startTaskPolling();
 }
 
@@ -231,9 +242,16 @@ function startTaskPolling() {
       if (hadRunning && !hasRunning) {
         const lastTask = state.tasks[state.tasks.length - 1];
         const failed = lastTask && (lastTask.status === 'TERMINATED' || lastTask.returncode !== 0);
+        state.trainingSummary = generateTrainingSummary();
+        if (lastTask && state.trainingSummary) {
+          saveTaskSummary(lastTask.id, state.trainingSummary);
+        }
         state.trainingFailed = !!failed;
         if (!failed) showToast('✅ 训练已完成');
         else showToast('❌ 训练失败');
+        if (state.activeModule === 'training') {
+          renderView('training');
+        }
       }
 
       updateJSONPreview();
@@ -841,6 +859,406 @@ function toggleTheme() {
   localStorage.setItem('theme', state.theme);
   applyTheme();
 }
+/* ── Training Metrics Collection & Analysis ── */
+
+/** Incrementally collect speed/loss/epoch from latest poll lines */
+function collectTrainingMetrics(lines) {
+  const m = state.trainingMetrics;
+  if (!m.startTime) m.startTime = Date.now();
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const speedMatch = line.match(/(\d+\.?\d*)\s*(it\/s|s\/it)/);
+    const lossMatch = line.match(/avr_loss[=:]\s*(\d+\.?\d*)/);
+    const stepMatch = line.match(/\|\s*(\d+)\/(\d+)\s*\[/);
+    if (speedMatch || lossMatch || stepMatch) {
+      const now = Date.now();
+      if (speedMatch) {
+        let itPerSec = parseFloat(speedMatch[1]);
+        if (speedMatch[2] === 's/it') itPerSec = itPerSec > 0 ? 1 / itPerSec : 0;
+        m.speeds.push({ time: now, itPerSec });
+      }
+      if (lossMatch) {
+        const curStep = stepMatch ? parseInt(stepMatch[1]) : m.lastStep;
+        if (curStep > m.lastStep || m.losses.length === 0) {
+          m.losses.push({ time: now, step: curStep, loss: parseFloat(lossMatch[1]) });
+          m.lastStep = curStep;
+        }
+      }
+      if (stepMatch) {
+        m.totalSteps = parseInt(stepMatch[2]);
+        m.lastStep = Math.max(m.lastStep, parseInt(stepMatch[1]));
+      }
+      break;
+    }
+  }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const ep = lines[i].match(/epoch\s+(\d+)\/(\d+)/);
+    if (ep) {
+      const cur = parseInt(ep[1]);
+      const tot = parseInt(ep[2]);
+      if (!m.epochs.length || m.epochs[m.epochs.length - 1].epoch < cur) {
+        m.epochs.push({ epoch: cur, total: tot });
+      }
+      break;
+    }
+  }
+}
+
+function resetTrainingMetrics() {
+  state.trainingMetrics = {
+    speeds: [], losses: [], epochs: [],
+    startTime: null, lastStep: 0, totalSteps: 0,
+  };
+  state.trainingSummary = null;
+}
+
+function formatDuration(ms) {
+  const sec = Math.floor(ms / 1000);
+  const h = Math.floor(sec / 3600);
+  const min = Math.floor((sec % 3600) / 60);
+const s = sec % 60;
+  if (h > 0) return h + 'h ' + min + 'm ' + s + 's';
+  if (min > 0) return min + 'm ' + s + 's';
+  return s + 's';
+}
+
+/** Parse ALL lines at once into a metrics object (for historical replay) */
+function parseLinesIntoMetrics(lines) {
+  const m = { speeds: [], losses: [], epochs: [], startTime: null, lastStep: 0, totalSteps: 0 };
+  let prevStep = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const speedMatch = line.match(/(\d+\.?\d*)\s*(it\/s|s\/it)/);
+    const lossMatch = line.match(/avr_loss[=:]\s*(\d+\.?\d*)/);
+    const stepMatch = line.match(/\|\s*(\d+)\/(\d+)\s*\[/);
+    if (speedMatch) {
+      let itPerSec = parseFloat(speedMatch[1]);
+      if (speedMatch[2] === 's/it') itPerSec = itPerSec > 0 ? 1 / itPerSec : 0;
+      m.speeds.push({ time: 0, itPerSec });
+    }
+    if (lossMatch) {
+      const curStep = stepMatch ? parseInt(stepMatch[1]) : prevStep;
+      if (curStep > prevStep || m.losses.length === 0) {
+        m.losses.push({ time: 0, step: curStep, loss: parseFloat(lossMatch[1]) });
+        prevStep = curStep;
+      }
+    }
+    if (stepMatch) {
+      m.totalSteps = parseInt(stepMatch[2]);
+      prevStep = Math.max(prevStep, parseInt(stepMatch[1]));
+      m.lastStep = prevStep;
+    }
+    const ep = line.match(/epoch\s+(\d+)\/(\d+)/);
+    if (ep) {
+      const cur = parseInt(ep[1]);
+      const tot = parseInt(ep[2]);
+      if (!m.epochs.length || m.epochs[m.epochs.length - 1].epoch < cur) {
+        m.epochs.push({ epoch: cur, total: tot });
+      }
+    }
+  }
+  return m;
+}
+
+/** Pure analysis: metrics object -> summary object */
+function buildSummaryFromMetrics(m, elapsedMs) {
+  let avgSpeed = 0;
+  let speedRating = '';
+  let speedColor = '';
+  if (m.speeds.length > 0) {
+    const warmupCut = Math.max(1, Math.floor(m.speeds.length * 0.1));
+    const stable = m.speeds.slice(warmupCut);
+    avgSpeed = stable.reduce(function(sum, v) { return sum + v.itPerSec; }, 0) / (stable.length || 1);
+  }
+  if (avgSpeed >= 3)        { speedRating = '\u26a1 \u6781\u5feb'; speedColor = '#22c55e'; }
+  else if (avgSpeed >= 1.5) { speedRating = '\ud83d\ude80 \u8f83\u5feb'; speedColor = '#22c55e'; }
+  else if (avgSpeed >= 0.5) { speedRating = '\u2705 \u6b63\u5e38'; speedColor = '#3b82f6'; }
+  else if (avgSpeed >= 0.2) { speedRating = '\ud83d\udc22 \u8f83\u6162'; speedColor = '#f59e0b'; }
+  else                      { speedRating = '\ud83d\udc0c \u6781\u6162'; speedColor = '#ef4444'; }
+
+  let lossTrend = '';
+  let lossColor = '';
+  let lossDetail = '';
+  let firstLoss = 0;
+  let lastLoss = 0;
+  let minLoss = Infinity;
+  let lossDelta = 0;
+
+  if (m.losses.length >= 2) {
+    const n = m.losses.length;
+    const headN = Math.max(1, Math.floor(n * 0.2));
+    const tailN = Math.max(1, Math.floor(n * 0.2));
+    const headAvg = m.losses.slice(0, headN).reduce(function(s, v) { return s + v.loss; }, 0) / headN;
+    const tailAvg = m.losses.slice(n - tailN).reduce(function(s, v) { return s + v.loss; }, 0) / tailN;
+    firstLoss = m.losses[0].loss;
+    lastLoss = m.losses[n - 1].loss;
+    minLoss = Math.min.apply(null, m.losses.map(function(l) { return l.loss; }));
+    lossDelta = headAvg > 0 ? (tailAvg - headAvg) / headAvg : 0;
+
+    const halfIdx = Math.floor(n / 2);
+    const latterHalf = m.losses.slice(halfIdx);
+    const latterMean = latterHalf.reduce(function(s, v) { return s + v.loss; }, 0) / latterHalf.length;
+    const latterStd = Math.sqrt(latterHalf.reduce(function(s, v) { return s + Math.pow(v.loss - latterMean, 2); }, 0) / latterHalf.length);
+    const volatility = latterMean > 0 ? latterStd / latterMean : 0;
+
+    if (lossDelta < -0.15) {
+      lossTrend = '\ud83d\udcc9 \u6301\u7eed\u4e0b\u964d'; lossColor = '#22c55e';
+      lossDetail = 'Loss \u4e0b\u964d\u4e86 ' + Math.abs(lossDelta * 100).toFixed(1) + '%\uff0c\u8bad\u7ec3\u6536\u655b\u826f\u597d\u3002';
+    } else if (lossDelta < -0.03) {
+      lossTrend = '\ud83d\udcc9 \u7f13\u6162\u4e0b\u964d'; lossColor = '#3b82f6';
+      lossDetail = 'Loss \u4e0b\u964d\u4e86 ' + Math.abs(lossDelta * 100).toFixed(1) + '%\uff0c\u6536\u655b\u8d8b\u52bf\u6b63\u5e38\u3002';
+    } else if (lossDelta <= 0.03) {
+      if (volatility > 0.15) {
+        lossTrend = '\ud83d\udcca \u6ce2\u52a8\u8f83\u5927'; lossColor = '#f59e0b';
+        lossDetail = 'Loss \u5747\u503c\u57fa\u672c\u6301\u5e73\u4f46\u6ce2\u52a8\u7387 ' + (volatility * 100).toFixed(1) + '% \u504f\u9ad8\uff0c\u53ef\u5c1d\u8bd5\u964d\u4f4e\u5b66\u4e60\u7387\u3002';
+      } else {
+        lossTrend = '\u27a1\ufe0f \u57fa\u672c\u6301\u5e73'; lossColor = '#f59e0b';
+        lossDetail = 'Loss \u53d8\u5316\u4ec5 ' + Math.abs(lossDelta * 100).toFixed(1) + '%\uff0c\u53ef\u80fd\u5df2\u63a5\u8fd1\u6536\u655b\u6216\u5b66\u4e60\u7387\u4e0d\u8db3\u3002';
+      }
+    } else if (lossDelta <= 0.15) {
+      lossTrend = '\ud83d\udcc8 \u8f7b\u5fae\u4e0a\u5347'; lossColor = '#ef4444';
+      lossDetail = 'Loss \u4e0a\u5347\u4e86 ' + (lossDelta * 100).toFixed(1) + '%\uff0c\u53ef\u80fd\u51fa\u73b0\u8fc7\u62df\u5408\u8ff9\u8c61\u3002';
+    } else {
+      lossTrend = '\ud83d\udd3a \u660e\u663e\u4e0a\u5347'; lossColor = '#ef4444';
+      lossDetail = 'Loss \u4e0a\u5347\u4e86 ' + (lossDelta * 100).toFixed(1) + '%\uff0c\u8bad\u7ec3\u53ef\u80fd\u53d1\u6563\uff0c\u5efa\u8bae\u68c0\u67e5\u5b66\u4e60\u7387\u548c\u6570\u636e\u96c6\u3002';
+    }
+  } else if (m.losses.length === 1) {
+    lastLoss = m.losses[0].loss;
+    lossTrend = '\u26a0\ufe0f \u6570\u636e\u4e0d\u8db3'; lossColor = 'var(--text-dim)';
+    lossDetail = '\u4ec5\u91c7\u96c6\u5230 1 \u4e2a loss \u6570\u636e\u70b9\uff0c\u65e0\u6cd5\u5224\u65ad\u8d8b\u52bf\u3002';
+  } else {
+    lossTrend = '\u26a0\ufe0f \u65e0\u6570\u636e'; lossColor = 'var(--text-dim)';
+    lossDetail = '\u672a\u80fd\u89e3\u6790\u5230 loss \u6570\u636e\u3002';
+  }
+
+  var lastEpoch = m.epochs.length > 0 ? m.epochs[m.epochs.length - 1] : null;
+  var epochDone = lastEpoch ? lastEpoch.epoch : 0;
+  var epochTotal = lastEpoch ? lastEpoch.total : 0;
+
+  let overallRating = '';
+  let overallColor = '';
+  let lossLevelTag = '';
+  let lossLevelColor = '';
+  if (m.losses.length < 2) {
+    overallRating = '\u26a0\ufe0f \u6570\u636e\u4e0d\u8db3\uff0c\u65e0\u6cd5\u7efc\u5408\u8bc4\u4ef7';
+    overallColor = 'var(--text-dim)';
+    lossLevelTag = '\u2014';
+    lossLevelColor = 'var(--text-dim)';
+  } else {
+    var epochRatio = epochTotal > 0 ? epochDone / epochTotal : 1;
+    let score = 0;
+    // loss trend score (0~3)
+    if (lossDelta < -0.15) score += 3;
+  else if (lossDelta < -0.03) score += 2;
+    else if (lossDelta <= 0.03) score += 1;
+    // completion score (0~2)
+    if (epochRatio >= 0.95) score += 2;
+    else if (epochRatio >= 0.5) score += 1;
+    // absolute final loss level (+1 ~ -2)
+    if (lastLoss > 0 && lastLoss < 0.05)       score += 1;
+    else if (lastLoss >= 0.15)                  score -= 2;
+    else if (lastLoss >= 0.10)                  score -= 1;
+
+    // final loss level tag for display
+    if (lastLoss <= 0) {
+      lossLevelTag = '\u2014'; lossLevelColor = 'var(--text-dim)';
+    } else if (lastLoss < 0.04) {
+      lossLevelTag = '\u6781\u4f4e'; lossLevelColor = '#22c55e';
+    } else if (lastLoss < 0.06) {
+      lossLevelTag = '\u504f\u4f4e'; lossLevelColor = '#22c55e';
+    } else if (lastLoss < 0.08) {
+      lossLevelTag = '\u6b63\u5e38'; lossLevelColor = '#3b82f6';
+    } else if (lastLoss < 0.10) {
+      lossLevelTag = '\u504f\u9ad8'; lossLevelColor = '#f59e0b';
+    } else if (lastLoss < 0.15) {
+      lossLevelTag = '\u8f83\u9ad8'; lossLevelColor = '#ef4444';
+    } else {
+      lossLevelTag = '\u8fc7\u9ad8'; lossLevelColor = '#ef4444';
+    }
+
+    // append final loss note to lossDetail
+    if (lastLoss > 0) {
+      var lvlNote = '';
+      if (lastLoss < 0.04)       lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u6781\u4f4e\uff0c\u8d28\u91cf\u4f18\u79c0\u3002';
+      else if (lastLoss < 0.06)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u4f4e\uff0c\u8d28\u91cf\u826f\u597d\u3002';
+      else if (lastLoss < 0.08)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u5728\u6b63\u5e38\u8303\u56f4\u3002';
+      else if (lastLoss < 0.10)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u6570\u636e\u96c6\u6216\u589e\u52a0\u6b65\u6570\u3002';
+      else if (lastLoss < 0.15)  lvlNote = '\u26a0\ufe0f \u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u8f83\u9ad8\uff0c\u6a21\u578b\u53ef\u80fd\u6b20\u62df\u5408\u3002';
+      else                       lvlNote = '\u274c \u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u8fc7\u9ad8\uff0c\u8bad\u7ec3\u6548\u679c\u5f88\u53ef\u80fd\u4e0d\u53ef\u7528\u3002';
+      lossDetail = lossDetail + ' ' + lvlNote;
+    }
+
+    score = Math.max(score, 0);
+    if (score >= 6) {
+      overallRating = '\ud83c\udfc6 \u4f18\u79c0 \u2014 Loss \u6301\u7eed\u6536\u655b\u4e14\u7edd\u5bf9\u503c\u4f4e\uff0c\u8bad\u7ec3\u5145\u5206\u5b8c\u6210';
+      overallColor = '#22c55e';
+    } else if (score >= 4) {
+      overallRating = '\u2705 \u826f\u597d \u2014 \u57fa\u672c\u6536\u655b\uff0c\u7ed3\u679c\u53ef\u7528';
+      overallColor = '#22c55e';
+    } else if (score >= 3) {
+      overallRating = '\ud83d\udcca \u4e00\u822c \u2014 \u6709\u6536\u655b\u8d8b\u52bf\uff0c\u5efa\u8bae\u9002\u5f53\u589e\u52a0\u8bad\u7ec3\u6b65\u6570\u6216\u8c03\u6574\u5b66\u4e60\u7387';
+      overallColor = '#3b82f6';
+    } else if (score >= 1) {
+      overallRating = '\u26a0\ufe0f \u6b20\u4f73 \u2014 \u6536\u655b\u4e0d\u660e\u663e\u6216 Loss \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u5b66\u4e60\u7387\u3001\u6570\u636e\u96c6\u548c\u8bad\u7ec3\u53c2\u6570';
+      overallColor = '#f59e0b';
+    } else {
+      overallRating = '\u274c \u5f02\u5e38 \u2014 Loss \u672a\u6536\u655b\u6216\u8fc7\u9ad8\uff0c\u8bad\u7ec3\u7ed3\u679c\u53ef\u80fd\u4e0d\u53ef\u7528';
+      overallColor = '#ef4444';
+    }
+  }
+
+
+  var elapsed = typeof elapsedMs === 'number' ? elapsedMs : 0;
+  var elapsedStr = elapsed > 0 ? formatDuration(elapsed) : '\u2014';
+
+  return {
+    _v: 2,
+    avgSpeed, speedRating: speedRating, speedColor: speedColor,
+    lossTrend: lossTrend, lossColor: lossColor, lossDetail: lossDetail,
+    firstLoss: firstLoss, lastLoss: lastLoss, minLoss: minLoss, lossDelta: lossDelta,
+    epochDone: epochDone, epochTotal: epochTotal,
+    totalSteps: m.totalSteps, lastStep: m.lastStep,
+    sampleCount: m.losses.length,
+    elapsed: elapsed, elapsedStr: elapsedStr,
+    overallRating: overallRating, overallColor: overallColor,
+    lossLevelTag: lossLevelTag, lossLevelColor: lossLevelColor,
+  };
+}
+
+/** Generate summary from live state.trainingMetrics */
+function generateTrainingSummary() {
+  var m = state.trainingMetrics;
+  var elapsed = m.startTime ? Date.now() - m.startTime : 0;
+  return buildSummaryFromMetrics(m, elapsed);
+}
+
+/** Generate summary from full log lines (for historical tasks) */
+function generateSummaryFromTaskLog(lines) {
+  var m = parseLinesIntoMetrics(lines);
+  return buildSummaryFromMetrics(m, 0);
+}
+
+/** Render a summary object into HTML card */
+function renderSummaryCard(s) {
+  if (!s) return '';
+  var lossRange = (s.firstLoss > 0 ? s.firstLoss.toFixed(4) : '\u2014')
+    + ' \u2192 ' + (s.lastLoss > 0 ? s.lastLoss.toFixed(4) : '\u2014');
+  if (s.minLoss < Infinity && s.minLoss > 0) {
+    lossRange += '\uff08\u6700\u4f4e ' + s.minLoss.toFixed(4) + '\uff09';
+  }
+  return '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">'
+    + '<div class="status-card" style="flex:1;min-width:150px;">'
+    + '<div class="status-label">\u5e73\u5747\u901f\u5ea6</div>'
+    + '<div class="status-value" style="color:' + s.speedColor + ';">' + (s.avgSpeed > 0 ? s.avgSpeed.toFixed(2) + ' it/s' : '\u2014') + '</div>'
+    + '<div class="status-sub">' + s.speedRating + '</div>'
+    + '</div>'
+    + '<div class="status-card" style="flex:1;min-width:150px;">'
+    + '<div class="status-label">Loss \u8d8b\u52bf</div>'
+    + '<div class="status-value" style="color:' + s.lossColor + ';">' + s.lossTrend + '</div>'
+    + '<div class="status-sub">' + lossRange + '</div>'
+    + '</div>'
+    + '<div class="status-card" style="flex:1;min-width:150px;">'
+    + '<div class="status-label">\u8bad\u7ec3\u8fdb\u5ea6</div>'
+    + '<div class="status-value" style="color:var(--accent);">' + (s.epochDone > 0 ? 'Epoch ' + s.epochDone + '/' + s.epochTotal : 'Step ' + s.lastStep + '/' + s.totalSteps) + '</div>'
+    + '<div class="status-sub">' + (s.elapsedStr !== '\u2014' ? '\u8bad\u7ec3\u65f6\u957f\uff1a' + s.elapsedStr + '\u3000' : '') + '\u91c7\u6837\u70b9\uff1a' + s.sampleCount + '</div>'
+    + '</div>'
+    + '<div class="status-card" style="flex:1;min-width:150px;">'
+    + '<div class="status-label">\u6700\u7ec8 Loss</div>'
+    + '<div class="status-value" style="color:' + (s.lossLevelColor || 'var(--text-dim)') + ';">' + (s.lastLoss > 0 ? s.lastLoss.toFixed(4) : '\u2014') + '</div>'
+    + '<div class="status-sub">' + (s.lossLevelTag || '\u2014') + '</div>'
+    + '</div>'
+    + '</div>'
+    + '<div style="margin-top:8px;">'
+    + '<div class="status-card" style="border-left:3px solid ' + s.overallColor + ';">'
+    + '<div class="status-label">\u7efc\u5408\u8bc4\u4ef7</div>'
+    + '<div style="font-size:0.95rem;font-weight:700;color:' + s.overallColor + ';margin:4px 0;">' + s.overallRating + '</div>'
+    + '<div class="status-sub">' + s.lossDetail + '</div>'
+    + '</div>'
+    + '</div>';
+}
+
+/** Render current training summary section */
+function renderTrainingSummaryHTML() {
+  var s = state.trainingSummary;
+  if (!s) return '';
+  return '<section class="form-section">'
+    + '<header class="section-header"><h3>\ud83d\udcca \u8bad\u7ec3\u603b\u7ed3</h3></header>'
+    + '<div class="section-content" style="display:block;">' + renderSummaryCard(s) + '</div>'
+    + '</section>';
+}
+
+/** Save task summary to session cache */
+function saveTaskSummary(taskId, summary) {
+  state.taskSummaries[taskId] = summary;
+  try {
+    var cache = JSON.parse(sessionStorage.getItem('sd-rescripts:task-summaries') || '{}');
+    cache[taskId] = summary;
+    sessionStorage.setItem('sd-rescripts:task-summaries', JSON.stringify(cache));
+  } catch (e) { /* ignore */ }
+}
+
+/** Load task summaries from session cache (called on init) */
+function loadTaskSummariesFromCache() {
+  var SUMMARY_VERSION = 2;
+  try {
+    var cache = JSON.parse(sessionStorage.getItem('sd-rescripts:task-summaries') || '{}');
+    var validCount = 0;
+    for (var id in cache) {
+      if (cache[id] && cache[id]._v >= SUMMARY_VERSION) {
+        state.taskSummaries[id] = cache[id];
+        validCount++;
+      }
+    }
+    if (validCount < Object.keys(cache).length) {
+      sessionStorage.setItem('sd-rescripts:task-summaries', JSON.stringify(state.taskSummaries));
+    }
+  } catch (e) { /* ignore */ }
+}
+
+/** Click handler: show/toggle summary for a historical task */
+window.showTaskSummary = async function(taskId) {
+  var panel = document.getElementById('task-summary-' + taskId);
+  if (!panel) return;
+
+  // Toggle: if already showing, collapse
+  if (panel.dataset.loaded === 'true') {
+    if (panel.style.display === 'none') {
+      panel.style.display = 'block';
+    } else {
+      panel.style.display = 'none';
+    }
+    return;
+  }
+
+  // Check cache first
+  if (state.taskSummaries[taskId] && state.taskSummaries[taskId]._v >= 2) {
+    panel.innerHTML = renderSummaryCard(state.taskSummaries[taskId]);
+    panel.style.display = 'block';
+    panel.dataset.loaded = 'true';
+    return;
+  }
+
+  // Fetch log and generate on-the-fly
+  panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">\u2693 \u6b63\u5728\u5206\u6790\u8bad\u7ec3\u65e5\u5fd7...</span>';
+  panel.style.display = 'block';
+  try {
+    var resp = await api.getTaskOutput(taskId, 200);
+    var lines = (resp && resp.data && resp.data.lines) ? resp.data.lines : [];
+    if (lines.length === 0) {
+      panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">\u65e0\u8bad\u7ec3\u8f93\u51fa\u6570\u636e\uff0c\u65e0\u6cd5\u8bc4\u5206\u3002</span>';
+      panel.dataset.loaded = 'true';
+      return;
+    }
+    var summary = generateSummaryFromTaskLog(lines);
+    saveTaskSummary(taskId, summary);
+    panel.innerHTML = renderSummaryCard(summary);
+    panel.dataset.loaded = 'true';
+  } catch (e) {
+    panel.innerHTML = '<span style="color:#ef4444;font-size:0.82rem;">\u65e5\u5fd7\u83b7\u53d6\u5931\u8d25</span>';
+  }
+};
+
 
 function renderTraining(container) {
   const running = state.tasks.filter((t) => t.status === 'RUNNING');
@@ -889,6 +1307,8 @@ function renderTraining(container) {
         </div>
       </section>
 
+      ${renderTrainingSummaryHTML()}
+
       <!-- 实时输出 -->
       <section class="form-section">
         <header class="section-header">
@@ -909,18 +1329,28 @@ function renderTraining(container) {
       <section class="form-section">
         <header class="section-header"><h3>任务历史</h3></header>
         <div class="section-content" style="display:block;">
-          ${state.tasks.length === 0 ? '<p style="color:var(--text-dim);">暂无任务记录</p>' : state.tasks.slice().reverse().map((task) => {
-            const statusMap = { RUNNING: '🔄 运行中', FINISHED: '✅ 已完成', TERMINATED: '⛔ 已终止', CREATED: '⏳ 已创建' };
+          ${state.tasks.length === 0 ? '<p style="color:var(--text-dim);">\u6682\u65e0\u4efb\u52a1\u8bb0\u5f55</p>' : state.tasks.slice().reverse().map((task) => {
+            const statusMap = { RUNNING: '\ud83d\udd04 \u8fd0\u884c\u4e2d', FINISHED: '\u2705 \u5df2\u5b8c\u6210', TERMINATED: '\u26d4 \u5df2\u7ec8\u6b62', CREATED: '\u23f3 \u5df2\u521b\u5efa' };
             const statusColor = { RUNNING: '#f59e0b', FINISHED: '#22c55e', TERMINATED: '#ef4444', CREATED: 'var(--text-dim)' };
+            const hasCached = !!(state.taskSummaries[task.id] && state.taskSummaries[task.id]._v >= 2);
+            const canScore = task.status === 'FINISHED' || task.status === 'TERMINATED';
+            const badge = hasCached ? '\ud83d\udcca' : (canScore ? '\u70b9\u51fb\u8bc4\u5206' : '');
             return `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
-                <div>
-                  <code style="font-size:0.78rem;color:var(--text-dim);">${escapeHtml(task.id)}</code>
+              <div style="border-bottom:1px solid var(--border);padding:6px 0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;${canScore ? 'cursor:pointer;' : ''}" ${canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : ''}>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <code style="font-size:0.78rem;color:var(--text-dim);">${escapeHtml(task.id)}</code>
+                    ${badge ? '<span style="font-size:0.72rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : ''}
+                  </div>
+                  <span style="color:${statusColor[task.status] || 'var(--text-dim)'};font-weight:600;font-size:0.85rem;">${statusMap[task.status] || task.status}</span>
+          </div>
+                <div id="task-summary-${task.id}" style="display:${hasCached ? 'block' : 'none'};" data-loaded="${hasCached ? 'true' : 'false'}">
+                  ${hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : ''}
                 </div>
-                <span style="color:${statusColor[task.status] || 'var(--text-dim)'};font-weight:600;font-size:0.85rem;">${statusMap[task.status] || task.status}</span>
               </div>
             `;
           }).join('')}
+
         </div>
       </section>
     </div>
@@ -956,6 +1386,11 @@ window.refreshTrainingLog = async () => {
     const lines = resp?.data?.lines || [];
     const logEl = $('#training-log-container');
     if (!logEl) return;
+
+    // Collect metrics from each poll
+    if (lines.length > 0 && state.tasks.some((t) => t.status === 'RUNNING')) {
+      collectTrainingMetrics(lines);
+    }
 
     if (lines.length === 0) {
       logEl.innerHTML = '<span style="color:var(--text-dim);">等待训练输出...</span>';
@@ -2856,6 +3291,7 @@ function validateConfigConflicts() {
 window.executeTraining = async () => {
   state.loading.run = true;
   syncFooterAction();
+  resetTrainingMetrics();
 
   const clientErrors = validateConfigConflicts();
   if (clientErrors.length > 0) {
