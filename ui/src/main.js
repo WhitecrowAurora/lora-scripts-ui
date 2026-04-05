@@ -107,9 +107,11 @@ function init() {
   setupFieldMenus();
   setupImportConfig();
   setupJsonPanel();
-  renderView(state.activeModule);
-  loadBootstrapData();
+  loadBootstrapData().then(function() {
+    renderView(state.activeModule);
+  });
   loadTaskSummariesFromCache();
+  renderView(state.activeModule);
   startTaskPolling();
 }
 
@@ -1362,13 +1364,12 @@ function renderPreflightPanel() {
   tableHtml += folders.map(function(f, idx) {
     var tag = f.name.replace(/^\d+_/, '');
     var repeats = f.repeats || 0;
-    var warn = f.image_count < 50;
     var fPath = f.path || '';
-    return '<div class="train-pf-table-row' + (warn ? ' warn' : '') + '" style="cursor:pointer;" onclick="toggleFolderPreview(' + idx + ',this)">'
-      + '<div class="train-pf-folder-name">' + _ico(warn ? 'alert-tri' : 'folder', 14) + ' ' + escapeHtml(f.name) + '</div>'
+    return '<div class="train-pf-table-row" style="cursor:pointer;" onclick="toggleFolderPreview(' + idx + ',this)">'
+      + '<div class="train-pf-folder-name">' + _ico('folder', 14) + ' ' + escapeHtml(f.name) + '</div>'
       + '<div class="train-pf-tag" id="pf-tag-' + idx + '">' + escapeHtml(tag) + '</div>'
       + '<div style="text-align:right;font-variant-numeric:tabular-nums;">' + repeats + '</div>'
-      + '<div style="text-align:right;font-variant-numeric:tabular-nums;' + (warn ? 'color:#f59e0b;' : '') + '">' + f.image_count + '</div>'
+      + '<div style="text-align:right;font-variant-numeric:tabular-nums;">' + f.image_count + '</div>'
       + '</div>'
       + '<div class="train-pf-thumbs" id="pf-thumbs-' + idx + '" data-folder="' + escapeHtml(fPath) + '" style="display:none;"></div>';
   }).join('');
@@ -3075,9 +3076,47 @@ window.updateConfigValue = (key, rawValue) => {
   syncConfigState();
 };
 
+/* ---- Picker overlay helpers ---- */
+function _showPickerOverlay() {
+  var ol = document.createElement('div');
+  ol.className = 'picker-overlay';
+  ol.id = 'picker-overlay';
+  ol.innerHTML = '<div class="picker-overlay-box">'
+    + '<div class="picker-ol-icon">' + _ico('folder', 32) + '</div>'
+    + '<div class="picker-ol-title">\u6587\u4ef6\u9009\u62e9\u5668\u5df2\u6253\u5f00</div>'
+    + '<div class="picker-ol-hint">\u8bf7\u5728\u5f39\u51fa\u7684\u7cfb\u7edf\u5bf9\u8bdd\u6846\u4e2d\u9009\u62e9\u6587\u4ef6\u6216\u6587\u4ef6\u5939\u3002<br>'
+    + '<strong style="color:var(--accent);">\u2b05 \u5982\u672a\u770b\u5230\u5bf9\u8bdd\u6846\uff0c\u8bf7\u70b9\u51fb\u4efb\u52a1\u680f\u4e2d\u95ea\u70c1\u7684\u7a97\u53e3</strong></div>'
+    + '</div>';
+  document.body.appendChild(ol);
+  // Save original title & change to taskbar hint
+  window._pickerPrevTitle = document.title;
+  document.title = '\u2b05 \u8bf7\u67e5\u770b\u4efb\u52a1\u680f\u7684\u6587\u4ef6\u9009\u62e9\u5668';
+  // Repeatedly blur for ~2s to cover dialog spawn delay
+  var n = 0;
+  try { window.blur(); } catch(_e) {}
+  window._pickerBlurTimer = setInterval(function() {
+    try { window.blur(); } catch(_e) {}
+    if (++n >= 8) clearInterval(window._pickerBlurTimer);
+  }, 250);
+}
+function _hidePickerOverlay() {
+  if (window._pickerBlurTimer) {
+    clearInterval(window._pickerBlurTimer);
+    window._pickerBlurTimer = null;
+  }
+  var ol = $('#picker-overlay');
+  if (ol) ol.remove();
+  // Restore title & re-focus browser
+  document.title = window._pickerPrevTitle || 'SD-reScripts';
+  delete window._pickerPrevTitle;
+  try { window.focus(); } catch(_e) {}
+}
+
 window.pickPathForInput = async (inputId, pickerType) => {
+  _showPickerOverlay();
   try {
     const response = await api.pickFile(pickerType);
+    _hidePickerOverlay();
     if (response.status !== 'success') {
       showToast(response.message || '选择路径失败。');
       return;
@@ -3088,14 +3127,17 @@ window.pickPathForInput = async (inputId, pickerType) => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
   } catch (error) {
+    _hidePickerOverlay();
     showToast(error.message || '选择路径失败。');
   }
 };
 
 
 window.pickPath = async (key, pickerType) => {
+  _showPickerOverlay();
   try {
     const response = await api.pickFile(pickerType);
+    _hidePickerOverlay();
     if (response.status !== 'success') {
       showToast(response.message || '选择路径失败。');
       return;
@@ -3105,6 +3147,7 @@ window.pickPath = async (key, pickerType) => {
       renderView('config');
     }
   } catch (error) {
+    _hidePickerOverlay();
     showToast(error.message || '选择路径失败。');
   }
 };

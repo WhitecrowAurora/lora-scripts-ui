@@ -2431,3 +2431,31 @@ body.compact-layout .config-group.row {
 .log-line { min-height: 1.4em; }
 .log-line:hover { background: rgba(255,255,255,0.02); }
 .train-terminal { background: #080a0e !important; }
+
+
+/* Picker overlay — shown while server-side file dialog is open */
+.picker-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
+  animation: pickerFadeIn .2s ease;
+}
+@keyframes pickerFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.picker-overlay-box {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px 36px;
+  text-align: center; max-width: 340px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.picker-overlay-box .picker-ol-icon {
+  font-size: 2rem; margin-bottom: 10px; opacity: .85;
+}
+.picker-overlay-box .picker-ol-title {
+  font-size: 0.95rem; font-weight: 600;
+  color: var(--text-main); margin-bottom: 6px;
+}
+.picker-overlay-box .picker-ol-hint {
+  font-size: 0.78rem; color: var(--text-dim);
+  line-height: 1.5;
+}
