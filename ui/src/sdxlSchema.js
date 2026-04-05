@@ -160,7 +160,7 @@ const ds = (reso, bucketMax = 2048, bucketStep = 64, extra = []) => [
 // LoRA network fields helper
 const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = []) => [
   { key: 'network_module', type: 'select', label: '训练网络模块', desc: '训练网络模块', defaultValue: mod, options: [mod, ...(mod.includes('lycoris') ? [] : ['lycoris.kohya'])] },
-  { key: 'network_weights', type: 'file', pickerType: 'model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
+  { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
   { key: 'network_dim', type: 'slider', label: '网络维度', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: dim, min: 1, max: maxDim, step: 1 },
   { key: 'network_alpha', type: 'slider', label: '网络 Alpha', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1。使用较小的 alpha 需要提升学习率', defaultValue: alpha, min: 1, max: maxDim, step: 1 },
   { key: 'network_dropout', type: 'number', label: '网络 Dropout', desc: 'dropout 概率（与 lycoris 不兼容，需要用 lycoris 自带的）', defaultValue: 0, min: 0, step: 0.01 },
@@ -374,7 +374,7 @@ const ANIMA_LORA_SECTIONS = [
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
   sec('network-settings', 'network', '网络设置', 'LoRA / LoKr 模式。', [
     { key: 'lora_type', type: 'select', label: '适配器类型', desc: '适配器类型：lora 或 lokr', defaultValue: 'lora', options: ['lora', 'lokr'] },
-    { key: 'network_weights', type: 'file', pickerType: 'model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'network_dim', type: 'slider', label: '网络维度', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'network_alpha', type: 'slider', label: '网络 Alpha', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'dim_from_weights', type: 'boolean', label: '从权重推断 Dim', desc: '从已有 network_weights 自动推断 rank / dim', defaultValue: false },

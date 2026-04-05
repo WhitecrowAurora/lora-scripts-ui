@@ -183,7 +183,7 @@ function canUseBuiltinPicker(field) {
   if (!field) {
     return false;
   }
-  if (field.pickerType === 'model-file' || field.pickerType === 'output-folder') {
+  if (field.pickerType === 'model-file' || field.pickerType === 'output-model-file' || field.pickerType === 'output-folder') {
     return true;
   }
   return ['train_data_dir', 'reg_data_dir', 'resume'].includes(field.key);
@@ -1209,8 +1209,10 @@ function renderSummaryCard(s) {
 function renderTrainingSummaryHTML() {
   var s = state.trainingSummary;
   if (!s) return '';
-  return '<section class="form-section">'
-    + '<header class="section-header"><h3>\ud83d\udcca \u8bad\u7ec3\u603b\u7ed3</h3></header>'
+  return '<section class="form-section" id="training-summary-section">'
+    + '<header class="section-header" style="display:flex;justify-content:space-between;align-items:center;">'
+    + '<h3>\ud83d\udcca \u8bad\u7ec3\u603b\u7ed3</h3>'
+    + '<button type="button" onclick="dismissTrainingSummary()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:1.1rem;padding:2px 6px;line-height:1;" title="\u5173\u95ed">\u00d7</button></header>'
     + '<div class="section-content" style="display:block;">' + renderSummaryCard(s) + '</div>'
     + '</section>';
 }
@@ -1242,6 +1244,14 @@ function loadTaskSummariesFromCache() {
     }
   } catch (e) { /* ignore */ }
 }
+
+/** Dismiss the training summary card */
+window.dismissTrainingSummary = function() {
+  state.trainingSummary = null;
+  var el = document.getElementById('training-summary-section');
+  if (el) el.remove();
+};
+
 
 /** Click handler: show/toggle summary for a historical task */
 window.showTaskSummary = async function(taskId) {
@@ -1703,62 +1713,62 @@ function startTrainingLogPolling() {
   }, 2000);
 }
 
-/** Parse ANSI escape codes in log lines and return colorized HTML */
+/** Parse ANSI escape codes + keyword-based semantic coloring for log lines */
 function _renderLogLines(lines) {
+  var ANSI_COLORS = {
+    '30': '#666', '31': '#ef4444', '32': '#22c55e', '33': '#f59e0b',
+    '34': '#3b82f6', '35': '#a855f7', '36': '#06b6d4', '37': '#e0e6ed',
+    '90': '#64748b', '91': '#ff6b6b', '92': '#4ade80', '93': '#fbbf24',
+    '94': '#60a5fa', '95': '#c084fc', '96': '#22d3ee', '97': '#f8fafc',
+  };
   return lines.map(function(line) {
-    // Strip \r leftover
     line = line.replace(/\r/g, '');
-    // ANSI color map: \x1b[Nm
-    var COLORS = {
-      '30': '#666', '31': '#ef4444', '32': '#22c55e', '33': '#f59e0b',
-      '34': '#3b82f6', '35': '#a855f7', '36': '#06b6d4', '37': '#e0e6ed',
-      '90': '#64748b', '91': '#ff6b6b', '92': '#4ade80', '93': '#fbbf24',
-      '94': '#60a5fa', '95': '#c084fc', '96': '#22d3ee', '97': '#f8fafc',
-    };
-    // Replace ANSI sequences
-    var html = escapeHtml(line);
-    // Match \x1b[ ... m sequences (already escaped as text, won't appear after escapeHtml)
-    // Actually the raw line from backend contains literal ESC chars
-    // We need to process BEFORE escapeHtml
-    html = line;
-    var result = '';
-    var i = 0;
-    var openSpan = false;
-    while (i < html.length) {
-      if (html.charCodeAt(i) === 27 && html[i+1] === '[') {
-        // Find 'm'
-        var j = i + 2;
-        while (j < html.length && html[j] !== 'm') j++;
-        if (j < html.length) {
-          var codes = html.substring(i+2, j).split(';');
-          if (openSpan) { result += '</span>'; openSpan = false; }
-          for (var ci = 0; ci < codes.length; ci++) {
-            var c = codes[ci];
-            if (c === '0' || c === '') {
-              // Reset
-            } else if (c === '1') {
-              result += '<span style="font-weight:700;">'; openSpan = true;
-            } else if (COLORS[c]) {
-              result += '<span style="color:' + COLORS[c] + ';">'; openSpan = true;
+    var hasAnsi = line.indexOf('\x1b[') !== -1;
+
+    // --- ANSI parsing (when real escape codes are present) ---
+    if (hasAnsi) {
+      var result = '', i = 0, openSpan = false;
+      while (i < line.length) {
+        if (line.charCodeAt(i) === 27 && line[i+1] === '[') {
+          var j = i + 2;
+          while (j < line.length && line[j] !== 'm') j++;
+          if (j < line.length) {
+            var codes = line.substring(i+2, j).split(';');
+            if (openSpan) { result += '</span>'; openSpan = false; }
+            for (var ci = 0; ci < codes.length; ci++) {
+              var c = codes[ci];
+              if (c === '0' || c === '') { /* reset */ }
+              else if (c === '1') { result += '<span style="font-weight:700;">'; openSpan = true; }
+              else if (ANSI_COLORS[c]) { result += '<span style="color:' + ANSI_COLORS[c] + ';">'; openSpan = true; }
             }
+            i = j + 1; continue;
           }
-          i = j + 1;
-          continue;
         }
+        var ch = line[i];
+        if (ch === '<') result += '&lt;'; else if (ch === '>') result += '&gt;';
+        else if (ch === '&') result += '&amp;'; else if (ch === '"') result += '&quot;';
+        else result += ch;
+        i++;
       }
-      // Escape HTML char
-      var ch = html[i];
-      if (ch === '<') result += '&lt;';
-      else if (ch === '>') result += '&gt;';
-      else if (ch === '&') result += '&amp;';
-      else if (ch === '"') result += '&quot;';
-      else result += ch;
-      i++;
+      if (openSpan) result += '</span>';
+      return '<div class="log-line">' + result + '</div>';
     }
-    if (openSpan) result += '</span>';
-    return '<div class="log-line">' + result + '</div>';
+
+    // --- Keyword-based semantic coloring (no ANSI codes in output) ---
+    var safe = escapeHtml(line);
+    var color = '';
+    if (/\b(error|exception|traceback|failed|fatal|UnicodeDecodeError)\b/i.test(line)) color = '#ef4444';
+    else if (/\b(warning|warn|deprecated)\b/i.test(line)) color = '#f59e0b';
+    else if (/\b(saved|saving|checkpoint|completed|finished|done)\b/i.test(line)) color = '#22c55e';
+    else if (/\bsteps?\b.*\bLoss\b|\bloss[=:]\s*/i.test(line)) color = '#06b6d4';
+    else if (/epoch\s+\d|^\s*\d+%\|/i.test(line)) color = '#60a5fa';
+    else if (/^(INFO|DEBUG)\b|\bINFO\b|\bDEBUG\b/i.test(line)) color = '#64748b';
+
+    if (color) safe = '<span style="color:' + color + ';">' + safe + '</span>';
+    return '<div class="log-line">' + safe + '</div>';
   }).join('');
 }
+
 
 /** Load all remaining thumbnails for a folder */
 window.loadMoreThumbs = async function(idx, total) {
@@ -3386,6 +3396,7 @@ window.selectBuiltinPickerItem = (item) => {
   state.builtinPicker.open = false;
   renderBuiltinPickerModal();
   window.updateConfigValue(state.builtinPicker.fieldKey, fullPath);
+  if (state.activeModule === 'config') renderView('config');
 };
 
 function setupFieldMenus() {

@@ -55,7 +55,34 @@ export const api = {
   },
 
   getBuiltinPicker(type) {
-    return request(`/api/builtin_picker?picker_type=${encodeURIComponent(type)}`);
+    // Map to the original /api/get_files endpoint (no backend changes needed)
+    var getFilesMap = {
+      'model-file': 'model-file',
+      'output-model-file': 'model-saved-file',
+      'output-folder': 'train-dir',
+    };
+    var mapped = getFilesMap[type];
+    if (!mapped) {
+      return request('/api/builtin_picker?picker_type=' + encodeURIComponent(type));
+    }
+    return request('/api/get_files?pick_type=' + encodeURIComponent(mapped)).then(function(resp) {
+      var files = (resp && resp.data && resp.data.files) || [];
+      var rootLabel = '';
+      if (files.length > 0) {
+        // Compute common root directory from file paths
+        var paths = files.map(function(f) { return (f.path || '').replaceAll('\\', '/'); });
+        rootLabel = paths.reduce(function(a, b) {
+          while (b.indexOf(a + '/') !== 0 && a) a = a.substring(0, a.lastIndexOf('/'));
+          return a;
+        });
+      }
+      var prefix = rootLabel ? rootLabel + '/' : '';
+      var items = files.map(function(f) {
+        var p = (f.path || '').replaceAll('\\', '/');
+        return prefix && p.indexOf(prefix) === 0 ? p.substring(prefix.length) : f.name;
+      });
+      return { status: 'success', data: { rootLabel: rootLabel, items: items } };
+    });
   },
 
   saveConfig(name, config) {
