@@ -3,15 +3,23 @@ const JSON_HEADERS = {
 };
 
 async function request(path, options = {}) {
-  const response = await fetch(path, {
-    headers: options.body ? JSON_HEADERS : undefined,
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      headers: options.body ? JSON_HEADERS : undefined,
+      ...options,
+    });
+  } catch (networkError) {
+    throw new Error('无法连接到后端服务，请确认后端 (gui.py) 已启动。');
+  }
 
   let payload = null;
   try {
     payload = await response.json();
   } catch (error) {
+    if (response.status === 502) {
+      throw new Error('后端服务未启动 (127.0.0.1:28000)，请先通过启动脚本或 gui.py 启动后端。');
+    }
     throw new Error(`接口返回的 JSON 无效：${path}`);
   }
 
@@ -48,6 +56,14 @@ export const api = {
 
   terminateTask(taskId) {
     return request(`/api/tasks/terminate/${taskId}`);
+  },
+
+  deleteTask(taskId) {
+    return request(`/api/tasks/${taskId}`, { method: 'DELETE' });
+  },
+
+  deleteAllTasks() {
+    return request('/api/tasks', { method: 'DELETE' });
   },
 
   pickFile(type) {

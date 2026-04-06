@@ -87,6 +87,8 @@ const S_TRAIN = (epochs = 10) => [
 ];
 const S_PREVIEW = [
   { key: 'enable_preview', type: 'boolean', label: '启用预览图', desc: '启用训练预览图', defaultValue: false },
+  { key: 'sample_every_n_epochs', type: 'number', label: '每 N 轮生成预览', desc: '每训练 N 个 epoch 生成一次预览图。留空则仅在 epoch 结束时按默认频率生成', defaultValue: '', min: 1, visibleWhen: when('enable_preview', true) },
+  { key: 'sample_every_n_steps', type: 'number', label: '每 N 步生成预览', desc: '每训练 N 步生成一次预览图（优先于按 epoch）。留空不启用', defaultValue: '', min: 1, visibleWhen: when('enable_preview', true) },
   { key: 'randomly_choice_prompt', type: 'boolean', label: '随机选择提示词', desc: '随机选择预览图 Prompt', defaultValue: false, visibleWhen: when('enable_preview', true) },
   { key: 'prompt_file', type: 'file', pickerType: 'text-file', label: '提示词文件路径', desc: '预览图 Prompt 文件路径。填写后将采用文件内的 prompt。', defaultValue: '', visibleWhen: when('enable_preview', true) },
   { key: 'positive_prompts', type: 'textarea', label: '正向提示词', desc: '正向提示词', defaultValue: 'masterpiece, best quality, 1girl, solo', visibleWhen: when('enable_preview', true) },
@@ -95,6 +97,7 @@ const S_PREVIEW = [
   { key: 'sample_height', type: 'number', label: '预览图高度', desc: '预览图高', defaultValue: 512, min: 64, visibleWhen: when('enable_preview', true) },
   { key: 'sample_cfg', type: 'number', label: 'CFG 系数', desc: 'CFG Scale', defaultValue: 7, min: 1, max: 30, visibleWhen: when('enable_preview', true) },
   { key: 'sample_steps', type: 'number', label: '采样步数', desc: '迭代步数', defaultValue: 24, min: 1, max: 300, visibleWhen: when('enable_preview', true) },
+  { key: 'sample_seed', type: 'number', label: '预览图种子', desc: '预览图随机种子。0 或留空表示每次随机', defaultValue: '', min: 0, visibleWhen: when('enable_preview', true) },
   { key: 'sample_sampler', type: 'select', label: '采样器', desc: '生成预览图所用采样器', defaultValue: 'euler_a', options: ['ddim', 'pndm', 'lms', 'euler', 'euler_a', 'heun', 'dpm_2', 'dpm_2_a', 'dpmsolver', 'dpmsolver++'], visibleWhen: when('enable_preview', true) },
   { key: 'log_with', type: 'select', label: '日志模块', desc: '日志模块', defaultValue: 'tensorboard', options: ['tensorboard', 'wandb'] },
   { key: 'logging_dir', type: 'folder', pickerType: 'folder', label: '日志保存文件夹', desc: '日志保存文件夹', defaultValue: './logs' },
@@ -134,6 +137,7 @@ const S_SPEED_SD15 = [
   { key: 'cache_latents_to_disk', type: 'boolean', label: '缓存 Latent 到磁盘', desc: '缓存图像 latent 到磁盘', defaultValue: true },
 ];
 const S_ADV = [
+  { key: 'gpu_ids', type: 'string', label: '指定显卡', desc: '指定参与训练的 GPU 编号，多卡用逗号分隔（如 0,1）。留空使用默认主显卡。可在启动日志中查看可用 GPU 编号', defaultValue: '' },
   { key: 'noise_offset', type: 'number', label: '噪声偏移', desc: '在训练中添加噪声偏移来改良生成非常暗或者非常亮的图像，如果启用推荐为 0.1', defaultValue: '', step: 0.01 },
   { key: 'seed', type: 'number', label: '随机种子', desc: '随机种子', defaultValue: 1337 },
   { key: 'clip_skip', type: 'slider', label: 'CLIP 跳层', desc: 'CLIP 跳过层数 *玄学*', defaultValue: 2, min: 0, max: 12, step: 1 },
@@ -759,5 +763,49 @@ export function buildRunConfig(config, typeId) {
     }
   }
   payload.model_train_type = tid;
+
+  // ── LyCORIS network_args 转换 ──
+  // 后端 sd-scripts 要求 lycoris.kohya 的参数通过 network_args 数组传入，
+  // 如 ["algo=locon", "conv_dim=16", ...]。UI 字段是独立的 key，需要在此组装。
+  // Anima 类型由后端 apply_anima_ui_overrides 自行处理，这里跳过。
+  if (payload.network_module === 'lycoris.kohya' && !tid.startsWith('anima')) {
+    const networkArgs = [];
+    const algo = String(payload.lycoris_algo || 'locon').trim().toLowerCase();
+    networkArgs.push('algo=' + algo);
+
+    if (payload.conv_dim != null && String(payload.conv_dim) !== '') {
+      networkArgs.push('conv_dim=' + payload.conv_dim);
+    }
+    if (payload.conv_alpha != null && String(payload.conv_alpha) !== '') {
+      networkArgs.push('conv_alpha=' + payload.conv_alpha);
+    }
+    if (payload.dropout != null && Number(payload.dropout) > 0) {
+      networkArgs.push('dropout=' + payload.dropout);
+    }
+    if (payload.train_norm != null) {
+      networkArgs.push('train_norm=' + (payload.train_norm ? 'True' : 'False'));
+    }
+    if (algo === 'lokr' && payload.lokr_factor != null) {
+      networkArgs.push('factor=' + payload.lokr_factor);
+    }
+    if (payload.dora_wd) {
+      networkArgs.push('dora_wd=True');
+    }
+    if (payload.scale_weight_norms != null && String(payload.scale_weight_norms) !== '') {
+      networkArgs.push('scale_weight_norms=' + payload.scale_weight_norms);
+    }
+
+    payload.network_args = networkArgs;
+    // 清理原始 UI 字段，避免 sd-scripts 不认识这些 key 报错或误用
+    delete payload.lycoris_algo;
+    delete payload.conv_dim;
+    delete payload.conv_alpha;
+    delete payload.dropout;
+    delete payload.train_norm;
+    delete payload.lokr_factor;
+    delete payload.dora_wd;
+    delete payload.enable_base_weight;
+  }
+
   return payload;
 }

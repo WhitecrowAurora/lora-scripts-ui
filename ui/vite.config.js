@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { spawn as nodeSpawn } from 'node:child_process';
+import http from 'node:http';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 
@@ -35,6 +37,10 @@ const builtinPickerRoots = {
   'model-saved-file': path.join(LORA_ROOT, 'output'),
 };
 const SAVED_PARAMS_DIR = path.join(uiRoot, 'saved_params');
+
+// ── 后端连通性状态（proxy configure 和 middleware 共享） ──
+let _backendAlive = null;   // null=未知  true=在线  false=离线
+let _backendCheckTime = 0;
 
 function readBuiltinPickerItems(pickerType) {
   const rootPath = builtinPickerRoots[pickerType] || builtinPickerRoots.file;
@@ -73,7 +79,26 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:28000',
-        changeOrigin: true
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, res) => {
+            _backendAlive = false;
+            _backendCheckTime = Date.now();
+            if (res && !res.headersSent && typeof res.writeHead === 'function') {
+              try {
+                res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({
+                  status: 'error',
+                  message: '后端服务未启动或无法连接 (127.0.0.1:28000)',
+                }));
+              } catch (_ignored) { /* response already closed */ }
+            }
+          });
+          proxy.on('proxyRes', () => {
+            _backendAlive = true;
+            _backendCheckTime = Date.now();
+          });
+        }
       }
     }
   },
@@ -82,6 +107,23 @@ export default defineConfig({
       name: 'builtin-picker-api',
       configureServer(server) {
         // ── Mock API：后端不存在的路由，在开发模式下本地模拟 ──
+
+        // ── 后端连通性探测工具 ──
+        let _backendChecking = false;
+        const BACKEND_CHECK_INTERVAL = 5000;
+
+        function probeBackend() {
+          if (_backendChecking) return;
+          _backendChecking = true;
+          _backendCheckTime = Date.now();
+          const req = http.get('http://127.0.0.1:28000/api/tasks', { timeout: 2000 }, (res) => {
+            res.resume();
+            _backendAlive = res.statusCode < 500;
+            _backendChecking = false;
+          });
+          req.on('error', () => { _backendAlive = false; _backendChecking = false; });
+          req.on('timeout', () => { req.destroy(); _backendAlive = false; _backendChecking = false; });
+        }
 
         // 训练预检（本地验证参数路径是否存在）
         server.middlewares.use('/api/train/preflight', (req, res, next) => {
@@ -374,7 +416,6 @@ export default defineConfig({
           req.on('end', () => {
             try {
               const params = JSON.parse(body);
-              const { execSync, spawn } = require('child_process');
               const scriptPath = path.join(LORA_ROOT, 'train', '训练图像缩放预处理工具.py');
               if (!fs.existsSync(scriptPath)) throw new Error('预处理脚本不存在。');
 
@@ -392,7 +433,7 @@ export default defineConfig({
               const pythonPath = path.join(LORA_ROOT, 'python', 'python.exe');
               const pythonBin = fs.existsSync(pythonPath) ? pythonPath : 'python';
 
-              const child = spawn(pythonBin, [scriptPath, ...args], {
+              const child = nodeSpawn(pythonBin, [scriptPath, ...args], {
                 cwd: LORA_ROOT,
                 detached: false,
                 stdio: 'ignore',
@@ -407,6 +448,110 @@ export default defineConfig({
               res.end(JSON.stringify({ status: 'error', message: error.message || '启动图像预处理失败。' }));
             }
           });
+        });
+
+        // ── 后端缺失端点的本地补丁（后端更新后前端仍需要的接口） ──
+
+        // 任务日志输出 — 尝试转发后端，失败则返回空
+        server.middlewares.use('/api/task_output/', (req, res, next) => {
+          const proxyReq = http.get('http://127.0.0.1:28000' + req.url, { timeout: 2000 }, (proxyRes) => {
+            if (proxyRes.statusCode < 400) {
+              res.writeHead(proxyRes.statusCode, proxyRes.headers);
+              proxyRes.pipe(res);
+            } else {
+              proxyRes.resume();
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ status: 'success', data: { lines: [], total: 0 } }));
+            }
+          });
+          proxyReq.on('error', () => {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'success', data: { lines: [], total: 0 } }));
+          });
+          proxyReq.on('timeout', () => {
+            proxyReq.destroy();
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'success', data: { lines: [], total: 0 } }));
+          });
+        });
+
+        // GPU 实时状态 — 尝试转发后端，失败则返回不可用
+        server.middlewares.use('/api/gpu_status', (req, res, next) => {
+          const proxyReq = http.get('http://127.0.0.1:28000/api/gpu_status', { timeout: 2000 }, (proxyRes) => {
+            if (proxyRes.statusCode < 400) {
+              res.writeHead(proxyRes.statusCode, proxyRes.headers);
+              proxyRes.pipe(res);
+            } else {
+              proxyRes.resume();
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ status: 'success', data: { available: false } }));
+            }
+          });
+          proxyReq.on('error', () => {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'success', data: { available: false } }));
+          });
+          proxyReq.on('timeout', () => {
+            proxyReq.destroy();
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'success', data: { available: false } }));
+          });
+        });
+
+        // 数据集图片列表 — 本地实现（读文件系统）
+        server.middlewares.use('/api/dataset/list_images', (req, res, next) => {
+          try {
+            const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+            const folder = requestUrl.searchParams.get('folder') || '';
+            const limit = parseInt(requestUrl.searchParams.get('limit') || '6');
+            if (!folder) throw new Error('folder is required');
+            const folderPath = path.resolve(folder);
+            if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+              throw new Error('Folder not found');
+            }
+            const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp'];
+            const allFiles = fs.readdirSync(folderPath)
+              .filter((f) => imgExts.includes(path.extname(f).toLowerCase()))
+              .sort((a, b) => a.localeCompare(b, 'zh-CN'));
+            const images = allFiles.slice(0, limit).map((f) => path.join(folderPath, f));
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'success', data: { images, total: allFiles.length, first_tag: '' } }));
+          } catch (error) {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'error', message: error.message || 'Failed to list images' }));
+          }
+        });
+
+        // 任务删除（单个 / 全部）— 前端自行处理状态，服务端只需返回成功
+        server.middlewares.use((req, res, next) => {
+          if (req.method !== 'DELETE' || !req.url || !req.url.startsWith('/api/tasks')) return next();
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ status: 'success', message: 'Removed', data: { deleted: 0 } }));
+        });
+
+
+
+        // ── 后端离线拦截中间件（放在所有本地 mock API 之后） ──
+        // 当后端确认离线时，直接返回 502 JSON，不触发 Vite proxy（避免报错刷屏）
+        server.middlewares.use((req, res, next) => {
+          if (!req.url || !req.url.startsWith('/api/')) return next();
+
+          const now = Date.now();
+          if (now - _backendCheckTime > BACKEND_CHECK_INTERVAL) {
+            probeBackend();
+          }
+
+          // 未知或在线 → 放行给 proxy
+          if (_backendAlive === null || _backendAlive === true) {
+            return next();
+          }
+
+          // 已确认离线 → 直接返回 502 JSON
+          res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({
+            status: 'error',
+            message: '后端服务未启动 (127.0.0.1:28000)，请先通过启动脚本或 gui.py 启动后端。',
+          }));
         });
       },
     },

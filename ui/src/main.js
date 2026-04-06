@@ -87,6 +87,7 @@ const state = {
   samplePrompt: null,
   runtimeError: '',
   lastMessage: '',
+  backendOffline: false,
   loading: {
     runtime: false,
     preflight: false,
@@ -235,17 +236,30 @@ async function loadBootstrapData() {
 }
 
 function startTaskPolling() {
-  setInterval(async () => {
+  let _pollFailCount = 0;
+  const BASE_INTERVAL = 3000;
+  const MAX_INTERVAL = 30000;
+
+  async function poll() {
     try {
       const hadRunning = state.tasks.some((t) => t.status === 'RUNNING');
       const response = await api.getTasks();
       state.tasks = response?.data?.tasks || [];
       const hasRunning = state.tasks.some((t) => t.status === 'RUNNING');
 
+      // 后端恢复在线
+      if (_pollFailCount > 0) {
+        _pollFailCount = 0;
+        state.backendOffline = false;
+        showToast('✓ 后端服务已连接');
+        renderTaskStatus();
+      }
+
       // 检测训练结束：之前有运行中的任务，现在没了
       if (hadRunning && !hasRunning) {
         const lastTask = state.tasks[state.tasks.length - 1];
-        const failed = lastTask && (lastTask.status === 'TERMINATED' || lastTask.returncode !== 0);
+        // returncode 可能不存在（后端 dump 不一定返回），用 status 兜底
+        const failed = lastTask && (lastTask.status === 'TERMINATED' || (lastTask.returncode != null && lastTask.returncode !== 0));
         state.trainingSummary = generateTrainingSummary();
         if (lastTask && state.trainingSummary) {
           saveTaskSummary(lastTask.id, state.trainingSummary);
@@ -277,10 +291,25 @@ function startTaskPolling() {
         }
       }
     } catch (error) {
-      console.warn('Task polling failed:', error);
+      _pollFailCount++;
+      if (_pollFailCount === 1) {
+        // 首次失败时提示（之后静默，避免刷屏）
+        console.warn('[TaskPoll] 后端不可达，轮询将自动降频重试。', error.message || '');
+        state.backendOffline = true;
+        renderTaskStatus();
+      }
     }
-  }, 3000);
+
+    // 退避策略：后端离线时逐步增大轮询间隔（3s → 6s → 12s → ... → 30s）
+    const delay = _pollFailCount > 0
+      ? Math.min(BASE_INTERVAL * Math.pow(2, _pollFailCount), MAX_INTERVAL)
+      : BASE_INTERVAL;
+    setTimeout(poll, delay);
+  }
+
+  setTimeout(poll, BASE_INTERVAL);
 }
+
 
 function renderView(module) {
   const container = $('.content-area');
@@ -725,6 +754,14 @@ function renderTaskStatus() {
   if (!taskCard || !taskSub) {
     return;
   }
+
+  // 后端离线提示
+  if (state.backendOffline) {
+    taskCard.textContent = '—';
+    taskSub.innerHTML = '<span style="color:#ef4444;">⚠ 后端未连接 (28000)</span>';
+    return;
+  }
+
   const running = state.tasks.filter((task) => task.status === 'RUNNING');
   taskCard.textContent = String(running.length);
   taskSub.textContent = running.length > 0 ? `有 ${running.length} 个任务运行中` : '空闲';
@@ -1666,25 +1703,40 @@ function renderTraining(container) {
   // Training summary + Task history (monitor only)
   + renderTrainingSummaryHTML()
   + '<div class="train-history-section">'
-  +   '<div class="train-panel-title" style="margin-bottom:8px;">' + _ico('clock', 14) + ' \u4efb\u52a1\u5386\u53f2</div>'
+  +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+  +     '<div class="train-panel-title">' + _ico('clock', 14) + ' \u4efb\u52a1\u5386\u53f2</div>'
+  +     (state.tasks.length > 0 ? '<button class="btn btn-outline btn-sm" style="font-size:0.7rem;padding:2px 8px;" type="button" onclick="clearAllTaskHistory()">' + _ico('trash-2', 12) + ' \u6e05\u7a7a\u5386\u53f2</button>' : '')
+  +   '</div>'
   +   (state.tasks.length === 0
       ? '<p style="color:var(--text-muted);font-size:0.78rem;">\u6682\u65e0\u4efb\u52a1\u8bb0\u5f55</p>'
       : state.tasks.slice().reverse().map(function(task) {
-    var statusMap = { RUNNING: _ico('loader') + ' \u8fd0\u884c\u4e2d', FINISHED: _ico('check-circle') + ' \u5df2\u5b8c\u6210', TERMINATED: _ico('stop-circle') + ' \u5df2\u7ec8\u6b62', CREATED: _ico('clock') + ' \u5df2\u521b\u5efa' };
+    var statusMap = { RUNNING: _ico('loader') + ' 运行中', FINISHED: _ico('check-circle') + ' 已完成', TERMINATED: _ico('stop-circle') + ' 已终止', CREATED: _ico('clock') + ' 已创建' };
     var statusColor = { RUNNING: '#f59e0b', FINISHED: '#22c55e', TERMINATED: '#ef4444', CREATED: 'var(--text-dim)' };
     var hasCached = !!(state.taskSummaries[task.id] && state.taskSummaries[task.id]._v >= 2);
     var canScore = task.status === 'FINISHED' || task.status === 'TERMINATED';
-    var badge = hasCached ? _ico('bar-chart', 14) : (canScore ? '\u70b9\u51fb\u8bc4\u5206' : '');
-    return '<div style="border-bottom:1px solid var(--border);padding:5px 0;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;' + (canScore ? 'cursor:pointer;' : '') + '" ' + (canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : '') + '>'
-      + '<div style="display:flex;align-items:center;gap:8px;"><code style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;">' + escapeHtml(task.id) + '</code>'
+    var isNotRunning = task.status !== 'RUNNING';
+    var badge = hasCached ? _ico('bar-chart', 14) : (canScore ? '点击评分' : '');
+    var taskLabel = task.output_name || task.id.substring(0, 8);
+    var timeStr = task.created_at || '';
+    return '<div style="border-bottom:1px solid var(--border);padding:5px 0;" id="task-row-' + task.id + '">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+      + '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;' + (canScore ? 'cursor:pointer;' : '') + '" ' + (canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : '') + '>'
+      + '<span style="font-size:0.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(taskLabel) + '</span>'
+      + (task.model_train_type ? '<span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:1px 5px;border-radius:3px;">' + escapeHtml(task.model_train_type) + '</span>' : '')
       + (badge ? '<span style="font-size:0.68rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : '')
       + '</div>'
-      + '<span style="color:' + (statusColor[task.status] || 'var(--text-dim)') + ';font-weight:600;font-size:0.78rem;">' + (statusMap[task.status] || task.status) +'</span>'
+      + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
+      + '<span style="color:' + (statusColor[task.status] || 'var(--text-dim)') + ';font-weight:600;font-size:0.78rem;">' + (statusMap[task.status] || task.status) + '</span>'
+      + (isNotRunning ? '<button class="btn-icon" style="opacity:0.5;font-size:0.7rem;padding:2px;" type="button" onclick="event.stopPropagation();deleteTaskHistory(\'' + task.id + '\')" title="删除记录">' + _ico('x', 12) + '</button>' : '')
+
       + '</div>'
+      + '</div>'
+      + (timeStr ? '<div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(timeStr) + '</div>' : '')
       + '<div id="task-summary-' + task.id + '" style="display:' + (hasCached ? 'block' : 'none') + ';" data-loaded="' + (hasCached ? 'true' : 'false') + '">' + (hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : '') + '</div>'
       + '</div>';
   }).join(''))
+  + '</div>'
+
   + '</div>'
   ) : '') // end monitor conditional
   + '</div>'; // close train-dashboard
@@ -2106,7 +2158,8 @@ function renderTagger() {
         </div>
       </div>
       <div class="tool-actions">
-        <button class="btn btn-primary btn-sm" type="button" onclick="runTagger()">开始标注</button>
+        <button class="btn btn-primary btn-sm" type="button" id="btn-run-tagger" onclick="runTagger()">开始标注</button>
+        <span id="tagger-status-hint" style="margin-left:12px;font-size:0.85rem;color:var(--text-dim);"></span>
       </div>
     </section>
 
@@ -2172,10 +2225,53 @@ function renderTagger() {
         </div>
       </div>
       <div class="tool-actions">
-        <button class="btn btn-primary btn-sm" type="button" onclick="runLlmTagger()">LLM 开始标注</button>
+        <button class="btn btn-primary btn-sm" type="button" id="btn-run-llm-tagger" onclick="runLlmTagger()">LLM 开始标注</button>
+        <span id="llm-tagger-status-hint" style="margin-left:12px;font-size:0.85rem;color:var(--text-dim);"></span>
       </div>
     </section>
   `;
+}
+
+// ── 打标器提交辅助：按钮 loading + 状态提示 ──
+function setTaggerButtonLoading(btnId, hintId, loading) {
+  const btn = $('#' + btnId);
+  const hint = $('#' + hintId);
+  if (btn) {
+    btn.disabled = loading;
+    if (loading) {
+      btn.dataset.origText = btn.textContent;
+      btn.innerHTML = _ico('loader') + ' 提交中...';
+    } else {
+      btn.textContent = btn.dataset.origText || '开始标注';
+    }
+  }
+  if (hint) {
+    if (loading) {
+      hint.innerHTML = '';
+    }
+  }
+}
+
+function showTaggerRunningHint(hintId, message) {
+  const hint = $('#' + hintId);
+  if (hint) {
+    hint.innerHTML = '<span style="color:#f59e0b;">' + _ico('loader') + ' ' + message + '</span>';
+  }
+}
+
+function showTaggerDoneHint(hintId, message) {
+  const hint = $('#' + hintId);
+  if (hint) {
+    hint.innerHTML = '<span style="color:#22c55e;">' + _ico('check-circle') + ' ' + message + '</span>';
+    setTimeout(() => { if (hint) hint.innerHTML = ''; }, 15000);
+  }
+}
+
+function showTaggerErrorHint(hintId, message) {
+  const hint = $('#' + hintId);
+  if (hint) {
+    hint.innerHTML = '<span style="color:#ef4444;">' + _ico('x-circle') + ' ' + message + '</span>';
+  }
 }
 
 window.runLlmTagger = async () => {
@@ -2198,14 +2294,19 @@ window.runLlmTagger = async () => {
     batch_input_recursive: $('#llm-recursive')?.checked || false,
     threshold: 0.5,
   };
+  setTaggerButtonLoading('btn-run-llm-tagger', 'llm-tagger-status-hint', true);
   try {
-    await api.runInterrogate(params);
-    showToast('LLM 标注任务已提交，正在后台运行...');
+    const resp = await api.runInterrogate(params);
+    setTaggerButtonLoading('btn-run-llm-tagger', 'llm-tagger-status-hint', false);
+    showTaggerRunningHint('llm-tagger-status-hint',
+      'LLM 标注后台运行中... 进度请查看后端控制台窗口（任务栏最小化窗口 "LoRA-Backend"）');
+    showToast('✓ LLM 标注任务已提交到后端，正在后台运行。完成后 .txt 标签文件会自动生成在图片旁边。');
   } catch (error) {
+    setTaggerButtonLoading('btn-run-llm-tagger', 'llm-tagger-status-hint', false);
+    showTaggerErrorHint('llm-tagger-status-hint', error.message || '提交失败');
     showToast(error.message || 'LLM 标注任务启动失败。');
   }
 };
-
 
 
 window.runTagger = async () => {
@@ -2222,13 +2323,20 @@ window.runTagger = async () => {
     replace_underscore: $('#tagger-underscore')?.checked ?? true,
     escape_tag: $('#tagger-escape')?.checked ?? true,
   };
+  setTaggerButtonLoading('btn-run-tagger', 'tagger-status-hint', true);
   try {
-    await api.runInterrogate(params);
-    showToast('标注任务已提交，正在后台运行...');
+    const resp = await api.runInterrogate(params);
+    setTaggerButtonLoading('btn-run-tagger', 'tagger-status-hint', false);
+    showTaggerRunningHint('tagger-status-hint',
+      '标注后台运行中（首次需下载模型，可能需要几分钟）... 进度请查看后端控制台窗口');
+    showToast('✓ 标注任务已提交到后端，正在后台运行。完成后 .txt 标签文件会自动生成在图片旁边。');
   } catch (error) {
+    setTaggerButtonLoading('btn-run-tagger', 'tagger-status-hint', false);
+    showTaggerErrorHint('tagger-status-hint', error.message || '提交失败');
     showToast(error.message || '标注任务启动失败。');
   }
 };
+
 
 function renderTagEditor() {
   const content = $('#dataset-content');
@@ -2244,7 +2352,13 @@ function renderTagEditor() {
           <button class="btn btn-outline btn-sm" type="button" onclick="refreshTagEditorIframe()">刷新</button>
         </div>
       </header>
-      <iframe id="tageditor-iframe" src="${teUrl}" style="width:100%;height:calc(100vh - 340px);min-height:500px;border:none;background:var(--bg-panel);"></iframe>
+      <iframe id="tageditor-iframe" src="${teUrl}" style="width:100%;height:calc(100vh - 340px);min-height:500px;border:none;background:var(--bg-panel);"
+        onload="var r=document.getElementById('tageditor-retry');if(r)r.style.display='none'"
+        onerror="var r=document.getElementById('tageditor-retry');if(r)r.style.display='block'"></iframe>
+      <div id="tageditor-retry" style="display:none;text-align:center;padding:40px;color:var(--text-dim);">
+        <p>标签编辑器加载失败或尚未启动完成。训练期间可能暂时不可用。</p>
+        <button class="btn btn-outline btn-sm" type="button" onclick="refreshTagEditorIframe()">重试连接</button>
+      </div>
     </section>
   `;
   pollTagEditorStatus();
@@ -2370,8 +2484,9 @@ function renderImageResize() {
 window.runImageResize = async () => {
   const inputDir = $('#resize-input-path')?.value?.trim();
   if (!inputDir) { showToast('请先填写输入目录。'); return; }
+  const btn = $('[onclick="runImageResize()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = _ico('loader') + ' 处理中...'; }
   const params = {
-    script_name: '_image_resize',
     input_dir: inputDir,
     output_dir: $('#resize-output')?.value?.trim() || '',
     format: $('#resize-format')?.value || 'ORIGINAL',
@@ -2386,11 +2501,15 @@ window.runImageResize = async () => {
   };
   try {
     await api.runImageResize(params);
-    showToast('图像预处理任务已提交，正在后台运行...');
+    showToast('✓ 图像预处理任务已提交，正在后台运行...');
   } catch (error) {
     showToast(error.message || '图像预处理启动失败。');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '开始处理'; }
   }
 };
+
+
 
 window.openResizeGui = () => {
   showToast('请在 train 目录下双击「训练图像缩放预处理工具.py」打开独立图形界面。');
@@ -2794,7 +2913,14 @@ function renderLogs(container) {
         <p>训练日志可视化，查看损失曲线、学习率变化与样本图。TensorBoard 已随训练器自动启动。</p>
       </header>
       <section class="form-section" style="padding:0;overflow:hidden;">
-        <iframe id="tb-iframe" src="${tbUrl}" style="width:100%;height:calc(100vh - 240px);min-height:500px;border:none;border-radius:12px;background:var(--bg-panel);"></iframe>
+        <iframe id="tb-iframe" src="${tbUrl}" style="width:100%;height:calc(100vh - 240px);min-height:500px;border:none;border-radius:12px;background:var(--bg-panel);"
+          onload="var r=document.getElementById('tb-retry');if(r)r.style.display='none'"
+          onerror="var r=document.getElementById('tb-retry');if(r)r.style.display='block'"></iframe>
+        <div id="tb-retry" style="display:none;text-align:center;padding:40px;color:var(--text-dim);">
+          <p>TensorBoard 加载失败。可能尚未启动或训练结束后被回收。</p>
+          <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('tb-retry').style.display='none';document.getElementById('tb-iframe').src='${tbUrl}'">重试连接</button>
+
+        </div>
       </section>
       <div style="margin-top:12px;display:flex;gap:8px;">
         <a class="btn btn-outline btn-sm" href="${tbUrl}" target="_blank" rel="noopener">在新窗口中打开 TensorBoard</a>
@@ -3125,6 +3251,14 @@ function _hidePickerOverlay() {
 window.pickPathForInput = async (inputId, pickerType) => {
   _showPickerOverlay();
   try {
+    // 后端 pick_file 只支持 folder / model-file / text-file
+    // 将 schema 中的扩展 pickerType 映射回后端支持的类型
+    const pickerMap = {
+      'output-folder': 'folder',
+      'output-model-file': 'model-file',
+    };
+    pickerType = pickerMap[pickerType] || pickerType;
+
     const response = await api.pickFile(pickerType);
     _hidePickerOverlay();
     if (response.status !== 'success') {
@@ -3146,6 +3280,13 @@ window.pickPathForInput = async (inputId, pickerType) => {
 window.pickPath = async (key, pickerType) => {
   _showPickerOverlay();
   try {
+    // 后端 pick_file 只支持 folder / model-file / text-file
+    const pickerMap = {
+      'output-folder': 'folder',
+      'output-model-file': 'model-file',
+    };
+    pickerType = pickerMap[pickerType] || pickerType;
+
     const response = await api.pickFile(pickerType);
     _hidePickerOverlay();
     if (response.status !== 'success') {
@@ -3895,5 +4036,49 @@ window.terminateAllTasks = async () => {
     showToast(error.message || '终止任务失败。');
   }
 };
+
+// ── 任务历史删除 ──
+
+window.deleteTaskHistory = async (taskId) => {
+  try {
+    await api.deleteTask(taskId);
+    // 从前端状态中移除
+    state.tasks = state.tasks.filter((t) => t.id !== taskId);
+    delete state.taskSummaries[taskId];
+    try {
+      var cache = JSON.parse(sessionStorage.getItem('sd-rescripts:task-summaries') || '{}');
+      delete cache[taskId];
+      sessionStorage.setItem('sd-rescripts:task-summaries', JSON.stringify(cache));
+    } catch (e) { /* ignore */ }
+    // 刷新界面
+    if (state.activeModule === 'training') {
+      renderView('training');
+    }
+    renderTaskStatus();
+  } catch (error) {
+    showToast(error.message || '删除任务失败。');
+  }
+};
+
+window.clearAllTaskHistory = async () => {
+  if (!confirm('确认清空所有已完成的任务历史？\n（正在运行的任务不会被删除）')) return;
+  try {
+    const resp = await api.deleteAllTasks();
+    showToast('已清空 ' + (resp?.data?.deleted || 0) + ' 条任务记录');
+    // 重新拉取任务列表
+    const tasksResponse = await api.getTasks();
+    state.tasks = tasksResponse?.data?.tasks || [];
+    state.taskSummaries = {};
+    try { sessionStorage.removeItem('sd-rescripts:task-summaries'); } catch (e) {}
+    if (state.activeModule === 'training') {
+      renderView('training');
+    }
+    renderTaskStatus();
+  } catch (error) {
+    showToast(error.message || '清空历史失败。');
+  }
+};
+
+
 
 document.addEventListener('DOMContentLoaded', init);
