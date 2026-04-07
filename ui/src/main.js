@@ -219,7 +219,9 @@ async function loadBootstrapData() {
   }
 
   if (tasksResult.status === 'fulfilled') {
-    state.tasks = tasksResult.value?.data?.tasks || [];
+    const backendTasks = tasksResult.value?.data?.tasks || [];
+    const localHistory = await loadLocalTaskHistory();
+    state.tasks = mergeTaskHistory(backendTasks, localHistory);
   }
   if (interrogatorsResult.status === 'fulfilled') {
     state.interrogators = interrogatorsResult.value?.data || null;
@@ -244,8 +246,9 @@ function startTaskPolling() {
     try {
       const hadRunning = state.tasks.some((t) => t.status === 'RUNNING');
       const response = await api.getTasks();
-      state.tasks = response?.data?.tasks || [];
+      state.tasks = mergeTaskHistory(response?.data?.tasks || [], state.tasks.filter(t => t.status !== 'RUNNING' && t.status !== 'CREATED'));
       const hasRunning = state.tasks.some((t) => t.status === 'RUNNING');
+      saveLocalTaskHistory();  // persist completed tasks
 
       // 后端恢复在线
       if (_pollFailCount > 0) {
@@ -497,7 +500,7 @@ function renderField(field) {
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <div class="input-picker">
-          <button class="picker-icon" type="button" onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
+          <button class="picker-icon" type="button" onclick="${canUseBuiltinPicker(field) ? `openNativePicker('${field.key}', '${field.pickerType || 'folder'}')` : `pickPath('${field.key}', '${field.pickerType || 'folder'}')`}">
             <svg class="icon"><use href="#icon-folder"></use></svg>
           </button>
           <input type="text" value="${escapeHtml(inputValue)}" oninput="updateConfigValue('${field.key}', this.value)">
@@ -701,20 +704,18 @@ function syncFooterAction() {
   const hasFailedRecent = state.trainingFailed;
 
   if (hasRunningTask) {
-    bar.innerHTML = `
-      <button class="btn btn-execute btn-training-active" disabled>
-        <span class="btn-main">' + _ico('loader') + ' 训练中...</span>
-      </button>
-      <button class="btn btn-terminate" onclick="terminateAllTasks()">
-        <span class="btn-main">终止训练</span>
-      </button>
-    `;
+    bar.innerHTML = ''
+      + '<button class="btn btn-execute btn-training-active" disabled>'
+      +   '<span class="btn-main">' + _ico('loader') + ' 训练中...</span>'
+      + '</button>'
+      + '<button class="btn btn-terminate" onclick="terminateAllTasks()">'
+      +   '<span class="btn-main">' + _ico('square') + ' 终止训练</span>'
+      + '</button>';
   } else if (hasFailedRecent) {
-    bar.innerHTML = `
-      <button class="btn btn-execute btn-training-failed" onclick="state.trainingFailed=false;syncFooterAction();">
-        <span class="btn-main">' + _ico('x-circle') + ' 训练失败 — 点击重试</span>
-      </button>
-    `;
+    bar.innerHTML = ''
+      + '<button class="btn btn-execute btn-training-failed" onclick="executeTraining()">'
+      +   '<span class="btn-main">' + _ico('refresh-cw') + ' 训练失败 — 点击重新训练</span>'
+      + '</button>';
   } else {
     bar.innerHTML = `
       <button class="btn btn-primary btn-execute" onclick="executeTraining()" ${state.loading.run ? 'disabled' : ''}>
@@ -923,9 +924,12 @@ function collectTrainingMetrics(lines) {
         m.speeds.push({ time: now, itPerSec });
       }
       if (lossMatch) {
+        const curLoss = parseFloat(lossMatch[1]);
         const curStep = stepMatch ? parseInt(stepMatch[1]) : m.lastStep;
-        if (curStep > m.lastStep || m.losses.length === 0) {
-          m.losses.push({ time: now, step: curStep, loss: parseFloat(lossMatch[1]) });
+        // Record if step advanced, first sample, or loss value changed
+        const prevLoss = m.losses.length > 0 ? m.losses[m.losses.length - 1].loss : -1;
+        if (curStep > m.lastStep || m.losses.length === 0 || Math.abs(curLoss - prevLoss) > 0.0001) {
+          m.losses.push({ time: now, step: curStep, loss: curLoss });
           m.lastStep = curStep;
         }
       }
@@ -982,9 +986,11 @@ function parseLinesIntoMetrics(lines) {
       m.speeds.push({ time: 0, itPerSec });
     }
     if (lossMatch) {
+      const curLoss = parseFloat(lossMatch[1]);
       const curStep = stepMatch ? parseInt(stepMatch[1]) : prevStep;
-      if (curStep > prevStep || m.losses.length === 0) {
-        m.losses.push({ time: 0, step: curStep, loss: parseFloat(lossMatch[1]) });
+      const prevLossVal = m.losses.length > 0 ? m.losses[m.losses.length - 1].loss : -1;
+      if (curStep > prevStep || m.losses.length === 0 || Math.abs(curLoss - prevLossVal) > 0.0001) {
+        m.losses.push({ time: 0, step: curStep, loss: curLoss });
         prevStep = curStep;
       }
     }
@@ -1106,37 +1112,36 @@ function buildSummaryFromMetrics(m, elapsedMs) {
     // completion score (0~2)
     if (epochRatio >= 0.95) score += 2;
     else if (epochRatio >= 0.5) score += 1;
-    // absolute final loss level (+1 ~ -2)
-    if (lastLoss > 0 && lastLoss < 0.05)       score += 1;
-    else if (lastLoss >= 0.15)                  score -= 2;
-    else if (lastLoss >= 0.10)                  score -= 1;
+    // absolute final loss level — only mild bonus, no penalty
+    // (loss scale varies hugely across architectures: SD1.5 ~0.05, SDXL/Prodigy ~0.1-1.0)
+    if (lastLoss > 0 && lastLoss < 0.08) score += 1;
 
     // final loss level tag for display
     if (lastLoss <= 0) {
       lossLevelTag = '\u2014'; lossLevelColor = 'var(--text-dim)';
-    } else if (lastLoss < 0.04) {
-      lossLevelTag = '\u6781\u4f4e'; lossLevelColor = '#22c55e';
     } else if (lastLoss < 0.06) {
-      lossLevelTag = '\u504f\u4f4e'; lossLevelColor = '#22c55e';
+      lossLevelTag = '\u4f4e'; lossLevelColor = '#22c55e';
     } else if (lastLoss < 0.08) {
       lossLevelTag = '\u6b63\u5e38'; lossLevelColor = '#3b82f6';
-    } else if (lastLoss < 0.10) {
-      lossLevelTag = '\u504f\u9ad8'; lossLevelColor = '#f59e0b';
-    } else if (lastLoss < 0.15) {
-      lossLevelTag = '\u8f83\u9ad8'; lossLevelColor = '#ef4444';
+    } else if (lastLoss < 0.12) {
+      lossLevelTag = '\u6b63\u5e38'; lossLevelColor = '#3b82f6';
+    } else if (lastLoss < 0.5) {
+      lossLevelTag = '\u6b63\u5e38\u533a\u95f4'; lossLevelColor = '#3b82f6';
+    } else if (lastLoss < 1.2) {
+      lossLevelTag = '\u81ea\u9002\u5e94\u4f18\u5316\u5668\u6b63\u5e38\u8303\u56f4'; lossLevelColor = '#3b82f6';
     } else {
-      lossLevelTag = '\u8fc7\u9ad8'; lossLevelColor = '#ef4444';
+      lossLevelTag = '\u504f\u9ad8'; lossLevelColor = '#f59e0b';
     }
 
     // append final loss note to lossDetail
     if (lastLoss > 0) {
       var lvlNote = '';
-      if (lastLoss < 0.04)       lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u6781\u4f4e\uff0c\u8d28\u91cf\u4f18\u79c0\u3002';
-      else if (lastLoss < 0.06)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u4f4e\uff0c\u8d28\u91cf\u826f\u597d\u3002';
-      else if (lastLoss < 0.08)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u5728\u6b63\u5e38\u8303\u56f4\u3002';
-      else if (lastLoss < 0.10)  lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u6570\u636e\u96c6\u6216\u589e\u52a0\u6b65\u6570\u3002';
-      else if (lastLoss < 0.15)  lvlNote = _ico('alert-tri') + ' 最终 Loss ' + lastLoss.toFixed(4) + ' \u8f83\u9ad8\uff0c\u6a21\u578b\u53ef\u80fd\u6b20\u62df\u5408\u3002';
-      else                       lvlNote = _ico('x-circle') + ' 最终 Loss ' + lastLoss.toFixed(4) + ' \u8fc7\u9ad8\uff0c\u8bad\u7ec3\u6548\u679c\u5f88\u53ef\u80fd\u4e0d\u53ef\u7528\u3002';
+      // Loss absolute thresholds vary hugely: SD1.5 ~0.02-0.08, SDXL ~0.05-0.12,
+      // Prodigy/DAdapt ~0.08-1.0. Only describe, don't judge.
+      if (lastLoss < 0.08)       lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + '\u3002';
+      else if (lastLoss < 0.5)   lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + '\u3002\u4e0d\u540c\u67b6\u6784/\u4f18\u5316\u5668\u7684 Loss \u8303\u56f4\u5dee\u5f02\u5f88\u5927\uff0c\u8bf7\u4ee5\u8d8b\u52bf\u800c\u975e\u7edd\u5bf9\u503c\u8bc4\u5224\u3002';
+      else if (lastLoss < 1.2)   lvlNote = '\u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + '\u3002Prodigy/DAdapt \u7b49\u81ea\u9002\u5e94\u4f18\u5316\u5668\u7684 Loss \u901a\u5e38\u5728 0.08\u20131.0 \u8303\u56f4\uff0c\u8fd9\u662f\u6b63\u5e38\u7684\u3002';
+      else                       lvlNote = _ico('alert-tri') + ' \u6700\u7ec8 Loss ' + lastLoss.toFixed(4) + ' \u504f\u9ad8\uff0c\u5efa\u8bae\u68c0\u67e5\u8bad\u7ec3\u53c2\u6570\u3002';
       lossDetail = lossDetail + ' ' + lvlNote;
     }
 
@@ -1187,14 +1192,7 @@ function generateTrainingSummary() {
 }
 
 function _appendSageEnvNote(summary) {
-  var env = (state.runtime && state.runtime.runtime && state.runtime.runtime.environment) || '';
-  if (!env.includes('sageattention')) return;
-  var note = '\u26a0\ufe0f \u672c\u6b21\u8bad\u7ec3\u5728 SageAttention \u4e13\u7528\u73af\u5883\u4e2d\u8fd0\u884c\u3002SageAttention v1 \u7684 Triton kernel \u5728\u6a21\u5757\u52a0\u8f7d\u65f6\u5c31\u4f1a\u88ab import\uff0c\u53ef\u80fd\u5e72\u6270\u68af\u5ea6\u8ba1\u7b97\uff0c\u5bfc\u81f4\u751f\u56fe\u5f02\u5e38\u3002\u5982\u679c\u7ed3\u679c\u4e0d\u4f73\uff0c\u8bf7\u6539\u7528\u4e3b\u73af\u5883\u91cd\u65b0\u8bad\u7ec3\u3002';
-  summary.lossDetail = (summary.lossDetail || '') + ' ' + note;
-  if (summary.overallColor === '#22c55e') {
-    // sage env + seemingly good result is suspicious
-    summary.overallRating = summary.overallRating + ' (\u6ce8\u610f: SageAttention \u73af\u5883\u7ed3\u679c\u53ef\u80fd\u4e0d\u53ef\u9760)';
-  }
+  // no-op: SageAttention warning removed
 }
 
 /** Generate summary from full log lines (for historical tasks) */
@@ -1281,6 +1279,42 @@ function loadTaskSummariesFromCache() {
     }
   } catch (e) { /* ignore */ }
 }
+
+/** Load task history from local persistent file (via Vite middleware) */
+async function loadLocalTaskHistory() {
+  try {
+    const resp = await fetch('/api/local/task_history');
+    const data = await resp.json();
+    return (data?.data?.tasks) || [];
+  } catch (e) { return []; }
+}
+
+/** Save completed tasks to local persistent file */
+async function saveLocalTaskHistory() {
+  const completed = state.tasks.filter(t => t.status !== 'RUNNING' && t.status !== 'CREATED');
+  try {
+    await fetch('/api/local/task_history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tasks: completed }),
+    });
+  } catch (e) { /* ignore */ }
+}
+
+/** Merge local history with backend live tasks. Backend tasks take priority by id. */
+function mergeTaskHistory(backendTasks, localHistory) {
+  const byId = new Map();
+  for (const t of localHistory) byId.set(t.id, t);
+  for (const t of backendTasks) byId.set(t.id, t);
+  const arr = Array.from(byId.values());
+  arr.sort((a, b) => {
+    if (a.status === 'RUNNING' && b.status !== 'RUNNING') return -1;
+    if (b.status === 'RUNNING' && a.status !== 'RUNNING') return 1;
+    return 0;
+  });
+  return arr;
+}
+
 
 /** Dismiss the training summary card */
 window.dismissTrainingSummary = function() {
@@ -1878,6 +1912,7 @@ window.refreshTrainingLog = async () => {
 function _updateTrainingLiveMetrics() {
   var m = state.trainingMetrics;
   if (!m) return;
+  var curStep = m.lastStep || 0;
 
   // Update step count in header (find .train-hdr-val elements)
   var hdrLabels = document.querySelectorAll('.train-hdr-label');
@@ -1897,8 +1932,49 @@ function _updateTrainingLiveMetrics() {
   if (speedEl && m.speeds.length > 0) {
     speedEl.textContent = m.speeds[m.speeds.length - 1].itPerSec.toFixed(2) + ' it/s';
   }
-
   
+  // ── Live Loss value + delta ──
+  var lossEl = document.querySelector('.train-loss-big');
+  var deltaEl = document.querySelector('.train-loss-delta');
+  if (lossEl && m.losses.length > 0) {
+    var curLoss = m.losses[m.losses.length - 1].loss;
+    lossEl.textContent = curLoss > 0 ? curLoss.toFixed(4) : '\u2014';
+    if (deltaEl) {
+      var prevLoss = m.losses.length > 1 ? m.losses[m.losses.length - 2].loss : curLoss;
+      var lossDeltaPct = prevLoss > 0 ? ((curLoss - prevLoss) / prevLoss * 100) : 0;
+      var lossArrowColor = lossDeltaPct < 0 ? '#22c55e' : (lossDeltaPct > 0 ? '#ef4444' : 'var(--text-dim)');
+      var lossArrow = lossDeltaPct < 0 ? _ico('trending-down', 12) : (lossDeltaPct > 0 ? _ico('trending-up', 12) : '');
+      deltaEl.style.color = lossArrowColor;
+      deltaEl.innerHTML = lossArrow + ' ' + (lossDeltaPct !== 0 ? (lossDeltaPct > 0 ? '+' : '') + lossDeltaPct.toFixed(1) + '%' : '');
+    }
+  }
+
+  // ── Live sparkline chart ──
+  var chartBox = document.querySelector('.train-chart-box');
+  if (chartBox && m.losses.length >= 2) {
+    var pts = m.losses.slice(-50);
+    var maxL = Math.max.apply(null, pts.map(function(p) { return p.loss; }));
+    var minL = Math.min.apply(null, pts.map(function(p) { return p.loss; }));
+    var range = maxL - minL || 0.001;
+    var pathParts = [];
+    for (var pi = 0; pi < pts.length; pi++) {
+      var px = (pi / (pts.length - 1)) * 100;
+      var py = 100 - ((pts[pi].loss - minL) / range) * 90 - 5;
+      pathParts.push((pi === 0 ? 'M' : 'L') + px.toFixed(1) + ' ' + py.toFixed(1));
+    }
+    var pathD = pathParts.join(' ');
+    chartBox.innerHTML = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:100%;">'
+      + '<defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>'
+      + '<path d="' + pathD + '" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'
+      + '<path d="' + pathD + ' L100 100 L0 100 Z" fill="url(#lg)"/>'
+      + '</svg>';
+  }
+
+  // ── Live chart axis ──
+  var axisEl = document.querySelector('.train-chart-axis');
+  if (axisEl && m.losses.length > 0) {
+    axisEl.innerHTML = '<span>Step 0</span><span>Step ' + curStep + '</span>';
+  }
 }
 
 var _gpuPollCooldown = false;
@@ -3027,12 +3103,16 @@ function renderTools(container) {
     {
       id: 'convert_flux_lora',
       title: '转换 FLUX LoRA 格式',
-      desc: '转换 FLUX LoRA 到其他格式。',
+      desc: '在 ai-toolkit 和 sd-scripts 格式之间转换 FLUX LoRA。',
       script: 'networks/convert_flux_lora.py',
       fields: [
-        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/converted.safetensors' },
+        { key: 'src_path', label: '源文件路径', type: 'text', placeholder: './output/source_lora.safetensors' },
+        { key: 'dst_path', label: '输出路径', type: 'text', placeholder: './output/converted.safetensors' },
+        { key: 'src', label: '源格式', type: 'text', placeholder: 'ai-toolkit' },
+        { key: 'dst', label: '目标格式', type: 'text', placeholder: 'sd-scripts' },
       ],
     },
+
     {
       id: 'convert_hunyuan_lora',
       title: '转换混元图像 LoRA 到 ComfyUI',
@@ -3065,46 +3145,55 @@ function renderTools(container) {
     {
       id: 'merge_models',
       title: '合并模型',
-      desc: '按指定比例合并两个 Stable Diffusion 模型。',
+      desc: '按指定比例合并多个 Stable Diffusion 模型。多个模型/比例用空格分隔。',
       script: 'tools/merge_models.py',
       fields: [
-        { key: 'model_0', label: '模型 A 路径', type: 'text', placeholder: './sd-models/model_a.safetensors' },
-        { key: 'model_1', label: '模型 B 路径', type: 'text', placeholder: './sd-models/model_b.safetensors' },
-        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/merged_model.safetensors' },
-        { key: 'ratio', label: '合并比例 (0~1)', type: 'text', placeholder: '0.5' },
-        { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
+        { key: 'models', label: '模型路径（空格分隔）', type: 'text', placeholder: './sd-models/a.safetensors ./sd-models/b.safetensors' },
+        { key: 'output', label: '输出路径', type: 'text', placeholder: './output/merged_model.safetensors' },
+        { key: 'ratios', label: '合并比例（空格分隔）', type: 'text', placeholder: '0.5 0.5' },
+        { key: 'saving_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
       ],
     },
+
     {
       id: 'merge_sd3',
       title: '合并 SD3 模型',
-      desc: '合并 SD3 safetensors 文件。',
+      desc: '将 SD3 的 DiT/VAE/CLIP/T5 合并为单个 safetensors 文件。',
       script: 'tools/merge_sd3_safetensors.py',
       fields: [
-        { key: 'model_0', label: '模型 A', type: 'text', placeholder: '' },
-        { key: 'model_1', label: '模型 B', type: 'text', placeholder: '' },
-        { key: 'save_to', label: '输出路径', type: 'text', placeholder: '' },
+        { key: 'dit', label: 'DiT/MMDiT 模型路径', type: 'text', placeholder: '' },
+        { key: 'clip_l', label: 'CLIP-L 路径（可选）', type: 'text', placeholder: '' },
+        { key: 'clip_g', label: 'CLIP-G 路径（可选）', type: 'text', placeholder: '' },
+        { key: 't5xxl', label: 'T5-XXL 路径（可选）', type: 'text', placeholder: '' },
+        { key: 'vae', label: 'VAE 路径（可选）', type: 'text', placeholder: '' },
+        { key: 'output', label: '输出路径', type: 'text', placeholder: './output/merged_sd3.safetensors' },
+        { key: 'save_precision', label: '保存精度', type: 'text', placeholder: 'fp16' },
       ],
     },
+
     {
       id: 'convert_diffusers_to_flux',
       title: 'Diffusers 转 FLUX',
       desc: '将 Diffusers 格式转换为 FLUX 格式。',
       script: 'tools/convert_diffusers_to_flux.py',
       fields: [
-        { key: 'model_to_load', label: '输入模型路径', type: 'text', placeholder: '' },
-        { key: 'model_to_save', label: '输出路径', type: 'text', placeholder: '' },
+        { key: 'diffusers_path', label: 'Diffusers 模型文件夹路径', type: 'text', placeholder: '' },
+        { key: 'save_to', label: '输出路径', type: 'text', placeholder: './output/flux_converted.safetensors' },
       ],
     },
     {
       id: 'lora_interrogator',
       title: 'LoRA 识别器',
-      desc: '检测 LoRA 网络的训练信息。',
+      desc: '检测 LoRA 网络的训练信息。⚠️ 仅支持 SD 1.5 的 LoRA，不支持 SDXL/FLUX。底模必须是对应的 SD 1.5 模型。',
       script: 'networks/lora_interrogator.py',
       fields: [
-        { key: 'model', label: 'LoRA 文件路径', type: 'text', placeholder: '' },
+        { key: 'sd_model', label: '基础 SD 1.5 模型路径', type: 'text', placeholder: './sd-models/sd15_model.safetensors' },
+        { key: 'model', label: 'LoRA 文件路径', type: 'text', placeholder: './output/my_lora.safetensors' },
+        { key: 'v2', label: 'SD 2.x 模型', type: 'checkbox' },
+        { key: 'clip_skip', label: 'CLIP Skip', type: 'number', placeholder: '' },
       ],
     },
+
   ];
 
 
@@ -3170,29 +3259,145 @@ function renderToolDetail(tool) {
           </div>`;
         }).join('')}
       </div>
-      <div class="tool-actions">
-        <button class="btn btn-primary btn-sm" type="button" onclick="runTool('${tool.id}', '${escapeHtml(tool.script)}', ${JSON.stringify(tool.fields.map((f) => f.key)).replaceAll('"', '&quot;')})">运行</button>
+      <div class="tool-actions" style="display:flex;align-items:center;gap:12px;">
+        <button class="btn btn-primary btn-sm" type="button" id="btn-tool-${tool.id}"
+          onclick="runTool('${tool.id}', '${escapeHtml(tool.script)}', ${JSON.stringify(tool.fields.map((f) => f.key)).replaceAll('"', '&quot;')})">运行</button>
+        <span id="tool-status-${tool.id}" style="font-size:0.82rem;"></span>
       </div>
+      <div id="tool-result-${tool.id}" style="display:none;margin-top:12px;padding:12px;border-radius:8px;font-size:0.82rem;white-space:pre-wrap;font-family:monospace;max-height:300px;overflow:auto;"></div>
     </section>
   `;
 }
 
 
 window.runTool = async (toolId, scriptName, keys) => {
+  // ── 参数校验 ──
   const params = { script_name: scriptName };
+  let hasAnyField = false;
+  // 这些 key 接受空格分隔的多值，后端 run_script 遇到 list 会展开为多个 CLI 参数
+  const listKeys = new Set(['models', 'ratios']);
   for (const key of keys) {
     const input = $(`#tool-${toolId}-${key}`);
     if (input && input.value.trim()) {
-      params[key] = input.value.trim();
+      const val = input.value.trim();
+      if (listKeys.has(key)) {
+        params[key] = val.split(/\s+/);
+      } else {
+        params[key] = val;
+      }
+      hasAnyField = true;
     }
   }
+  if (!hasAnyField) {
+    showToast('请至少填写一个参数。');
+    return;
+  }
+
+  // ── 按钮 loading 态 ──
+  const btn = $(`#btn-tool-${toolId}`);
+  const statusEl = $(`#tool-status-${toolId}`);
+  const resultEl = $(`#tool-result-${toolId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = _ico('loader') + ' 提交中...'; }
+  if (statusEl) statusEl.innerHTML = '';
+  if (resultEl) { resultEl.style.display = 'none'; resultEl.textContent = ''; }
+
   try {
-    await api.runScript(params);
-    showToast(`工具「${toolId}」已提交运行。`);
+    const resp = await api.runScript(params);
+    const taskId = resp?.data?.task_id;
+
+    // ── 显示运行中状态 ──
+    if (btn) { btn.disabled = true; btn.innerHTML = _ico('loader') + ' 运行中...'; }
+    if (statusEl) {
+      statusEl.innerHTML = '<span style="color:#f59e0b;">' + _ico('loader', 14) + ' 工具运行中...</span>';
+    }
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.style.background = 'var(--bg-hover)';
+      resultEl.style.color = 'var(--text-base)';
+      resultEl.innerHTML = '<span style="color:var(--text-dim);">' + _ico('loader', 14) + ' 等待输出...</span>';
+    }
+    showToast('✓ 工具已提交运行。');
+
+    // ── 轮询输出 ──
+    if (taskId) {
+      let pollCount = 0;
+      const maxPolls = 300; // 最多轮询 5 分钟（1s 间隔）
+      const pollInterval = setInterval(async () => {
+        pollCount++;
+        try {
+          const outResp = await api.getTaskOutput(taskId, 200);
+          const lines = outResp?.data?.lines || [];
+          if (lines.length > 0 && resultEl) {
+            resultEl.innerHTML = _renderLogLines(lines);
+            resultEl.scrollTop = resultEl.scrollHeight;
+          }
+
+          // 检查任务是否结束
+          const tasksResp = await api.getTasks();
+          const allTasks = tasksResp?.data?.tasks || [];
+          const thisTask = allTasks.find((t) => t.id === taskId);
+          const finished = !thisTask || thisTask.status === 'FINISHED' || thisTask.status === 'TERMINATED';
+
+          if (finished || pollCount >= maxPolls) {
+            clearInterval(pollInterval);
+
+            // 延迟 500ms 再拉最终输出（确保后台线程 flush 完）
+            setTimeout(async () => {
+              // 最终状态
+              const failed = thisTask && (thisTask.status === 'TERMINATED' || (thisTask.returncode != null && thisTask.returncode !== 0));
+              if (failed) {
+                if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444;">' + _ico('x-circle', 14) + ' 工具运行失败 (exit code: ' + (thisTask.returncode ?? '?') + ')</span>';
+                if (resultEl) resultEl.style.borderLeft = '3px solid #ef4444';
+              } else {
+                if (statusEl) statusEl.innerHTML = '<span style="color:#22c55e;">' + _ico('check-circle', 14) + ' 工具运行完成</span>';
+                if (resultEl) resultEl.style.borderLeft = '3px solid #22c55e';
+              }
+              if (btn) { btn.disabled = false; btn.textContent = '运行'; }
+
+              // 拉最终完整输出
+              try {
+                const finalResp = await api.getTaskOutput(taskId, 200);
+                const finalLines = finalResp?.data?.lines || [];
+                if (finalLines.length > 0 && resultEl) {
+                  resultEl.innerHTML = _renderLogLines(finalLines);
+                  resultEl.scrollTop = resultEl.scrollHeight;
+                } else if (resultEl && (!resultEl.textContent || resultEl.textContent.includes('等待输出'))) {
+                  resultEl.innerHTML = '<span style="color:var(--text-dim);">（脚本无标准输出）</span>';
+                }
+              } catch (e) { /* ignore */ }
+            }, 800);
+          }
+        } catch (e) {
+          // 静默
+        }
+      }, 1000);
+    } else {
+      // 后端没返回 task_id（旧版后端），回退到旧行为
+      setTimeout(() => {
+     if (btn) { btn.disabled = false; btn.textContent = '运行'; }
+        if (statusEl) statusEl.innerHTML = '<span style="color:#22c55e;">' + _ico('check-circle', 14) + ' 工具应已完成，请检查输出文件</span>';
+        if (resultEl) { resultEl.innerHTML = 'ℹ 工具在后台执行，输出请查看后端控制台窗口。'; resultEl.style.display = 'block'; }
+      }, 3000);
+    }
   } catch (error) {
+    // ── 提交失败 ──
+    if (btn) { btn.disabled = false; btn.textContent = '运行'; }
+    if (statusEl) {
+      statusEl.innerHTML = '<span style="color:#ef4444;">' + _ico('x-circle', 14) + ' ' + escapeHtml(error.message || '提交失败') + '</span>';
+    }
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.style.background = 'rgba(239,68,68,0.08)';
+      resultEl.style.color = '#ef4444';
+      resultEl.textContent = error.message || '工具运行失败。';
+    }
     showToast(error.message || '工具运行失败。');
   }
 };
+
+
+
+
 
 
 
@@ -3399,7 +3604,12 @@ function setupImportConfig() {
     }
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
+      let parsed;
+      if (file.name.endsWith('.toml')) {
+        parsed = _parseSimpleToml(text);
+      } else {
+        parsed = JSON.parse(text);
+      }
       mergeConfigPatch(parsed);
       syncConfigState();
       showToast('配置文件已导入。');
@@ -3812,13 +4022,90 @@ window.previewSavedConfig = async (name) => {
   }
 };
 
+// ── TOML 序列化 / 反序列化（轻量版，覆盖训练配置的平铺结构） ──
+function _tomlValue(v) {
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number') return String(v);
+  if (Array.isArray(v)) {
+    // TOML 内联数组：[ "a", "b" ]
+    return '[ ' + v.map(item => {
+      if (typeof item === 'string') return '"' + item.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+      return String(item);
+    }).join(', ') + ' ]';
+  }
+  if (typeof v === 'string') {
+    return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
+  }
+  return String(v);
+}
+
+function _configToToml(config) {
+  const lines = ['# Generated by LoRA ReScripts UI', '# ' + new Date().toISOString(), ''];
+  for (const [key, val] of Object.entries(config)) {
+    if (val === undefined || val === null) continue;
+    lines.push(key + ' = ' + _tomlValue(val));
+  }
+  return lines.join('\n') + '\n';
+}
+
+function _parseSimpleToml(text) {
+  const result = {};
+  for (const raw of text.split(/\r?\n/)) {
+    // Strip comments, but only outside quoted strings.
+    // Simple heuristic: if a # appears, check if it's inside a quoted value.
+    const commentIdx = raw.indexOf('#');
+    const quoteBeforeComment = commentIdx >= 0 ? (raw.slice(0, commentIdx).split('"').length - 1) % 2 : 0;
+    const line = (quoteBeforeComment ? raw : (commentIdx >= 0 ? raw.slice(0, commentIdx) : raw)).trim();
+    if (!line || line.startsWith('[')) continue; // skip empty, comments, section headers
+    const eqIdx = line.indexOf('=');
+    if (eqIdx < 1) continue;
+    const key = line.slice(0, eqIdx).trim();
+    let val = line.slice(eqIdx + 1).trim();
+    // boolean
+    if (val === 'true') { result[key] = true; continue; }
+    if (val === 'false') { result[key] = false; continue; }
+    // array
+    if (val.startsWith('[')) {
+      // simple inline array parser
+      const inner = val.slice(1, val.lastIndexOf(']')).trim();
+      if (!inner) { result[key] = []; continue; }
+      const items = [];
+      // match quoted strings or bare values between commas
+      const re = /"((?:[^"\\]|\\.)*)"|([^,"\s]+)/g;
+      let m;
+      while ((m = re.exec(inner)) !== null) {
+        if (m[1] !== undefined) items.push(m[1].replace(/\\\\/g, '\\').replace(/\\"/g, '"'));
+        else if (m[2] !== undefined) {
+          const n = Number(m[2]);
+          items.push(Number.isNaN(n) ? m[2] : n);
+        }
+      }
+      result[key] = items; continue;
+    }
+    // quoted string
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      result[key] = val.slice(1, -1).replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\n/g, '\n');
+      continue;
+    }
+    // number
+    const num = Number(val);
+    if (!Number.isNaN(num) && val !== '') { result[key] = num; continue; }
+    // fallback: bare string
+    result[key] = val;
+  }
+  return result;
+}
+
+
 window.downloadConfigFile = () => {
-  const blob = new Blob([JSON.stringify(buildRunConfig(state.config, state.activeTrainingType), null, 2)], { type: 'application/json;charset=utf-8' });
+  const config = buildRunConfig(state.config, state.activeTrainingType);
+  const tomlStr = _configToToml(config);
+  const blob = new Blob([tomlStr], { type: 'application/toml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `sdxl-lora-${timestamp}.json`;
+  link.download = `${state.config.output_name || 'config'}-${timestamp}.toml`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -3907,10 +4194,6 @@ function validateConfigConflicts() {
     errors.push('未启用任何注意力加速后端（xformers / SDPA / SageAttention）。训练将极度缓慢且显存占用极高。请至少开启 SDPA。');
   }
 
-  // 5. SageAttention 训练警告
-  if (toBool(c.sageattn)) {
-    errors.push('⚠️ SageAttention v1 使用量化注意力，训练精度可能不足（loss 异常、生图全黑）。强烈建议训练时用 SDPA。');
-  }
 
   // 6. xformers + SDPA 同时开启
   if (toBool(c.xformers) && toBool(c.sdpa)) {
@@ -3931,12 +4214,6 @@ function validateConfigConflicts() {
     errors.push('不能同时勾选「仅训练 U-Net」和「仅训练文本编码器」。请只保留其中一个，或两个都不勾（即两者都训练）。');
   }
 
-  // 9. SageAttention 环境整体警告
-  if (isSageEnv) {
-    warnings.push(
-      '\u26a0\ufe0f \u5f53\u524d\u6b63\u5728\u4f7f\u7528 SageAttention \u4e13\u7528\u8fd0\u884c\u65f6\u3002SageAttention v1 \u7684 Triton kernel \u5728 import \u65f6\u5c31\u4f1a\u52a0\u8f7d\uff0c\u53ef\u80fd\u5e72\u6270 PyTorch \u7684\u68af\u5ea6\u8ba1\u7b97\uff0c\u5bfc\u81f4\u8bad\u7ec3\u7ed3\u679c\u5f02\u5e38\uff08\u751f\u56fe\u5168\u9ed1/\u8272\u5757/\u53d8\u5f62\uff09\u3002\u5982\u679c\u8bad\u7ec3\u6548\u679c\u4e0d\u4f73\uff0c\u8bf7\u6539\u7528\u4e3b\u73af\u5883\u8bad\u7ec3\u3002'
-    );
-  }
 
   return { errors, warnings };
 }
@@ -3989,6 +4266,8 @@ window.executeTraining = async () => {
     showToast(state.lastMessage);
     const tasksResponse = await api.getTasks();
     state.tasks = tasksResponse?.data?.tasks || [];
+    saveLocalTaskHistory();
+    startTrainingLogPolling();
   } catch (error) {
     showToast(error.message || '训练请求失败。');
   } finally {
@@ -4028,6 +4307,7 @@ window.terminateAllTasks = async () => {
     showToast('已发送终止请求。');
     const tasksResponse = await api.getTasks();
     state.tasks = tasksResponse?.data?.tasks || [];
+    saveLocalTaskHistory();
     syncFooterAction();
     if (state.activeModule === 'config') {
       renderView('config');
@@ -4044,6 +4324,7 @@ window.deleteTaskHistory = async (taskId) => {
     await api.deleteTask(taskId);
     // 从前端状态中移除
     state.tasks = state.tasks.filter((t) => t.id !== taskId);
+    saveLocalTaskHistory();
     delete state.taskSummaries[taskId];
     try {
       var cache = JSON.parse(sessionStorage.getItem('sd-rescripts:task-summaries') || '{}');
@@ -4068,6 +4349,7 @@ window.clearAllTaskHistory = async () => {
     // 重新拉取任务列表
     const tasksResponse = await api.getTasks();
     state.tasks = tasksResponse?.data?.tasks || [];
+    try { await fetch('/api/local/task_history', { method: 'DELETE' }); } catch (e) {}
     state.taskSummaries = {};
     try { sessionStorage.removeItem('sd-rescripts:task-summaries'); } catch (e) {}
     if (state.activeModule === 'training') {

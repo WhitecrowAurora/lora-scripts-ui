@@ -37,6 +37,7 @@ const builtinPickerRoots = {
   'model-saved-file': path.join(LORA_ROOT, 'output'),
 };
 const SAVED_PARAMS_DIR = path.join(uiRoot, 'saved_params');
+const TASK_HISTORY_FILE = path.join(uiRoot, 'task_history.json');
 
 // ── 后端连通性状态（proxy configure 和 middleware 共享） ──
 let _backendAlive = null;   // null=未知  true=在线  false=离线
@@ -450,11 +451,51 @@ export default defineConfig({
           });
         });
 
+        // ── 本地任务历史持久化 ──
+        server.middlewares.use('/api/local/task_history', (req, res, next) => {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          if (req.method === 'GET') {
+            try {
+              const data = fs.existsSync(TASK_HISTORY_FILE)
+                ? JSON.parse(fs.readFileSync(TASK_HISTORY_FILE, 'utf-8'))
+                : [];
+              res.end(JSON.stringify({ status: 'success', data: { tasks: data } }));
+            } catch (e) {
+              res.end(JSON.stringify({ status: 'success', data: { tasks: [] } }));
+            }
+          } else if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const { tasks } = JSON.parse(body);
+                fs.writeFileSync(TASK_HISTORY_FILE, JSON.stringify(tasks || [], null, 2), 'utf-8');
+                res.end(JSON.stringify({ status: 'success' }));
+              } catch (e) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ status: 'error', message: e.message }));
+              }
+            });
+          } else if (req.method === 'DELETE') {
+            try {
+              if (fs.existsSync(TASK_HISTORY_FILE)) fs.unlinkSync(TASK_HISTORY_FILE);
+              res.end(JSON.stringify({ status: 'success' }));
+            } catch (e) {
+              res.end(JSify({ status: 'error', message: e.message }));
+            }
+          } else {
+            next();
+          }
+        });
+
         // ── 后端缺失端点的本地补丁（后端更新后前端仍需要的接口） ──
 
         // 任务日志输出 — 尝试转发后端，失败则返回空
         server.middlewares.use('/api/task_output/', (req, res, next) => {
-          const proxyReq = http.get('http://127.0.0.1:28000' + req.url, { timeout: 2000 }, (proxyRes) => {
+          // req.url in connect middleware with a mount path has the prefix stripped.
+          // Reconstruct the full backend URL explicitly.
+          const backendUrl = 'http://127.0.0.1:28000/api/task_output/' + (req.url || '').replace(/^\//, '');
+          const proxyReq = http.get(backendUrl, { timeout: 2000 }, (proxyRes) => {
             if (proxyRes.statusCode < 400) {
               res.writeHead(proxyRes.statusCode, proxyRes.headers);
               proxyRes.pipe(res);

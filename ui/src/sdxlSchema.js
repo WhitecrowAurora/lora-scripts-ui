@@ -76,6 +76,9 @@ const S_LR = [
   { key: 'lr_scheduler_num_cycles', type: 'number', label: '重启次数', desc: '重启次数', defaultValue: 1, min: 1, visibleWhen: when('lr_scheduler', 'cosine_with_restarts') },
   { key: 'optimizer_type', type: 'select', label: '优化器', desc: '优化器设置', defaultValue: 'AdamW8bit', options: ['AdamW', 'AdamW8bit', 'PagedAdamW8bit', 'Lion', 'Lion8bit', 'DAdaptation', 'DAdaptAdam', 'DAdaptLion', 'AdaFactor', 'Prodigy'] },
   { key: 'min_snr_gamma', type: 'number', label: 'Min-SNR Gamma', desc: '最小信噪比伽马值, 如果启用推荐为 5', defaultValue: '', min: 0, step: 0.1 },
+  { key: 'prodigy_d0', type: 'string', label: 'Prodigy d0', desc: 'Prodigy 初始步长估计。留空使用默认值', defaultValue: '', visibleWhen: when('optimizer_type', 'Prodigy') },
+  { key: 'prodigy_d_coef', type: 'string', label: 'Prodigy d_coef', desc: 'Prodigy d 系数，影响自适应学习率大小', defaultValue: '2.0', visibleWhen: when('optimizer_type', 'Prodigy') },
+  { key: 'optimizer_args_custom', type: 'textarea', label: '自定义 optimizer_args', desc: '自定义优化器参数，每行一个 key=value（如 decouple=True）。Prodigy 默认已自动填充标准参数', defaultValue: '' },
 ];
 const S_TRAIN = (epochs = 10) => [
   { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', desc: '最大训练 epoch（轮数）', defaultValue: epochs, min: 1 },
@@ -89,6 +92,7 @@ const S_PREVIEW = [
   { key: 'enable_preview', type: 'boolean', label: '启用预览图', desc: '启用训练预览图', defaultValue: false },
   { key: 'sample_every_n_epochs', type: 'number', label: '每 N 轮生成预览', desc: '每训练 N 个 epoch 生成一次预览图。留空则仅在 epoch 结束时按默认频率生成', defaultValue: '', min: 1, visibleWhen: when('enable_preview', true) },
   { key: 'sample_every_n_steps', type: 'number', label: '每 N 步生成预览', desc: '每训练 N 步生成一次预览图（优先于按 epoch）。留空不启用', defaultValue: '', min: 1, visibleWhen: when('enable_preview', true) },
+  { key: 'sample_at_first', type: 'boolean', label: '训练前先生成预览', desc: '训练开始前先生成一张预览图，可用于确认提示词效果', defaultValue: false, visibleWhen: when('enable_preview', true) },
   { key: 'randomly_choice_prompt', type: 'boolean', label: '随机选择提示词', desc: '随机选择预览图 Prompt', defaultValue: false, visibleWhen: when('enable_preview', true) },
   { key: 'prompt_file', type: 'file', pickerType: 'text-file', label: '提示词文件路径', desc: '预览图 Prompt 文件路径。填写后将采用文件内的 prompt。', defaultValue: '', visibleWhen: when('enable_preview', true) },
   { key: 'positive_prompts', type: 'textarea', label: '正向提示词', desc: '正向提示词', defaultValue: 'masterpiece, best quality, 1girl, solo', visibleWhen: when('enable_preview', true) },
@@ -106,7 +110,7 @@ const S_SPEED_SDXL = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
   { key: 'xformers', type: 'boolean', label: '启用 xformers', desc: '启用 xformers', defaultValue: true },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', desc: '启用 sdpa', defaultValue: true },
-  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）。⚠️ SageAttention v1 的量化精度不适合训练，推荐仅用于推理。训练请使用 SDPA', defaultValue: false },
+  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）', defaultValue: false },
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', desc: '启用省显存 attention（比 xformers 更兼容，但通常更慢）', defaultValue: false },
   { key: 'lowram', type: 'boolean', label: '低内存模式', desc: '低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中', defaultValue: false },
   { key: 'cache_latents', type: 'boolean', label: '缓存 Latent', desc: '缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用', defaultValue: true },
@@ -118,7 +122,7 @@ const S_SPEED_FLOW = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
   { key: 'fp8_base', type: 'boolean', label: '基础模型使用 FP8', desc: '基础模型使用 FP8 精度', defaultValue: true },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', desc: '启用 sdpa', defaultValue: true },
-  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）。⚠️ SageAttention v1 的量化精度不适合训练，推荐仅用于推理。训练请使用 SDPA', defaultValue: false },
+  { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）', defaultValue: false },
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', desc: '启用省显存 attention（比 xformers 更兼容，但通常更慢）', defaultValue: false },
   { key: 'lowram', type: 'boolean', label: '低内存模式', desc: '低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中', defaultValue: false },
   { key: 'cache_latents', type: 'boolean', label: '缓存 Latent', desc: '缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用', defaultValue: true },
@@ -140,7 +144,7 @@ const S_ADV = [
   { key: 'gpu_ids', type: 'string', label: '指定显卡', desc: '指定参与训练的 GPU 编号，多卡用逗号分隔（如 0,1）。留空使用默认主显卡。可在启动日志中查看可用 GPU 编号', defaultValue: '' },
   { key: 'noise_offset', type: 'number', label: '噪声偏移', desc: '在训练中添加噪声偏移来改良生成非常暗或者非常亮的图像，如果启用推荐为 0.1', defaultValue: '', step: 0.01 },
   { key: 'seed', type: 'number', label: '随机种子', desc: '随机种子', defaultValue: 1337 },
-  { key: 'clip_skip', type: 'slider', label: 'CLIP 跳层', desc: 'CLIP 跳过层数 *玄学*', defaultValue: 2, min: 0, max: 12, step: 1 },
+  { key: 'clip_skip', type: 'slider', label: 'CLIP 跳层', desc: 'CLIP 跳过层数 *玄学*（默认值 2 不会发送给后端，等同于不设置）', defaultValue: 2, min: 0, max: 12, step: 1 },
   { key: 'masked_loss', type: 'boolean', label: '启用蒙版损失', desc: '启用 Masked Loss。训练带透明蒙版 / alpha 的图像时可用', defaultValue: false },
   { key: 'alpha_mask', type: 'boolean', label: '读取 Alpha 通道作为 Mask', desc: '读取训练图像的 alpha 通道作为 loss mask', defaultValue: false },
   { key: 'training_comment', type: 'textarea', label: '训练备注', desc: '写入模型元数据的训练备注', defaultValue: '' },
@@ -752,7 +756,12 @@ export function buildRunConfig(config, typeId) {
       if (f.type === 'boolean') { payload[f.key] = Boolean(v); continue; }
       if (f.type === 'number' || f.type === 'slider') {
         if (v === '' || v == null) continue;
-        const p = Number(v); if (!Number.isNaN(p)) payload[f.key] = p; continue;
+        const p = Number(v); if (!Number.isNaN(p)) {
+          // dropout 类参数：值为 0 时不写入，避免传无效参数给后端
+          if (p === 0 && (f.key === 'network_dropout' || f.key === 'dropout')) continue;
+          if (f.key === 'clip_skip' && p === 2) continue;  // clip_skip=2 是界面默认值，不发送（等同旧前端不传 clip_skip）
+          payload[f.key] = p;
+        } continue;
       }
       if (v === '' || v == null) continue;
       if (lrKeys.has(f.key)) {
@@ -763,6 +772,75 @@ export function buildRunConfig(config, typeId) {
     }
   }
   payload.model_train_type = tid;
+
+  // ── Prodigy / 自适应优化器 optimizer_args 自动组装 ──
+  // 旧前端会自动生成 optimizer_args = ["decouple=True", "weight_decay=0.01", ...]
+  // 新前端需要在这里复现相同逻辑，否则 Prodigy 训练结果全是噪点
+  if (payload.optimizer_type === 'Prodigy') {
+    const optimArgs = [];
+    optimArgs.push('decouple=True');
+    optimArgs.push('weight_decay=0.01');
+    optimArgs.push('use_bias_correction=True');
+    const dCoef = String(payload.prodigy_d_coef || '2.0').trim();
+    if (dCoef && dCoef !== '0') {
+      optimArgs.push('d_coef=' + dCoef);
+    }
+    const d0 = String(payload.prodigy_d0 || '').trim();
+    if (d0 && d0 !== '' && d0 !== '0') {
+      optimArgs.push('d0=' + d0);
+    }
+    // 合并用户自定义 optimizer_args
+    const customArgsRaw = String(payload.optimizer_args_custom || '').trim();
+    if (customArgsRaw) {
+      const customLines = customArgsRaw.split(/[\n\r]+/).map(s => s.trim()).filter(s => s && s.includes('='));
+      // 用户自定义参数覆盖自动生成的同名参数
+      const autoKeys = new Set(optimArgs.map(a => a.split('=')[0]));
+      for (const line of customLines) {
+        const key = line.split('=')[0];
+        if (autoKeys.has(key)) {
+          // 替换自动生成的
+          const idx = optimArgs.findIndex(a => a.startsWith(key + '='));
+          if (idx >= 0) optimArgs[idx] = line;
+        } else {
+          optimArgs.push(line);
+        }
+      }
+    }
+    payload.optimizer_args = optimArgs;
+    delete payload.prodigy_d0;
+    delete payload.prodigy_d_coef;
+    delete payload.optimizer_args_custom;
+  } else if (payload.optimizer_type && ['DAdaptation', 'DAdaptAdam', 'DAdaptLion'].includes(payload.optimizer_type)) {
+    // DAdaptation 系列也需要 decouple
+    const optimArgs = ['decouple=True'];
+    const customArgsRaw = String(payload.optimizer_args_custom || '').trim();
+    if (customArgsRaw) {
+      const customLines = customArgsRaw.split(/[\n\r]+/).map(s => s.trim()).filter(s => s && s.includes('='));
+      const autoKeys = new Set(optimArgs.map(a => a.split('=')[0]));
+      for (const line of customLines) {
+        const key = line.split('=')[0];
+        if (autoKeys.has(key)) {
+          const idx = optimArgs.findIndex(a => a.startsWith(key + '='));
+          if (idx >= 0) optimArgs[idx] = line;
+        } else {
+          optimArgs.push(line);
+        }
+      }
+    }
+    payload.optimizer_args = optimArgs;
+    delete payload.prodigy_d0;
+    delete payload.prodigy_d_coef;
+    delete payload.optimizer_args_custom;
+  } else {
+    // 非自适应优化器：如果有自定义 args 仍然传
+    const customArgsRaw = String(payload.optimizer_args_custom || '').trim();
+    if (customArgsRaw) {
+      payload.optimizer_args = customArgsRaw.split(/[\n\r]+/).map(s => s.trim()).filter(s => s && s.includes('='));
+    }
+    delete payload.prodigy_d0;
+    delete payload.prodigy_d_coef;
+    delete payload.optimizer_args_custom;
+  }
 
   // ── LyCORIS network_args 转换 ──
   // 后端 sd-scripts 要求 lycoris.kohya 的参数通过 network_args 数组传入，
@@ -804,6 +882,7 @@ export function buildRunConfig(config, typeId) {
     delete payload.train_norm;
     delete payload.lokr_factor;
     delete payload.dora_wd;
+    delete payload.network_dropout;  // 与 lycoris 不兼容，避免冲突
     delete payload.enable_base_weight;
   }
 
