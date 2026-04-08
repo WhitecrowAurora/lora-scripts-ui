@@ -75,8 +75,46 @@ export const api = {
     var getFilesMap = {
       'model-file': 'model-file',
       'output-model-file': 'model-saved-file',
-      'output-folder': 'train-dir',
+      'folder': 'train-dir',
+      'text-file': 'model-file',
     };
+
+    // output-folder 特殊处理：后端没有“output目录列表”预设，
+    // 用 model-saved-file 扫描 ./output 文件，提取去重的父文件夹作为选项
+    if (type === 'output-folder') {
+      return request('/api/get_files?pick_type=model-saved-file').then(function(resp) {
+        var files = (resp && resp.data && resp.data.files) || [];
+        if (files.length === 0) {
+          return { status: 'success', data: { rootLabel: './output', items: [] } };
+        }
+        var paths = files.map(function(f) { return (f.path || '').replaceAll('\\', '/'); });
+        // 计算公共根目录
+        var rootLabel = paths.reduce(function(a, b) {
+          while (b.indexOf(a + '/') !== 0 && a) a = a.substring(0, a.lastIndexOf('/'));
+          return a;
+        });
+        var prefix = rootLabel ? rootLabel + '/' : '';
+        // 从文件路径提取父文件夹，去重
+        var folderSet = new Set();
+        files.forEach(function(f) {
+          var p = (f.path || '').replaceAll('\\', '/');
+          var rel = prefix && p.indexOf(prefix) === 0 ? p.substring(prefix.length) : f.name;
+          var slashIdx = rel.indexOf('/');
+          if (slashIdx > 0) {
+            folderSet.add(rel.substring(0, slashIdx));
+          }
+        });
+        // 如果没有子文件夹，直接返回文件列表（允许选择文件旁的状态目录）
+        var items = folderSet.size > 0
+          ? Array.from(folderSet).sort()
+          : files.map(function(f) {
+              var p = (f.path || '').replaceAll('\\', '/');
+              return prefix && p.indexOf(prefix) === 0 ? p.substring(prefix.length) : f.name;
+            });
+        return { status: 'success', data: { rootLabel: rootLabel, items: items } };
+      });
+    }
+
     var mapped = getFilesMap[type];
     if (!mapped) {
       return request('/api/builtin_picker?picker_type=' + encodeURIComponent(type));
@@ -85,7 +123,6 @@ export const api = {
       var files = (resp && resp.data && resp.data.files) || [];
       var rootLabel = '';
       if (files.length > 0) {
-        // Compute common root directory from file paths
         var paths = files.map(function(f) { return (f.path || '').replaceAll('\\', '/'); });
         rootLabel = paths.reduce(function(a, b) {
           while (b.indexOf(a + '/') !== 0 && a) a = a.substring(0, a.lastIndexOf('/'));
@@ -100,6 +137,7 @@ export const api = {
       return { status: 'success', data: { rootLabel: rootLabel, items: items } };
     });
   },
+
 
   saveConfig(name, config) {
     return postJson('/api/saved_configs/save', { name, config });

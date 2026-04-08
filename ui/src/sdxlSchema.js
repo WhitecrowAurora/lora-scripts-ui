@@ -43,6 +43,9 @@ export const TRAINING_TYPES = [
   // Textual Inversion
   { id: 'sd-textual-inversion',   group: 'Textual Inversion', label: 'SD 1.5 TI' },
   { id: 'sdxl-textual-inversion', group: 'Textual Inversion', label: 'SDXL TI' },
+  // 其他模型训练
+  { id: 'yolo',                group: '其他模型训练',      label: 'YOLO 模型训练' },
+  { id: 'aesthetic-scorer',    group: '其他模型训练',      label: '美学评分模型训练' },
 ];
 
 // ================================================================
@@ -58,6 +61,17 @@ const S_SAVE = [
   { key: 'save_state', type: 'boolean', label: '保存训练状态', desc: '保存训练状态 配合 resume 参数可以继续从某个状态训练', defaultValue: false },
   { key: 'save_state_on_train_end', type: 'boolean', label: '结束时额外保存状态', desc: '训练结束时额外保存一次训练状态', defaultValue: false },
   { key: 'save_last_n_epochs_state', type: 'number', label: '保留最近 N 个 epoch 状态', desc: '仅保存最后 n epoch 的训练状态', defaultValue: '', min: 1, visibleWhen: when('save_state', true) },
+  { key: 'save_last_n_steps_state', type: 'number', label: '保留最近 N 步状态', desc: '仅保留最近 N 步范围内的训练状态', defaultValue: '', min: 1, visibleWhen: when('save_state', true) },
+  { key: 'save_n_epoch_ratio', type: 'number', label: '按比例保存', desc: '按 epoch 比例保存，保证整个训练阶段至少保存 N 份模型', defaultValue: '', min: 1 },
+  { key: 'save_last_n_epochs', type: 'number', label: '仅保留最近 N 轮模型', desc: '仅保留最近 N 个按 epoch 保存的模型', defaultValue: '', min: 1 },
+  { key: 'save_last_n_steps', type: 'number', label: '仅保留最近 N 步模型', desc: '仅保留最近 N 步范围内的按 step 保存模型', defaultValue: '', min: 1 },
+  { key: 'log_with', type: 'select', label: '日志模块', desc: '日志模块', defaultValue: 'tensorboard', options: ['tensorboard', 'wandb'] },
+  { key: 'logging_dir', type: 'folder', pickerType: 'folder', label: '日志保存文件夹', desc: '日志保存文件夹', defaultValue: './logs' },
+  { key: 'log_prefix', type: 'string', label: '日志前缀', desc: '日志前缀', defaultValue: '' },
+  { key: 'log_tracker_name', type: 'string', label: '追踪器名称', desc: '日志追踪器名称', defaultValue: '' },
+ { key: 'wandb_run_name', type: 'string', label: 'WandB 运行名称', desc: 'wandb 单次运行显示名称', defaultValue: '', visibleWhen: when('log_with', 'wandb') },
+  { key: 'wandb_api_key', type: 'string', label: 'WandB API Key', desc: 'wandb 的 api 密钥', defaultValue: '', visibleWhen: when('log_with', 'wandb') },
+  { key: 'log_tracker_config', type: 'file', pickerType: 'model-file', label: '追踪器配置文件', desc: '日志追踪器配置文件路径', defaultValue: '' },
 ];
 const S_CAPTION = [
   { key: 'caption_extension', type: 'string', label: 'Tag 文件扩展名', desc: 'Tag 文件扩展名', defaultValue: '.txt' },
@@ -66,6 +80,9 @@ const S_CAPTION = [
   { key: 'keep_tokens', type: 'number', label: '保留前 N 个 token', desc: '在随机打乱 tokens 时，保留前 N 个不变', defaultValue: 0, min: 0, max: 255 },
   { key: 'max_token_length', type: 'number', label: '最大 token 长度', desc: '最大 token 长度', defaultValue: 255, min: 1 },
   { key: 'caption_dropout_rate', type: 'number', label: '全部标签丢弃概率', desc: '丢弃全部标签的概率，对一个图片概率不使用 caption 或 class token', defaultValue: '', min: 0, step: 0.01 },
+  { key: 'keep_tokens_separator', type: 'string', label: '保留 token 分隔符', desc: '保留 tokens 时使用的分隔符', defaultValue: '' },
+  { key: 'caption_dropout_every_n_epochs', type: 'number', label: '每 N 轮丢弃标签', desc: '每 N 个 epoch 丢弃全部标签', defaultValue: '', min: 0, max: 100, step: 1 },
+  { key: 'caption_tag_dropout_rate', type: 'number', label: '按标签丢弃概率', desc: '按逗号分隔的标签来随机丢弃 tag 的概率', defaultValue: '', min: 0, step: 0.01 },
 ];
 const S_LR = [
   { key: 'learning_rate', type: 'string', label: '总学习率', desc: '总学习率, 在分开设置 U-Net 与文本编码器学习率后这个值失效。', defaultValue: '1e-4' },
@@ -74,10 +91,12 @@ const S_LR = [
   { key: 'lr_scheduler', type: 'select', label: '学习率调度器', desc: '学习率调度器设置', defaultValue: 'cosine_with_restarts', options: ['linear', 'cosine', 'cosine_with_restarts', 'polynomial', 'constant', 'constant_with_warmup'] },
   { key: 'lr_warmup_steps', type: 'number', label: '预热步数', desc: '学习率预热步数', defaultValue: 0, min: 0 },
   { key: 'lr_scheduler_num_cycles', type: 'number', label: '重启次数', desc: '重启次数', defaultValue: 1, min: 1, visibleWhen: when('lr_scheduler', 'cosine_with_restarts') },
-  { key: 'optimizer_type', type: 'select', label: '优化器', desc: '优化器设置', defaultValue: 'AdamW8bit', options: ['AdamW', 'AdamW8bit', 'PagedAdamW8bit', 'Lion', 'Lion8bit', 'DAdaptation', 'DAdaptAdam', 'DAdaptLion', 'AdaFactor', 'Prodigy'] },
+  { key: 'optimizer_type', type: 'select', label: '优化器', desc: '优化器设置', defaultValue: 'AdamW8bit', options: ['AdamW', 'AdamW8bit', 'PagedAdamW8bit', 'RAdamScheduleFree', 'Lion', 'Lion8bit', 'PagedLion8bit', 'SGDNesterov', 'SGDNesterov8bit', 'DAdaptation', 'DAdaptAdam', 'DAdaptAdaGrad', 'DAdaptAdanIP', 'DAdaptLion', 'DAdaptSGD', 'AdaFactor', 'Prodigy', 'prodigyplus.ProdigyPlusScheduleFree', 'pytorch_optimizer.CAME', 'bitsandbytes.optim.AdEMAMix8bit', 'bitsandbytes.optim.PagedAdEMAMix8bit'] },
   { key: 'min_snr_gamma', type: 'number', label: 'Min-SNR Gamma', desc: '最小信噪比伽马值, 如果启用推荐为 5', defaultValue: '', min: 0, step: 0.1 },
   { key: 'prodigy_d0', type: 'string', label: 'Prodigy d0', desc: 'Prodigy 初始步长估计。留空使用默认值', defaultValue: '', visibleWhen: when('optimizer_type', 'Prodigy') },
   { key: 'prodigy_d_coef', type: 'string', label: 'Prodigy d_coef', desc: 'Prodigy d 系数，影响自适应学习率大小', defaultValue: '2.0', visibleWhen: when('optimizer_type', 'Prodigy') },
+  { key: 'lr_scheduler_type', type: 'string', label: '自定义调度器类', desc: '自定义学习率调度器类路径。填写后优先于上方调度器，如 torch.optim.lr_scheduler.CosineAnnealingLR', defaultValue: '' },
+  { key: 'lr_scheduler_args', type: 'textarea', label: '自定义调度器参数', desc: '自定义学习率调度器参数，一行一个 key=value', defaultValue: '' },
   { key: 'optimizer_args_custom', type: 'textarea', label: '自定义 optimizer_args', desc: '自定义优化器参数，每行一个 key=value（如 decouple=True）。Prodigy 默认已自动填充标准参数', defaultValue: '' },
 ];
 const S_TRAIN = (epochs = 10) => [
@@ -103,8 +122,7 @@ const S_PREVIEW = [
   { key: 'sample_steps', type: 'number', label: '采样步数', desc: '迭代步数', defaultValue: 24, min: 1, max: 300, visibleWhen: when('enable_preview', true) },
   { key: 'sample_seed', type: 'number', label: '预览图种子', desc: '预览图随机种子。0 或留空表示每次随机', defaultValue: '', min: 0, visibleWhen: when('enable_preview', true) },
   { key: 'sample_sampler', type: 'select', label: '采样器', desc: '生成预览图所用采样器', defaultValue: 'euler_a', options: ['ddim', 'pndm', 'lms', 'euler', 'euler_a', 'heun', 'dpm_2', 'dpm_2_a', 'dpmsolver', 'dpmsolver++'], visibleWhen: when('enable_preview', true) },
-  { key: 'log_with', type: 'select', label: '日志模块', desc: '日志模块', defaultValue: 'tensorboard', options: ['tensorboard', 'wandb'] },
-  { key: 'logging_dir', type: 'folder', pickerType: 'folder', label: '日志保存文件夹', desc: '日志保存文件夹', defaultValue: './logs' },
+  { key: 'random_prompt_include_subdirs', type: 'boolean', label: '从子目录随机选择', desc: '从 train_data_dir 下所有子目录随机选择 Prompt', defaultValue: false, visibleWhen: all(when('enable_preview', true), when('randomly_choice_prompt', true)) },
 ];
 const S_SPEED_SDXL = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
@@ -117,6 +135,14 @@ const S_SPEED_SDXL = [
   { key: 'cache_latents_to_disk', type: 'boolean', label: '缓存 Latent 到磁盘', desc: '缓存图像 latent 到磁盘', defaultValue: true },
   { key: 'cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', desc: '缓存文本编码器的输出，减少显存使用。⚠️ 启用时必须关闭「随机打乱标签」「全部标签丢弃概率」和「按标签丢弃概率」', defaultValue: true },
   { key: 'cache_text_encoder_outputs_to_disk', type: 'boolean', label: '缓存文本编码器输出到磁盘', desc: '缓存文本编码器的输出到磁盘', defaultValue: false },
+  { key: 'full_fp16', type: 'boolean', label: '完全 FP16', desc: '完全使用 FP16 精度', defaultValue: false },
+  { key: 'full_bf16', type: 'boolean', label: '完全 BF16', desc: '完全使用 BF16 精度', defaultValue: false },
+  { key: 'no_half_vae', type: 'boolean', label: '不使用半精度 VAE', desc: '不使用半精度 VAE', defaultValue: false },
+  { key: 'persistent_data_loader_workers', type: 'boolean', label: '保持数据加载器', desc: '保留加载训练集的 worker，减少每个 epoch 之间的停顿', defaultValue: true },
+  { key: 'vae_batch_size', type: 'number', label: 'VAE 编码批量', desc: 'VAE 编码批量大小', defaultValue: '', min: 1 },
+  { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile', desc: '实验性：启用 PyTorch torch.compile', defaultValue: false },
+  { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端', desc: 'torch.compile 后端', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
+  { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '梯度检查点时将部分张量卸载到 CPU，节省显存', defaultValue: false },
 ];
 const S_SPEED_FLOW = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
@@ -130,7 +156,17 @@ const S_SPEED_FLOW = [
   { key: 'cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', desc: '缓存文本编码器的输出，减少显存使用。⚠️ 启用时必须关闭「随机打乱标签」「全部标签丢弃概率」和「按标签丢弃概率」', defaultValue: true },
   { key: 'cache_text_encoder_outputs_to_disk', type: 'boolean', label: '缓存文本编码器输出到磁盘', desc: '缓存文本编码器的输出到磁盘', defaultValue: true },
   { key: 'blocks_to_swap', type: 'number', label: 'Block 交换数', desc: '在 CPU/GPU 间交换的 block 数量，省显存。', defaultValue: '', min: 1 },
+  { key: 'fp8_base_unet', type: 'boolean', label: '仅 U-Net FP8', desc: '仅对 U-Net / DiT 使用 FP8 精度', defaultValue: false },
+  { key: 'text_encoder_batch_size', type: 'number', label: '文本编码器缓存批量', desc: '文本编码器缓存批量大小', defaultValue: '', min: 1 },
   { key: 'disable_mmap_load_safetensors', type: 'boolean', label: '禁用 mmap 加载', desc: '禁用 mmap 方式加载 safetensors，减少共享内存占用', defaultValue: false },
+  { key: 'full_fp16', type: 'boolean', label: '完全 FP16', desc: '完全使用 FP16 精度', defaultValue: false },
+  { key: 'full_bf16', type: 'boolean', label: '完全 BF16', desc: '完全使用 BF16 精度', defaultValue: false },
+  { key: 'no_half_vae', type: 'boolean', label: '不使用半精度 VAE', desc: '不使用半精度 VAE', defaultValue: false },
+  { key: 'persistent_data_loader_workers', type: 'boolean', label: '保持数据加载器', desc: '保留加载训练集的 worker，减少每个 epoch 之间的停顿', defaultValue: true },
+  { key: 'vae_batch_size', type: 'number', label: 'VAE 编码批量', desc: 'VAE 编码批量大小', defaultValue: '', min: 1 },
+  { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile', desc: '实验性：启用 PyTorch torch.compile', defaultValue: false },
+  { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端', desc: 'torch.compile 后端', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
+  { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '梯度检查点时将部分张量卸载到 CPU省显存', defaultValue: false },
 ];
 const S_SPEED_SD15 = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'fp16', options: ['no', 'fp16', 'bf16'] },
@@ -139,6 +175,14 @@ const S_SPEED_SD15 = [
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', desc: '启用省显存 attention（比 xformers 更兼容，但通常更慢）', defaultValue: false },
   { key: 'cache_latents', type: 'boolean', label: '缓存 Latent', desc: '缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用', defaultValue: true },
   { key: 'cache_latents_to_disk', type: 'boolean', label: '缓存 Latent 到磁盘', desc: '缓存图像 latent 到磁盘', defaultValue: true },
+  { key: 'full_fp16', type: 'boolean', label: '完全 FP16', desc: '完全使用 FP16 精度', defaultValue: false },
+  { key: 'full_bf16', type: 'boolean', label: '完全 BF16', desc: '完全使用 BF16 精度', defaultValue: false },
+  { key: 'no_half_vae', type: 'boolean', label: '不使用半精度 VAE', desc: '不使用半精度 VAE', defaultValue: false },
+  { key: 'persistent_data_loader_workers', type: 'boolean', label: '保持数据加载器', desc: '保留加载训练集的 worker，减少每个 epoch 之间的停顿', defaultValue: true },
+  { key: 'vae_batch_size', type: 'number', label: 'VAE 编码批量', desc: 'VAE 编码批量大小', defaultValue: '', min: 1 },
+  { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile', desc: '实验性：启用 PyTorch torch.compile', defaultValue: false },
+  { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端', desc: 'torch.compile 后端', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
+  { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '梯度检查点时将部分张量卸载到 CPU，节省显存', defaultValue: false },
 ];
 const S_ADV = [
   { key: 'gpu_ids', type: 'string', label: '指定显卡', desc: '指定参与训练的 GPU 编号，多卡用逗号分隔（如 0,1）。留空使用默认主显卡。可在启动日志中查看可用 GPU 编号', defaultValue: '' },
@@ -149,6 +193,48 @@ const S_ADV = [
   { key: 'alpha_mask', type: 'boolean', label: '读取 Alpha 通道作为 Mask', desc: '读取训练图像的 alpha 通道作为 loss mask', defaultValue: false },
   { key: 'training_comment', type: 'textarea', label: '训练备注', desc: '写入模型元数据的训练备注', defaultValue: '' },
   { key: 'ui_custom_params', type: 'textarea', label: '自定义 TOML 覆盖', desc: '危险：会直接覆盖界面中的参数。', defaultValue: '' },
+  { key: 'no_metadata', type: 'boolean', label: '不写入元数据', desc: '不向输出模型写入完整训练元数据', defaultValue: false },
+  { key: 'initial_epoch', type: 'number', label: '起始 epoch', desc: '从指定 epoch 编号开始计数', defaultValue: '', min: 1 },
+  { key: 'initial_step', type: 'number', label: '起始 step', desc: '从指定 step 编号开始计数，会覆盖 initial_epoch', defaultValue: '', min: 0 },
+  { key: 'skip_until_initial_step', type: 'boolean', label: '跳过前面步数', desc: '配合 initial_step 使用，真正跳过前面的训练步数', defaultValue: false },
+  { key: 'ema_enabled', type: 'boolean', label: '启用 EMA', desc: '启用 EMA（指数滑动平均）。会额外复制一份参数，保存时写出 EMA 权重', defaultValue: false },
+  { key: 'ema_decay', type: 'number', label: 'EMA 衰减率', desc: 'EMA 衰减率。越接近 1 越平滑', defaultValue: 0.999, min: 0, max: 0.99999, step: 0.0001, visibleWhen: when('ema_enabled', true) },
+  { key: 'ema_update_every', type: 'number', label: 'EMA 更新间隔', desc: '每 N 个优化 step 更新一次 EMA', defaultValue: 1, min: 1, visibleWhen: when('ema_enabled', true) },
+  { key: 'ema_update_after_step', type: 'number', label: 'EMA 起始步', desc: '从第几个优化 step 开始更新 EMA', defaultValue: 0, min: 0, visibleWhen: when('ema_enabled', true) },
+  { key: 'safeguard_enabled', type: 'boolean', label: '启用 SafeGuard', desc: '拦截 NaN/Inf loss 与异常 loss spike', defaultValue: false },
+  { key: 'safeguard_max_nan_count', type: 'number', label: '最大 NaN 次数', desc: '连续触发多少次 NaN 后停止训练', defaultValue: 3, min: 1, visibleWhen: when('safeguard_enabled', true) },
+  { key: 'safeguard_loss_spike_threshold', type: 'number', label: 'Loss Spike 阈值', desc: '当前 loss 超过滚动平均多少倍时跳过', defaultValue: 5.0, min: 1, step: 0.1, visibleWhen: when('safeguard_enabled', true) },
+  { key: 'safeguard_auto_reduce_lr', type: 'boolean', label: '自动降低学习率', desc: 'SafeGuard 触发时自动降低学习率', defaultValue: false, visibleWhen: when('safeguard_enabled', true) },
+];
+
+const S_NOISE = [
+  { key: 'noise_offset_random_strength', type: 'boolean', label: '噪声偏移随机强度', desc: '噪声偏移强度在 0 到 noise_offset 间随机变化', defaultValue: false },
+  { key: 'multires_noise_iterations', type: 'number', label: '多分辨率噪声迭代', desc: '多分辨率（金字塔）噪声迭代次数 推荐 6-10', defaultValue: '',step: 1 },
+  { key: 'multires_noise_discount', type: 'number', label: '多分辨率噪声衰减', desc: '多分辨率（金字塔）衰减率 推荐 0.3-0.8', defaultValue: '', step: 0.01 },
+  { key: 'ip_noise_gamma', type: 'number', label: '输入扰动噪声', desc: '输入扰动噪声强度，常用于正则化', defaultValue: '', step: 0.01 },
+  { key: 'ip_noise_gamma_random_strength', type: 'boolean', label: '扰动噪声随机强度', desc: '输入扰动噪声强度在 0 到 ip_noise_gamma 间随机变化', defaultValue: false },
+  { key: 'adaptive_noise_scale', type: 'number', label: '自适应噪声缩放', desc: '按 latent 平均绝对值动态追加 noise_offset', defaultValue: '', step: 0.01 },
+  { key: 'min_timestep', type: 'number', label: '最小时间步', desc: '训练时允许的最小 timestep', defaultValue: '', min: 0 },
+  { key: 'max_timestep', type: 'number', label: '最大时间步', desc: '训练时允许的最大 timestep', defaultValue: '', min: 1 },
+];
+const S_DATA_AUG = [
+  { key: 'color_aug', type: 'boolean', label: '颜色增强', desc: '启用颜色改变数据增强', defaultValue: false },
+  { key: 'flip_aug', type: 'boolean', label: '翻转增强', desc: '启用图像翻转数据增强', defaultValue: false },
+  { key: 'random_crop', type: 'boolean', label: '随机裁剪', desc: '启用随机剪裁数据增强', defaultValue: false },
+];
+const S_VALIDATION = [
+  { key: 'validation_split', type: 'number', label: '验证集比例', desc: '验证集划分比例，从训练集自动切出一部分做验证', defaultValue: 0, min: 0, max: 1, step: 0.01 },
+  { key: 'validation_seed', type: 'number', label: '验证集种子', desc: '验证集切分随机种子', defaultValue: '' },
+  { key: 'validate_every_n_steps', type: 'number', label: '每 N 步验证', desc: '每 N 步执行一次验证', defaultValue: '', min: 1 },
+  { key: 'validate_every_n_epochs', type: 'number', label: '每 N 轮验证', desc: '每 N 个 epoch 执行一次验证', defaultValue: '', min: 1 },
+  { key: 'max_validation_steps', type: 'number', label: '最大验证步数', desc: '每次验证最多处理多少个验证批次', defaultValue: '', min: 1 },
+];
+const S_THERMAL = [
+  { key: 'cooldown_every_n_epochs', type: 'number', label: '每 N 轮冷却', desc: '每 N 个 epoch 暂停训练冷却。留空关闭', defaultValue: '', min: 1 },
+  { key: 'cooldown_minutes', type: 'number', label: '冷却分钟数', desc: '每次冷却至少暂停多少分钟', defaultValue: '', min: 0, step: 0.5 },
+  { key: 'cooldown_until_temp_c', type: 'number', label: '冷却目标温度(℃)', desc: '等待显卡温度降到多少℃以下再继续', defaultValue: '', min: 1 },
+  { key: 'cooldown_poll_seconds', type: 'number', label: '温度轮询间隔(秒)', desc: '温度轮询间隔', defaultValue: 15, min: 1 },
+  { key: 'gpu_power_limit_w', type: 'number', label: 'GPU 功率墙(W)', desc: '训练前设置显卡功率墙（瓦）', defaultValue: '', min: 1 },
 ];
 
 // dataset fields helper
@@ -181,6 +267,9 @@ const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = []) => [
   { key: 'train_norm', type: 'boolean', label: '训练 Norm 层', desc: '训练 Norm 层，不支持 (IA)^3', defaultValue: false, visibleWhen: when('network_module', 'lycoris.kohya') },
   { key: 'lokr_factor', type: 'number', label: 'LoKr 系数', desc: '常用 4~无穷（填写 -1 为无穷）', defaultValue: -1, min: -1, visibleWhen: all(when('network_module', 'lycoris.kohya'), when('lycoris_algo', 'lokr')) },
   { key: 'enable_base_weight', type: 'boolean', label: '启用基础权重', desc: '启用基础权重（差异炼丹）', defaultValue: false },
+  { key: 'base_weights', type: 'textarea', label: '基础权重路径', desc: '合并入底模的 LoRA 路径，一行一个路径', defaultValue: '', visibleWhen: when('enable_base_weight', true) },
+  { key: 'base_weights_multiplier', type: 'textarea', label: '基础权重比例', desc: '合并入底模的 LoRA 权重，一行一个数字', defaultValue: '', visibleWhen: when('enable_base_weight', true) },
+  { key: 'network_args_custom', type: 'textarea', label: '自定义 network_args', desc: '自定义 network_args，每行一个参数', defaultValue: '' },
   ...extra,
 ];
 
@@ -216,7 +305,9 @@ const SDXL_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '输出路径、格式与训练状态。', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '训练数据、正则图与分桶。', ds('1024,1024', 2048, 32)),
   sec('caption-settings', 'dataset', 'Caption 选项', '标签打乱与丢弃策略。', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', 'LoRA / LyCORIS 参数。', netLora('networks.lora', 32, 32, 512, [
+
     { key: 'dora_wd', type: 'boolean', label: '启用 DoRA', desc: '启用 DoRA 训练', defaultValue: false },
     { key: 'dylora_unit', type: 'number', label: 'DyLoRA 分块', desc: 'dylora 分割块数单位，最小 1 也最慢。一般 4、8、12、16 这几个选', defaultValue: 4, min: 1, visibleWhen: when('network_module', 'networks.dylora') },
     { key: 'enable_block_weights', type: 'boolean', label: '启用分层学习率', desc: '启用分层学习率训练（只支持网络模块 networks.lora）', defaultValue: false },
@@ -224,9 +315,13 @@ const SDXL_LORA_SECTIONS = [
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '学习率、调度器与优化器。', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '训练轮数、批量与梯度。', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '训练中生成预览图。', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '混合精度、缓存与注意力后端。', [...S_SPEED_SDXL]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '噪声、种子与实验功能。', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
+
 
 // ---- SD 1.5 LoRA ----
 const SD15_LORA_SECTIONS = [
@@ -241,12 +336,16 @@ const SD15_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('512,512', 1024, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', '', netLora('networks.lora', 32, 32, 256)),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SD15]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- FLUX LoRA ----
@@ -268,12 +367,16 @@ const FLUX_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('768,768', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', '', netLora('networks.lora_flux', 4, 16, 256)),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(20)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- SD3 LoRA ----
@@ -298,12 +401,16 @@ const SD3_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('768,768', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', '', netLora('networks.lora_sd3', 4, 1, 256)),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(20)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- Lumina LoRA ----
@@ -325,12 +432,16 @@ const LUMINA_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', '', netLora('networks.lora_lumina', 4, 16, 256)),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- HunyuanImage LoRA ----
@@ -352,12 +463,16 @@ const HUNYUAN_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', '', netLora('networks.lora_hunyuan_image', 16, 16, 256)),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- Anima LoRA ----
@@ -380,6 +495,7 @@ const ANIMA_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', 'LoRA / LoKr 模式。', [
     { key: 'lora_type', type: 'select', label: '适配器类型', desc: '适配器类型：lora 或 lokr', defaultValue: 'lora', options: ['lora', 'lokr'] },
     { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
@@ -393,8 +509,11 @@ const ANIMA_LORA_SECTIONS = [
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- SD DreamBooth / SDXL Finetune (共用 schema) ----
@@ -413,11 +532,15 @@ const DB_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('512,512', 1024, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SD15]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 const SDXL_FT_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL 全参微调。', [
@@ -427,11 +550,15 @@ const SDXL_FT_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 32)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SDXL]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- FLUX Finetune ----
@@ -453,11 +580,15 @@ const FLUX_FT_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('768,768', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(20)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- SD3 Finetune ----
@@ -482,11 +613,15 @@ const SD3_FT_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(20)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- Lumina Finetune ----
@@ -507,11 +642,15 @@ const LUMINA_FT_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- Anima Finetune ----
@@ -532,11 +671,15 @@ const ANIMA_FT_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- ControlNet (SD / SDXL / FLUX) ----
@@ -576,22 +719,30 @@ const SD_CN_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', cnDataset('512,512', 1024, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...cnLR]),
   sec('training-settings', 'training', '训练参数', '', [...cnTrainFields]),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SD15]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 const SDXL_CN_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL ControlNet。', cnModel('sdxl-controlnet', 'SDXL', [{ key: 'v_parameterization', type: 'boolean', label: 'V 参数化', desc: 'V 参数化', defaultValue: false }])),
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', cnDataset('1024,1024', 2048, 32)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...cnLR]),
   sec('training-settings', 'training', '训练参数', '', [...cnTrainFields]),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SDXL]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 const FLUX_CN_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'FLUX ControlNet。', [
@@ -606,11 +757,15 @@ const FLUX_CN_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [...S_SAVE]),
   sec('dataset-settings', 'dataset', '数据集设置', '', cnDataset('768,768', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...cnLR]),
   sec('training-settings', 'training', '训练参数', '', [...cnTrainFields]),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_FLOW]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 
 // ---- Textual Inversion ----
@@ -635,11 +790,15 @@ const SD_TI_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', S_SAVE.map((f) => f.key === 'save_model_as' ? { ...f, defaultValue: 'pt' } : f.key === 'output_name' ? { ...f, defaultValue: 'embedding' } : f)),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('512,512', 1024, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SD15]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
 const SDXL_TI_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL Textual Inversion。', tiModel('sdxl-textual-inversion', 'SDXL')),
@@ -647,12 +806,89 @@ const SDXL_TI_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', S_SAVE.map((f) => f.key === 'save_model_as' ? { ...f, defaultValue: 'pt' } : f.key === 'output_name' ? { ...f, defaultValue: 'embedding' } : f)),
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 32)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', [...S_CAPTION]),
+  sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
+  sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SDXL]),
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
 ];
+
+// ---- YOLO 训练 ----
+const YOLO_SECTIONS = [
+  sec('model-settings', 'model', '训练用模型', 'YOLO 模型配置。', [
+    { key: 'model_train_type', type: 'hidden', defaultValue: 'yolo' },
+    { key: 'pretrained_model_name_or_path', type: 'string', label: 'YOLO 模型权重', desc: 'YOLO 模型权重或模型 yaml。可填本地路径或官方模型名如 yolo11n.pt', defaultValue: 'yolo11n.pt' },
+    { key: 'resume', type: 'file', pickerType: 'model-file', label: '继续训练检查点', desc: '从已有 YOLO 训练检查点继续训练。填写 last.pt 一类的检查点文件路径', defaultValue: '' },
+  ]),
+  sec('dataset-settings', 'dataset', '数据集设置', 'YOLO 数据集目录与类别。', [
+    { key: 'yolo_data_config_path', type: 'file', pickerType: 'model-file', label: '自定义数据集 yaml', desc: '可选。自定义 YOLO 数据集 yaml。填写后下方训练/验证目录仅作参考', defaultValue: '' },
+    { key: 'train_data_dir', type: 'folder', pickerType: 'folder', label: '训练图像目录', desc: '训练图像目录', defaultValue: './datasets/images/train' },
+    { key: 'val_data_dir', type: 'folder', pickerType: 'folder', label: '验证图像目录', desc: '验证图像目录。留空时回退为训练目录', defaultValue: './datasets/images/val' },
+    { key: 'class_names', type: 'textarea', label: '类别名称', desc: '类别名称，一行一个', defaultValue: 'class0' },
+  ]),
+  sec('save-settings', 'model', '保存设置', '', [
+    { key: 'output_name', type: 'string', label: '输出名称', desc: '本次训练输出名称', defaultValue: 'exp' },
+    { key: 'output_dir', type: 'folder', pickerType: 'folder', label: '输出目录', desc: '训练输出目录', defaultValue: './output/yolo' },
+    { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', desc: '每 N 个 epoch 保存一次检查点', defaultValue: 10, min: 1 },
+  ]),
+  sec('training-settings', 'training', '训练参数', '', [
+    { key: 'epochs', type: 'number', label: '训练轮数', desc: '训练 epoch 数', defaultValue: 100, min: 1 },
+    { key: 'batch', type: 'number', label: '批量大小', desc: '训练批量大小', defaultValue: 16, min: 1 },
+    { key: 'imgsz', type: 'number', label: '输入分辨率', desc: '训练输入分辨率', defaultValue: 640, min: 32 },
+    { key: 'workers', type: 'number', label: '数据加载 Worker', desc: '数据加载 worker 数量', defaultValue: 8, min: 0 },
+    { key: 'device', type: 'string', label: '设备', desc: '手动指定设备，如 0、0,1、cpu。留空自动检测', defaultValue: '' },
+    { key: 'seed', type: 'number', label: '随机种子', desc: '随机种子', defaultValue: 1337 },
+  ]),
+];
+
+// ---- 美学评分模型训练 ----
+const AESTHETIC_SCORER_SECTIONS = [
+  sec('output-settings', 'model', '输出设置', '模型输出配置。', [
+    { key: 'model_train_type', type: 'hidden', defaultValue: 'aesthetic-scorer' },
+    { key: 'output_name', type: 'string', label: '模型保存名称', desc: '模型保存名称', defaultValue: 'aesthetic-scorer-best' },
+    { key: 'output_dir', type: 'folder', pickerType: 'folder', label: '输出目录', desc: '模型输出目录', defaultValue: './output/aesthetic-scorer' },
+    { key: 'save_model_as', type: 'select', label: '保存格式', desc: '模型保存格式', defaultValue: 'safetensors', options: ['safetensors', 'pt', 'pth', 'ckpt'] },
+  ]),
+  sec('dataset-settings', 'dataset', '数据集设置', '标注文件与图片配置。', [
+    { key: 'annotations', type: 'file', pickerType: 'model-file', label: '标注文件路径', desc: '标注文件路径，支持 .jsonl、.csv、.db', defaultValue: './datasets/aesthetic/annotations.jsonl' },
+    { key: 'image_root', type: 'folder', pickerType: 'folder', label: '图片根目录', desc: '图片根目录。留空时按标注文件中的路径直接解析', defaultValue: '' },
+    { key: 'train_split', type: 'string', label: '训练 split', desc: '训练 split 名称，如 train', defaultValue: '' },
+    { key: 'val_split', type: 'string', label: '验证 split', desc: '验证 split 名称，如 val', defaultValue: '' },
+    { key: 'val_ratio', type: 'number', label: '验证集比例', desc: '未使用 split 时按比例随机切分验证集', defaultValue: 0.1, min: 0.01, max: 0.99, step: 0.01 },
+    { key: 'target_dims', type: 'textarea', label: '评分维度', desc: '参与训练的评分维度，一行一个', defaultValue: 'aesthetic\ncomposition\ncolor\nsexual' },
+  ]),
+  sec('training-settings', 'training', '训练参数', '', [
+    { key: 'batch_size', type: 'number', label: '批量大小', desc: '训练 batch size', defaultValue: 8, min: 1 },
+    { key: 'num_workers', type: 'number', label: 'DataLoader Worker', desc: 'DataLoader worker 数', defaultValue: 4, min: 0 },
+    { key: 'epochs', type: 'number', label: '训练轮数', desc: '训练轮数', defaultValue: 10, min: 1 },
+    { key: 'learning_rate', type: 'string', label: '学习率', desc: '学习率', defaultValue: '3e-4' },
+    { key: 'weight_decay', type: 'string', label: '权重衰减', desc: '权重衰减', defaultValue: '1e-4' },
+    { key: 'loss', type: 'select', label: '损失函数', desc: '回归损失函数', defaultValue: 'mse', options: ['mse', 'smooth_l1'] },
+    { key: 'cls_loss_weight', type: 'number', label: '分类损失权重', desc: 'in_domain 二分类损失权重', defaultValue: 1.0, min: 0, step: 0.1 },
+    { key: 'cls_pos_weight', type: 'string', label: '正样本权重', desc: '分类正样本权重。留空不额外加权', defaultValue: '' },
+    { key: 'seed', type: 'number', label: '随机种子', desc: '随机种子', defaultValue: 42 },
+    { key: 'device', type: 'string', label: '设备', desc: 'cuda、cuda:0、cpu', defaultValue: 'cuda' },
+  ]),
+  sec('head-settings', 'network', '融合头设置', 'Fusion head 参数。', [
+    { key: 'hidden_dims', type: 'string', label: '隐层维度', desc: 'Fusion head 隐层维度，逗号分隔', defaultValue: '1024,256' },
+    { key: 'dropout', type: 'number', label: 'Dropout', desc: 'Fusion head dropout', defaultValue: 0.2, min: 0, max: 1, step: 0.01 },
+    { key: 'freeze_extractors', type: 'boolean', label: '冻结提取器', desc: '冻结 JTP-3 与 Waifu CLIP 特征提取器', defaultValue: true },
+    { key: 'include_waifu_score', type: 'boolean', label: '启用 Waifu 分支', desc: '启用 Waifu Scorer v3 额外分支特征', defaultValue: true },
+  ]),
+  sec('extractor-settings', 'advanced', '特征提取器设置', '', [
+    { key: 'jtp3_model_id', type: 'string', label: 'JTP-3 模型 ID', desc: 'JTP-3 模型 ID 或本地目录', defaultValue: 'RedRocket/JTP-3' },
+    { key: 'jtp3_fallback_model_id', type: 'string', label: 'JTP-3 回退模型', desc: 'JTP-3 加载失败时的回退模型 ID', defaultValue: '' },
+    { key: 'hf_token_env', type: 'string', label: 'HF Token 环境变量', desc: '读取 HuggingFace Token 的环境变量名', defaultValue: 'HF_TOKEN' },
+    { key: 'waifu_clip_model_name', type: 'string',label: 'Waifu CLIP 模型', desc: 'Waifu CLIP 模型名称', defaultValue: 'ViT-L-14' },
+    { key: 'waifu_clip_pretrained', type: 'string', label: 'CLIP 预训练', desc: 'Waifu CLIP 预训练权重名称', defaultValue: 'openai' },
+    { key: 'wv3_head_path', type: 'file', pickerType: 'model-file', label: 'Waifu v3 头部路径', desc: 'Waifu Scorer v3 头部权重路径。留空时自动尝试内置路径', defaultValue: '' },
+  ]),
+];
+
 
 // ================================================================
 // SECTIONS_MAP
@@ -676,6 +912,8 @@ const SECTIONS_MAP = {
   'flux-controlnet':        FLUX_CN_SECTIONS,
   'sd-textual-inversion':   SD_TI_SECTIONS,
   'sdxl-textual-inversion': SDXL_TI_SECTIONS,
+  'yolo':                   YOLO_SECTIONS,
+  'aesthetic-scorer':       AESTHETIC_SCORER_SECTIONS,
 };
 
 // 兼容旧名
@@ -874,6 +1112,12 @@ export function buildRunConfig(config, typeId) {
     }
 
     payload.network_args = networkArgs;
+    // 合并 network_args_custom
+    const netArgsCustomRaw = String(payload.network_args_custom || '').trim();
+    if (netArgsCustomRaw) {
+      const customLines = netArgsCustomRaw.split(/[\n\r]+/).map(s => s.trim()).filter(s => s);
+      payload.network_args.push(...customLines);
+    }
     // 清理原始 UI 字段，避免 sd-scripts 不认识这些 key 报错或误用
     delete payload.lycoris_algo;
     delete payload.conv_dim;
@@ -884,7 +1128,47 @@ export function buildRunConfig(config, typeId) {
     delete payload.dora_wd;
     delete payload.network_dropout;  // 与 lycoris 不兼容，避免冲突
     delete payload.enable_base_weight;
+    delete payload.network_args_custom;
+  } else {
+    // 非 LyCORIS: 处理 network_args_custom
+    const netArgsCustomRaw = String(payload.network_args_custom || '').trim();
+    if (netArgsCustomRaw) {
+      const existingArgs = payload.network_args || [];
+      const customLines = netArgsCustomRaw.split(/[\n\r]+/).map(s => s.trim()).filter(s => s);
+      payload.network_args = [...existingArgs, ...customLines];
+    }
+    delete payload.network_args_custom;
   }
+
+  // ── base_weights textarea → 数组 ──
+  if (payload.enable_base_weight) {
+    if (payload.base_weights && typeof payload.base_weights === 'string') {
+      const lines = payload.base_weights.split(/[\n\r]+/).map(s => s.trim()).filter(s => s);
+      payload.base_weights = lines.length > 0 ? lines : undefined;
+    }
+
+    if (payload.base_weights_multiplier && typeof payload.base_weights_multiplier === 'string') {
+      const lines = payload.base_weights_multiplier.split(/[\n\r]+/).map(s => s.trim()).filter(s => s);
+      payload.base_weights_multiplier = lines.length > 0 ? lines.map(Number).filter(n => !Number.isNaN(n)) : undefined;
+    }
+  } else {
+    delete payload.base_weights;
+    delete payload.base_weights_multiplier;
+  }
+  delete payload.enable_base_weight;
+
+  // ── lr_scheduler_args textarea → 数组 ──
+  if (payload.lr_scheduler_args && typeof payload.lr_scheduler_args === 'string') {
+    const lines = payload.lr_scheduler_args.split(/[\n\r]+/).map(s => s.trim()).filter(s => s && s.includes('='));
+    payload.lr_scheduler_args = lines.length > 0 ? lines : undefined;
+    if (!payload.lr_scheduler_args) delete payload.lr_scheduler_args;
+  }
+
+  // ── lr_scheduler_type 空值清理 ──
+  if (!payload.lr_scheduler_type || !payload.lr_scheduler_type.trim()) delete payload.lr_scheduler_type;
+  // ── huber_schedule 空值清理 ──
+
+  if (payload.huber_schedule === '') delete payload.huber_schedule;
 
   return payload;
 }

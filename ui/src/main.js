@@ -27,6 +27,11 @@ const CONDITIONAL_KEYS = new Set([
   'optimizer_type',
   'enable_preview',
   'randomly_choice_prompt',
+  'ema_enabled',
+  'safeguard_enabled',
+  'torch_compile',
+  'enable_base_weight',
+  'log_with',
 ]);
 const DRAFT_STORAGE_KEY = 'sd-rescripts:ui:sdxl-draft';
 
@@ -114,6 +119,7 @@ function init() {
   loadTaskSummariesFromCache();
   renderView(state.activeModule);
   startTaskPolling();
+  setupTopbarSearch();
 }
 
 function escapeHtml(value) {
@@ -184,10 +190,12 @@ function canUseBuiltinPicker(field) {
   if (!field) {
     return false;
   }
-  if (field.pickerType === 'model-file' || field.pickerType === 'output-model-file' || field.pickerType === 'output-folder') {
+  // 有 pickerType 的字段都有内置选择器按钮
+  if (field.pickerType) {
     return true;
   }
-  return ['train_data_dir', 'reg_data_dir', 'resume'].includes(field.key);
+  // file/folder 类型字段也支持
+  return field.type === 'file' || field.type === 'folder';
 }
 
 async function loadBootstrapData() {
@@ -384,6 +392,7 @@ function renderConfig(container) {
         <p></p>
       </header>
       <div class="status-deck" id="status-deck">${renderStatusDeck()}</div>
+      ${renderPreflightReport()}
       <div class="section-toolbar">
         <div class="toolbar-actions toolbar-check-actions">
           <button class="btn btn-outline btn-check" type="button" onclick="runPreflight()">
@@ -500,7 +509,7 @@ function renderField(field) {
         ${renderHeader()}
         <p class="field-desc">${escapeHtml(field.desc || '')}</p>
         <div class="input-picker">
-          <button class="picker-icon" type="button" onclick="${canUseBuiltinPicker(field) ? `openNativePicker('${field.key}', '${field.pickerType || 'folder'}')` : `pickPath('${field.key}', '${field.pickerType || 'folder'}')`}">
+          <button class="picker-icon" type="button" onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
             <svg class="icon"><use href="#icon-folder"></use></svg>
           </button>
           <input type="text" value="${escapeHtml(inputValue)}" oninput="updateConfigValue('${field.key}', this.value)">
@@ -508,6 +517,8 @@ function renderField(field) {
       </div>
     `;
   }
+
+
 
   return `
     <div class="config-group${modCls}" data-field-key="${field.key}">
@@ -531,12 +542,118 @@ function renderPreflightDetail() {
   if (!state.preflight) return '在训练前建议运行一遍训练预检';
   if (state.preflight.can_start) {
     const w = state.preflight.warnings || [];
-    return w.length ? `${w.length} 个警告：${w[0]}` : '全部通过，可以启动训练';
+    return w.length ? `${w.length} 个警告（点击"训练预检"查看详情）` : '全部通过，可以启动训练';
   }
   const errors = state.preflight.errors || [];
   if (!errors.length) return '训练预检未通过';
-  return errors.map((e, i) => `[${i + 1}] ${e}`).join('；');
+  return `${errors.length} 个错误（点击"训练预检"查看详情）`;
 }
+
+function renderPreflightReport() {
+  const pf = state.preflight;
+  if (!pf) return '';
+
+  const errors = pf.errors || [];
+  const warnings = pf.warnings || [];
+  const notes = pf.notes || [];
+  const ds = pf.dataset;
+  const deps = pf.dependencies;
+
+  if (errors.length === 0 && warnings.length === 0 && notes.length === 0 && !ds) {
+    return '';
+  }
+
+  const canStart = pf.can_start;
+  const borderColor = canStart ? (warnings.length > 0 ? '#f59e0b' : '#22c55e') : '#ef4444';
+  const statusIcon = canStart ? (warnings.length > 0 ? _ico('alert-tri') : _ico('check-circle')) : _ico('x-circle');
+  const statusText = canStart ? (warnings.length > 0 ? '预检通过（有警告）' : '预检通过') : '预检未通过';
+  const statusColor = canStart ? (warnings.length > 0 ? '#f59e0b' : '#22c55e') : '#ef4444';
+
+  let html = '<section class="form-section" id="preflight-report" style="border-left:3px solid ' + borderColor + ';">';
+  html += '<header class="section-header" style="display:flex;justify-content:space-between;align-items:center;">';
+  html += '<h3>' + statusIcon + ' 训练预检报告</h3>';
+  html += '<button type="button" onclick="dismissPreflightReport()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:1.1rem;padding:2px 6px;" title="关闭">×</button>';
+  html += '</header>';
+  html += '<div class="section-content" style="display:block;">';
+
+  // 状态概览
+  html += '<div style="font-weight:700;color:' + statusColor + ';margin-bottom:12px;">' + statusText + '</div>';
+
+  
+  if (errors.length > 0) {
+    html += '<div class="preflight-group">';
+    html += '<div class="preflight-group-title" style="color:#ef4444;">' + _ico('x-circle', 14) + ' 错误 (' + errors.length + ')</div>';
+    errors.forEach(function(e) {
+      html += '<div class="preflight-item preflight-error">' + escapeHtml(e) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // 警告列表
+  if (warnings.length > 0) {
+    html += '<div class="preflight-group">';
+    html += '<div class="preflight-group-title" style="color:#f59e0b;">' + _ico('alert-tri', 14) + ' 警告 (' + warnings.length + ')</div>';
+    warnings.forEach(function(w) {
+      html += '<div class="preflight-item preflight-warning">' +escapeHtml(w) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // 数据集摘要
+  if (ds) {
+    html += '<div class="preflight-group">';
+    html += '<div class="preflight-group-title">' + _ico('folder', 14) + ' 数据集</div>';
+    html += '<div class="preflight-dataset-grid">';
+    html += _pfTag('图片数', ds.image_count || 0);
+    html += _pfTag('有效图片', ds.effective_image_count || 0);
+    html += _pfTag('标注覆盖', ((ds.caption_coverage || 0) * 100).toFixed(0) + '%');
+    if (ds.alpha_capable_image_count > 0) html += _pfTag('含透明通道', ds.alpha_capable_image_count);
+    if (ds.broken_image_count > 0) html += _pfTag('损坏图片', ds.broken_image_count, 'err');
+    if (ds.images_without_caption_count > 0) html += _pfTag('缺少标注', ds.images_without_caption_count, 'warn');
+    html += '</div></div>';
+  }
+
+  // 依赖检测
+  if (deps) {
+    var missing = deps.missing || [];
+    var required = deps.required || [];
+    if (missing.length > 0 || required.length > 0) {
+      html += '<div class="preflight-group">';
+      html += '<div class="preflight-group-title">' + _ico('activity', 14) + ' 运行时依赖</div>';
+      missing.forEach(function(d) {
+        html += '<div class="preflight-item preflight-error">' + escapeHtml(d.display_name) + ' — ' + escapeHtml(d.reason || '缺失') + '</div>';
+      });
+      required.filter(function(d) { return d.importable; }).forEach(function(d) {
+        html += '<div class="preflight-item preflight-ok">' + escapeHtml(d.display_name) + ' ' + escapeHtml(d.version || '') + ' ✓</div>';
+      });
+      html += '</div>';
+    }
+  }
+
+  // 提示信息（可折叠）
+  if (notes.length > 0) {
+    html += '<details class="preflight-group" style="margin-top:8px;">';
+    html += '<summary class="preflight-group-title" style="cursor:pointer;">' + _ico('check-circle', 14) + ' 提示 (' + notes.length + ')</summary>';
+    notes.forEach(function(n) {
+      html += '<div class="preflight-item preflight-note">' + escapeHtml(n) + '</div>';
+    });
+    html += '</details>';
+  }
+
+  html += '</div></section>';
+  return html;
+}
+
+function _pfTag(label, value, type) {
+  var color = type === 'err' ? '#ef4444' : (type === 'warn' ? '#f59e0b' : 'var(--text-main)');
+  return '<div class="preflight-tag"><span class="preflight-tag-label">' + label + '</span><span class="preflight-tag-value" style="color:' + color + ';">' + value + '</span></div>';
+}
+
+window.dismissPreflightReport = function() {
+  var el = document.getElementById('preflight-report');
+  if (el) el.remove();
+};
+
 
 function renderStatusDeck() {
   const runtimeLabel = state.runtimeError
@@ -911,36 +1028,32 @@ function collectTrainingMetrics(lines) {
   const m = state.trainingMetrics;
   if (!m.startTime) m.startTime = Date.now();
 
-  for (let i = lines.length - 1; i >= 0; i--) {
+  // Scan ALL lines (not just the last match) so we accumulate data points
+  // across the entire tail window, not just one per poll.
+  for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const speedMatch = line.match(/(\d+\.?\d*)\s*(it\/s|s\/it)/);
     const lossMatch = line.match(/avr_loss[=:]\s*(\d+\.?\d*)/);
     const stepMatch = line.match(/\|\s*(\d+)\/(\d+)\s*\[/);
-    if (speedMatch || lossMatch || stepMatch) {
-      const now = Date.now();
-      if (speedMatch) {
-        let itPerSec = parseFloat(speedMatch[1]);
-        if (speedMatch[2] === 's/it') itPerSec = itPerSec > 0 ? 1 / itPerSec : 0;
-        m.speeds.push({ time: now, itPerSec });
-      }
-      if (lossMatch) {
-        const curLoss = parseFloat(lossMatch[1]);
-        const curStep = stepMatch ? parseInt(stepMatch[1]) : m.lastStep;
-        // Record if step advanced, first sample, or loss value changed
-        const prevLoss = m.losses.length > 0 ? m.losses[m.losses.length - 1].loss : -1;
-        if (curStep > m.lastStep || m.losses.length === 0 || Math.abs(curLoss - prevLoss) > 0.0001) {
-          m.losses.push({ time: now, step: curStep, loss: curLoss });
-          m.lastStep = curStep;
-        }
-      }
-      if (stepMatch) {
-        m.totalSteps = parseInt(stepMatch[2]);
-        m.lastStep = Math.max(m.lastStep, parseInt(stepMatch[1]));
-      }
-      break;
+    const now = Date.now();
+    if (speedMatch) {
+      let itPerSec = parseFloat(speedMatch[1]);
+      if (speedMatch[2] === 's/it') itPerSec = itPerSec > 0 ? 1 / itPerSec : 0;
+      m.speeds.push({ time: now, itPerSec });
     }
-  }
-  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lossMatch) {
+      const curLoss = parseFloat(lossMatch[1]);
+      const curStep = stepMatch ? parseInt(stepMatch[1]) : m.lastStep;
+      const prevLoss = m.losses.length > 0 ? m.losses[m.losses.length - 1].loss : -1;
+      if (curStep > m.lastStep || m.losses.length === 0 || Math.abs(curLoss - prevLoss) > 0.0001) {
+        m.losses.push({ time: now, step: curStep, loss: curLoss });
+        m.lastStep = curStep;
+      }
+    }
+    if (stepMatch) {
+      m.totalSteps = parseInt(stepMatch[2]);
+      m.lastStep = Math.max(m.lastStep, parseInt(stepMatch[1]));
+    }
     const ep = lines[i].match(/epoch\s+(\d+)\/(\d+)/);
     if (ep) {
       const cur = parseInt(ep[1]);
@@ -948,7 +1061,6 @@ function collectTrainingMetrics(lines) {
       if (!m.epochs.length || m.epochs[m.epochs.length - 1].epoch < cur) {
         m.epochs.push({ epoch: cur, total: tot });
       }
-      break;
     }
   }
 }
@@ -1351,7 +1463,7 @@ window.showTaskSummary = async function(taskId) {
   panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">\u2693 \u6b63\u5728\u5206\u6790\u8bad\u7ec3\u65e5\u5fd7...</span>';
   panel.style.display = 'block';
   try {
-    var resp = await api.getTaskOutput(taskId, 200);
+    var resp = await api.getTaskOutput(taskId, 5000);
     var lines = (resp && resp.data && resp.data.lines) ? resp.data.lines : [];
     if (lines.length === 0) {
       panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">\u65e0\u8bad\u7ec3\u8f93\u51fa\u6570\u636e\uff0c\u65e0\u6cd5\u8bc4\u5206\u3002</span>';
@@ -4215,6 +4327,37 @@ function validateConfigConflicts() {
   }
 
 
+  // 9. noise_offset 与 multires_noise_iterations 冲突
+  if (toNum(c.noise_offset) > 0 && toNum(c.multires_noise_iterations) > 0) {
+    errors.push('noise_offset 与 multires_noise_iterations 不能同时使用。请只保留其中一个噪声策略。');
+  }
+
+  // 10. full_fp16 与 full_bf16 冲突
+  if (toBool(c.full_fp16) && toBool(c.full_bf16)) {
+    errors.push('不能同时启用「完全 FP16」和「完全 BF16」。请只保留其中一个。');
+  }
+
+  // 11. 学习率为 0 警告
+  const effUnetLr = Number(c.unet_lr || c.learning_rate || 0);
+  const effTeLr = Number(c.text_encoder_lr || c.learning_rate || 0);
+  if (toBool(c.network_train_unet_only) && effUnetLr === 0) {
+    warnings.push('当前仅训练 U-Net，但 U-Net 学习率为 0，训练将无效。');
+  }
+  if (toBool(c.network_train_text_encoder_only) && effTeLr === 0) {
+    warnings.push('当前仅训练文本编码器，但文本编码器学习率为 0，训练将无效。');
+  }
+
+  // 12. 缓存 latent 到磁盘但未开缓存
+  if (toBool(c.cache_latents_to_disk) && !toBool(c.cache_latents)) {
+    warnings.push('「缓存 Latent 到磁盘」已开启但「缓存 Latent」未开启。建议一并开启。');
+  }
+
+  // 13. blocks_to_swap 与 cpu_offload_checkpointing 冲突（Anima 特有）
+  if (toNum(c.blocks_to_swap) > 0 && toBool(c.cpu_offload_checkpointing)) {
+    warnings.push('blocks_to_swap 与 cpu_offload_checkpointing 通常不建议同时使用。');
+  }
+
+
   return { errors, warnings };
 }
 
@@ -4359,6 +4502,128 @@ window.clearAllTaskHistory = async () => {
   } catch (error) {
     showToast(error.message || '清空历史失败。');
   }
+};
+
+
+
+/* ── Topbar Config Search ── */
+function setupTopbarSearch() {
+  const input = $('#topbar-search-input');
+  const dropdown = $('#topbar-search-dropdown');
+  if (!input || !dropdown) return;
+
+  let _searchTimer = null;
+
+  input.addEventListener('input', () => {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => {
+      const query = input.value.trim().toLowerCase();
+      if (!query || query.length < 1) {
+        dropdown.classList.remove('open');
+        dropdown.innerHTML = '';
+        return;
+      }
+      const results = _searchConfigFields(query);
+      if (results.length === 0) {
+        dropdown.innerHTML = '<div class="topbar-search-empty">未找到匹配的配置项</div>';
+        dropdown.classList.add('open');
+        return;
+      }
+      dropdown.innerHTML = results.slice(0, 20).map((r) => {
+        const highlightedLabel = _highlightMatch(r.field.label, query);
+        const tabLabel = UI_TABS.find((t) => t.key === r.tab)?.label || r.tab;
+        return '<div class="topbar-search-item" onclick="jumpToConfigField(\'' + escapeHtml(r.tab) + '\', \'' + escapeHtml(r.sectionId) + '\', \'' + escapeHtml(r.field.key) + '\')">' +
+          '<span class="topbar-search-item-label">' + highlightedLabel + '</span>' +
+          '<span class="topbar-search-item-meta">' +
+          '<span class="search-tab-tag">' + escapeHtml(tabLabel) + '</span>' +
+          '<span>' + escapeHtml(r.sectionTitle) + '</span>' +
+          '<span style="opacity:0.4;font-family:monospace;">' + escapeHtml(r.field.key) + '</span>' +
+          '</span></div>';
+      }).join('');
+      dropdown.classList.add('open');
+    }, 150);
+  });
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim() && dropdown.innerHTML) {
+      dropdown.classList.add('open');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#topbar-search')) {
+      dropdown.classList.remove('open');
+    }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      dropdown.classList.remove('open');
+      input.blur();
+    }
+  });
+}
+
+function _searchConfigFields(query) {
+  const tt = state.activeTrainingType;
+  const sections = getSectionsForType(tt);
+  const results = [];
+  for (const section of sections) {
+    for (const field of section.fields) {
+      if (field.type === 'hidden') continue;
+      const matchLabel = (field.label || '').toLowerCase().includes(query);
+      const matchKey = (field.key || '').toLowerCase().includes(query);
+      const matchDesc = (field.desc || '').toLowerCase().includes(query);
+      if (matchLabel || matchKey || matchDesc) {
+        results.push({
+          field,
+          tab: section.tab,
+          sectionId: section.id,
+          sectionTitle: section.title,
+          score: matchLabel ? 3 : (matchKey ? 2 : 1),
+        });
+      }
+    }
+  }
+  results.sort((a, b) => b.score - a.score);
+  return results;
+}
+
+function _highlightMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  const escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp('(' + escapedQuery + ')', 'gi');
+  return escaped.replace(regex, '<mark>$1</mark>');
+}
+
+window.jumpToConfigField = function(tab, sectionId, fieldKey) {
+  const dropdown = $('#topbar-search-dropdown');
+  if (dropdown) dropdown.classList.remove('open');
+
+  if (state.activeModule !== 'config') {
+    state.activeModule = 'config';
+    $$('.nav-item').forEach((item) => {
+      item.classList.toggle('active', item.dataset.module === 'config');
+    });
+  }
+  state.activeTab = tab;
+  localStorage.setItem('sdxl_ui_tab', tab);
+  renderView('config');
+
+  requestAnimationFrame(() => {
+    const fieldEl = document.querySelector('.config-group[data-field-key="' + fieldKey + '"]');
+    if (fieldEl) {
+      fieldEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      fieldEl.classList.add('field-search-highlight');
+      setTimeout(() => fieldEl.classList.remove('field-search-highlight'), 2000);
+    } else {
+      const sectionEl = document.getElementById(sectionId);
+      if (sectionEl) {
+        sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  });
 };
 
 
