@@ -297,6 +297,39 @@ export default defineConfig({
           }
         });
 
+        // 重命名已保存参数 API
+        server.middlewares.use('/api/saved_configs/rename', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return; }
+          let body = '';
+          req.on('data', (chunk) => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const { oldName, newName } = JSON.parse(body);
+              if (!oldName || !newName) throw new Error('缺少原名称或新名称。');
+              const safeOld = oldName.replace(/[<>:"\/\\|?*]/g, '_').trim();
+              const safeNew = newName.replace(/[<>:"\/\\|?*]/g, '_').trim();
+              if (!safeNew) throw new Error('新名称无效。');
+              if (safeOld === safeNew) {
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ status: 'success', data: { name: safeNew } }));
+                return;
+              }
+              const oldPath = path.join(SAVED_PARAMS_DIR, `${safeOld}.json`);
+              const newPath = path.join(SAVED_PARAMS_DIR, `${safeNew}.json`);
+              if (!fs.existsSync(oldPath)) throw new Error('原参数文件不存在。');
+              if (fs.existsSync(newPath)) throw new Error('新名称已存在，请换一个名称。');
+              fs.renameSync(oldPath, newPath);
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ status: 'success', data: { name: safeNew } }));
+            } catch (error) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ status: 'error', message: error.message || '重命名失败。' }));
+            }
+          });
+        });
+
+
         // 日志目录列表 API
         server.middlewares.use('/api/log_dirs', (req, res, next) => {
           try {

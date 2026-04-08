@@ -155,6 +155,11 @@ export const api = {
     return request(`/api/saved_configs/delete?name=${encodeURIComponent(name)}`);
   },
 
+  renameSavedConfig(oldName, newName) {
+    return postJson('/api/saved_configs/rename', { oldName, newName });
+  },
+
+
   runScript(params) {
     return postJson('/api/run_script', params);
   },

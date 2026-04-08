@@ -1070,6 +1070,7 @@ function resetTrainingMetrics() {
     speeds: [], losses: [], epochs: [],
     startTime: null, lastStep: 0, totalSteps: 0,
   };
+  _resetTrainingLogCursor();
   state.trainingSummary = null;
 }
 
@@ -1896,6 +1897,54 @@ function renderTraining(container) {
 
 
 let _trainingLogPollTimer = null;
+let _trainingLogCursor = { taskId: '', total: 0, liveLine: '' };
+
+function _resetTrainingLogCursor(taskId = '') {
+  _trainingLogCursor = { taskId, total: 0, liveLine: '' };
+}
+
+function _normalizeTrainingLiveLine(liveLine) {
+  if (typeof liveLine !== 'string') return '';
+  return liveLine.replace(/\s+$/, '');
+}
+
+function _mergeTrainingLogLines(lines, liveLine) {
+  const merged = Array.isArray(lines) ? lines.slice() : [];
+  const normalizedLiveLine = _normalizeTrainingLiveLine(liveLine);
+  if (normalizedLiveLine && merged[merged.length - 1] !== normalizedLiveLine) {
+    merged.push(normalizedLiveLine);
+  }
+  return merged;
+}
+
+function _collectIncrementalTrainingLogLines(taskId, lines, total, liveLine) {
+  if (_trainingLogCursor.taskId !== taskId) {
+    _resetTrainingLogCursor(taskId);
+  }
+
+  const safeLines = Array.isArray(lines) ? lines : [];
+  const normalizedLiveLine = _normalizeTrainingLiveLine(liveLine);
+  const previousTotal = _trainingLogCursor.total || 0;
+  let incremental = safeLines;
+
+  if (previousTotal > 0 && total >= previousTotal) {
+    const delta = total - previousTotal;
+    if (delta <= 0) {
+      incremental = [];
+    } else if (delta < safeLines.length) {
+      incremental = safeLines.slice(-delta);
+    }
+  }
+
+  if (normalizedLiveLine && normalizedLiveLine !== _trainingLogCursor.liveLine) {
+    if (!incremental.length || incremental[incremental.length - 1] !== normalizedLiveLine) {
+      incremental = incremental.concat(normalizedLiveLine);
+    }
+  }
+
+  _trainingLogCursor = { taskId, total, liveLine: normalizedLiveLine };
+  return incremental;
+}
 
 function startTrainingLogPolling() {
   if (_trainingLogPollTimer) return;
@@ -1991,23 +2040,31 @@ window.refreshTrainingLog = async () => {
   const target = running[0] || state.tasks[state.tasks.length - 1];
   if (!target) return;
 
+  if (_trainingLogCursor.taskId && _trainingLogCursor.taskId !== target.id) {
+    resetTrainingMetrics();
+  }
+
   try {
     const resp = await api.getTaskOutput(target.id, 200);
     const lines = resp?.data?.lines || [];
+    const total = Number(resp?.data?.total || 0) || 0;
+    const liveLine = resp?.data?.live_line || '';
+    const renderedLines = _mergeTrainingLogLines(lines, liveLine);
+    const incrementalLines = _collectIncrementalTrainingLogLines(target.id, lines, total, liveLine);
     const logEl = $('#training-log-container');
     if (!logEl) return;
 
     // Collect metrics from each poll
-    if (lines.length > 0 && state.tasks.some((t) => t.status === 'RUNNING')) {
-      collectTrainingMetrics(lines);
+    if (incrementalLines.length > 0 && state.tasks.some((t) => t.status === 'RUNNING')) {
+      collectTrainingMetrics(incrementalLines);
     }
 
-    if (lines.length === 0) {
+    if (renderedLines.length === 0) {
       logEl.innerHTML = '<span style="color:var(--text-dim);">等待训练输出...</span>';
       return;
     }
 
-    logEl.innerHTML = _renderLogLines(lines);
+    logEl.innerHTML = _renderLogLines(renderedLines);
 
     const autoScroll = $('#training-log-autoscroll');
     if (autoScroll?.checked) {
@@ -3987,7 +4044,12 @@ window.saveCurrentParams = () => {
       return;
     }
     try {
-      const payload = buildRunConfig(state.config, state.activeTrainingType);
+      // 保存原始 UI 状态（而非 buildRunConfig 转换后的后端 payload），
+      // 这样 LyCORIS 算法、日志前缀等 UI 专属字段不会丢失
+      const payload = {};
+      for (const [k, v] of Object.entries(state.config)) {
+        if (v !== '' && v != null) payload[k] = v;
+      }
       payload.__training_type__ = state.activeTrainingType;
       await api.saveConfig(name, payload);
       saveDraft();
@@ -4047,6 +4109,7 @@ window.loadSavedParams = async () => {
         <span class="builtin-picker-time">${new Date(configItem.time).toLocaleString('zh-CN')}</span>
         <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="previewSavedConfig('${escapeHtml(configItem.name)}')">预览</button>
         <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="loadNamedConfig('${escapeHtml(configItem.name)}')">载入</button>
+        <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="event.stopPropagation(); renameSavedConfig('${escapeHtml(configItem.name)}')">重命名</button>
         <button class="builtin-picker-delete-btn" type="button" title="删除" onclick="event.stopPropagation(); deleteSavedConfig('${escapeHtml(configItem.name)}')">✕</button>
       </div>
     `).join('');
@@ -4067,6 +4130,60 @@ window.loadNamedConfig = async (name) => {
     // 自动切换训练类型
     const savedType = data.__training_type__ || data.model_train_type || '';
     delete data.__training_type__;
+
+    // ── 旧格式兼容：把 buildRunConfig 产出的后端字段反向映射回 UI 字段 ──
+    // 旧保存格式中 LyCORIS 参数被合并进 network_args 数组，日志/优化器等 UI 字段被删除
+    if (Array.isArray(data.network_args) && !data.lycoris_algo) {
+      const argMap = {};
+      for (const item of data.network_args) {
+        const eq = String(item).indexOf('=');
+        if (eq > 0) argMap[String(item).slice(0, eq).trim()] = String(item).slice(eq + 1).trim();
+      }
+      if (argMap.algo) {
+        data.lycoris_algo = argMap.algo;
+        if (!data.network_module) data.network_module = 'lycoris.kohya';
+      }
+      if (argMap.conv_dim != null) data.conv_dim = Number(argMap.conv_dim) || '';
+      if (argMap.conv_alpha != null) data.conv_alpha = Number(argMap.conv_alpha) || '';
+      if (argMap.dropout != null) data.dropout = Number(argMap.dropout) || '';
+      if (argMap.train_norm != null) data.train_norm = argMap.train_norm === 'True';
+      if (argMap.factor != null) data.lokr_factor = Number(argMap.factor) || '';
+      if (argMap.dora_wd != null) data.dora_wd = argMap.dora_wd === 'True';
+      if (argMap.scale_weight_norms != null) data.scale_weight_norms = Number(argMap.scale_weight_norms) || '';
+      // 剩余非结构化的 args 放入 network_args_custom
+      const structured = new Set(['algo', 'conv_dim', 'conv_alpha', 'dropout', 'train_norm', 'factor', 'dora_wd', 'scale_weight_norms']);
+      const remaining = data.network_args.filter(a => { const k = String(a).split('=')[0].trim(); return !structured.has(k); });
+      if (remaining.length > 0) data.network_args_custom = remaining.join('\n');
+      delete data.network_args;
+    }
+    // 旧格式：optimizer_args 数组 → optimizer_args_custom
+    if (Array.isArray(data.optimizer_args) && !data.optimizer_args_custom) {
+      // Prodigy 特有字段还原
+      const prodigyRestore = {};
+      const remainingArgs = [];
+      for (const arg of data.optimizer_args) {
+        const eqIdx = String(arg).indexOf('=');
+        const k = eqIdx > 0 ? String(arg).slice(0, eqIdx).trim() : '';
+        const v = eqIdx > 0 ? String(arg).slice(eqIdx + 1).trim() : '';
+        if (k === 'd_coef') { prodigyRestore.prodigy_d_coef = v; }
+        else if (k === 'd0') { prodigyRestore.prodigy_d0 = v; }
+        else { remainingArgs.push(String(arg)); }
+      }
+      if (prodigyRestore.prodigy_d_coef != null) data.prodigy_d_coef = prodigyRestore.prodigy_d_coef;
+      if (prodigyRestore.prodigy_d0 != null) data.prodigy_d0 = prodigyRestore.prodigy_d0;
+      if (remainingArgs.length > 0) data.optimizer_args_custom = remainingArgs.join('\n');
+      delete data.optimizer_args;
+    }
+    // 旧格式：lr_scheduler_args 数组 → string
+    if (Array.isArray(data.lr_scheduler_args)) {
+      data.lr_scheduler_args = data.lr_scheduler_args.join('\n');
+    }
+    // 旧格式：base_weights 数组 → string
+    if (Array.isArray(data.base_weights)) {
+      data.base_weights = data.base_weights.join('\n');
+      if (!data.enable_base_weight) data.enable_base_weight = true;
+    }
+
     if (savedType && savedType !== state.activeTrainingType) {
       const typeExists = TRAINING_TYPES.some((t) => t.id === savedType);
       if (typeExists) {
@@ -4102,6 +4219,67 @@ window.deleteSavedConfig = async (name) => {
     showToast(error.message || '删除失败');
   }
 };
+
+window.renameSavedConfig = async (oldName) => {
+  const title = $('#builtin-picker-title');
+  const pathEl = $('#builtin-picker-path');
+  const list = $('#builtin-picker-list');
+  if (!title || !pathEl || !list) return;
+
+  title.textContent = '重命名参数';
+  pathEl.textContent = `当前名称：${oldName}`;
+  list.innerHTML = `
+    <div style="padding: 16px;">
+      <input type="text" id="rename-config-input" value="${escapeHtml(oldName)}"
+        style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.88rem;background:var(--bg-main);color:var(--text-main);"
+        placeholder="输入新名称" />
+    </div>
+  `;
+  const footer = document.querySelector('.builtin-picker-footer');
+  if (footer) footer.innerHTML = `
+    <button class="btn btn-outline btn-sm" type="button" onclick="loadSavedParams()">← 返回列表</button>
+    <button class="btn btn-primary btn-sm" type="button" id="rename-config-confirm">确认重命名</button>
+  `;
+
+  const input = $('#rename-config-input');
+  const confirmBtn = $('#rename-config-confirm');
+
+  const doRename = async () => {
+    const newName = input?.value?.trim();
+    if (!newName) {
+      pathEl.textContent = '请输入新名称。';
+      input?.focus();
+      return;
+    }
+    if (newName === oldName) {
+      window.loadSavedParams();
+      return;
+    }
+    try {
+      await api.renameSavedConfig(oldName, newName);
+      showToast('已重命名：' + oldName +' → ' + newName);
+      window.loadSavedParams();
+    } catch (error) {
+      pathEl.textContent = error.message || '重命名失败。';
+      if (input) {
+        input.style.borderColor = 'var(--danger, #d9534f)';
+        input.focus();
+        input.select();
+      }
+    }
+  };
+
+  confirmBtn?.addEventListener('click', doRename, { once: true });
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      doRename();
+    }
+  }, { once: true });
+  input?.focus();
+  input?.select();
+};
+
 
 window.previewSavedConfig = async (name) => {
   const title = $('#builtin-picker-title');
