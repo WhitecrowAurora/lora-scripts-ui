@@ -32,6 +32,13 @@ const CONDITIONAL_KEYS = new Set([
   'torch_compile',
   'enable_base_weight',
   'log_with',
+  'lulynx_experimental_core_enabled',
+  'lulynx_safeguard_enabled',
+  'lulynx_ema_enabled',
+  'lulynx_resource_manager_enabled',
+  'lulynx_block_weight_enabled',
+  'lulynx_smart_rank_enabled',
+  'lulynx_auto_controller_enabled',
 ]);
 const DRAFT_STORAGE_KEY = 'sd-rescripts:ui:sdxl-draft';
 
@@ -668,13 +675,15 @@ function renderStatusDeck() {
   const xf = state.runtime?.xformers;
   const rt = state.runtime?.runtime;
   const sagePkg = rt?.packages?.sageattention;
+  const flashPkg = rt?.packages?.flash_attn;
   const xfInstalled = xf?.installed;
   const xfSupported = xf?.supported;
   const sageInstalled = sagePkg?.importable;
+  const flashInstalled = flashPkg?.importable;
 
   let attnLabel = '检测中';
   let attnDetail = '暂无状态信息';
-  if (xf || sagePkg) {
+  if (xf || sagePkg || flashPkg) {
     const parts = [];
     if (xfInstalled) {
       parts.push(`xFormers ${xf.version || ''} ${xfSupported ? '✓' : '(不支持)'}`);
@@ -686,7 +695,12 @@ function renderStatusDeck() {
     } else {
       parts.push('SageAttention 未安装');
     }
-    attnLabel = (xfSupported || sageInstalled) ? '可用' : '受限';
+    if (flashInstalled) {
+      parts.push(`FlashAttention ${flashPkg.version || ''} ✓`);
+    } else {
+      parts.push('FlashAttention 未安装');
+    }
+    attnLabel = (xfSupported || sageInstalled || flashInstalled) ? '可用' : '受限';
     attnDetail = parts.join(' · ');
     if (xf?.reason) attnDetail += ` — ${xf.reason}`;
   }
@@ -4480,8 +4494,8 @@ function validateConfigConflicts() {
   }
 
   // 4. 注意力后端全部未开启
-  if (!toBool(c.xformers) && !toBool(c.sdpa) && !toBool(c.sageattn) && !toBool(c.mem_eff_attn)) {
-    errors.push('未启用任何注意力加速后端（xformers / SDPA / SageAttention）。训练将极度缓慢且显存占用极高。请至少开启 SDPA。');
+  if (!toBool(c.xformers) && !toBool(c.sdpa) && !toBool(c.sageattn) && !toBool(c.flashattn) && !toBool(c.mem_eff_attn)) {
+    errors.push('未启用任何注意力加速后端（xformers / SDPA / SageAttention / FlashAttention）。训练将极度缓慢且显存占用极高。请至少开启 SDPA。');
   }
 
 
