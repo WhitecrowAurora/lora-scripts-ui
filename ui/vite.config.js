@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { spawn as nodeSpawn } from 'node:child_process';
+import { spawn as nodeSpawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import path from 'node:path';
 import { defineConfig } from 'vite';
@@ -38,6 +38,57 @@ const builtinPickerRoots = {
 };
 const SAVED_PARAMS_DIR = path.join(uiRoot, 'saved_params');
 const TASK_HISTORY_FILE = path.join(uiRoot, 'task_history.json');
+
+// ── 图像预处理进程状态 ──
+let _resizeState = { status: 'idle', lines: [], pid: null };
+
+// ── 查找 Python 环境并确保 Pillow 可用 ──
+let _pythonEnvCache = null;
+
+function findPythonEnv() {
+  if (_pythonEnvCache) return _pythonEnvCache;
+
+  // 候选 Python 环境列表
+  const candidates = [
+    'python_sageattention', 'python-sageattention',
+    'python_rocm_amd', 'python-rocm-amd',
+    'python_xpu_intel', 'python-xpu-intel',
+    'python_sagebwd_nvidia', 'python-sagebwd-nvidia',
+    'python',
+  ];
+
+  let pythonBin = 'python';
+  for (const dir of candidates) {
+    const candidate = path.join(LORA_ROOT, dir, 'python.exe');
+    if (fs.existsSync(candidate)) {
+      pythonBin = candidate;
+      break;
+    }
+  }
+
+  // 检查 Pillow 是否可用，不可用则自动安装
+  try {
+    execFileSync(pythonBin, ['-c', 'from PIL import Image'], { timeout: 10000, stdio: 'ignore' });
+  } catch {
+    console.log('[image_resize] Pillow not found, installing...');
+    try {
+      execFileSync(pythonBin, ['-m', 'pip', 'install', 'Pillow', '--quiet', '--disable-pip-version-check'], {
+        timeout: 120000,
+        stdio: 'inherit',
+        cwd: LORA_ROOT,
+      });
+      console.log('[image_resize] Pillow installed successfully.');
+    } catch (installErr) {
+      console.error('[image_resize] Failed to install Pillow:', installErr.message);
+    }
+  }
+
+  _pythonEnvCache = { bin: pythonBin, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } };
+  return _pythonEnvCache;
+}
+
+
+
 
 // ── 后端连通性状态（proxy configure 和 middleware 共享） ──
 let _backendAlive = null;   // null=未知  true=在线  false=离线
@@ -442,16 +493,24 @@ export default defineConfig({
           });
         });
 
-        // 图像预处理 API
-        server.middlewares.use('/api/image_resize', (req, res, next) => {
+        // ── 图像预处理 API（带实时输出捕获） ──
+        server.middlewares.use('/api/local/image_resize', (req, res, next) => {
           if (req.method !== 'POST') { next(); return; }
           let body = '';
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
             try {
               const params = JSON.parse(body);
-              const scriptPath = path.join(LORA_ROOT, 'train', '训练图像缩放预处理工具.py');
-              if (!fs.existsSync(scriptPath)) throw new Error('预处理脚本不存在。');
+              const builtinScript = path.join(uiRoot, 'tools', 'image_resize.py');
+              const externalScript = path.join(LORA_ROOT, 'train', '训练图像缩放预处理工具.py');
+              const scriptPath = fs.existsSync(builtinScript) ? builtinScript : externalScript;
+              if (!fs.existsSync(scriptPath)) throw new Error('预处理脚本不存在（ui/tools/image_resize.py 和 train/训练图像缩放预处理工具.py 均未找到）。');
+
+              if (_resizeState.status === 'running') {
+                res.end(JSON.stringify({ status: 'error', message: '已有图像预处理任务正在运行，请等待完成。' }));
+                return;
+              }
 
               const args = ['--no-gui', '-d', params.input_dir || '.'];
               if (params.output_dir) args.push('-o', params.output_dir);
@@ -463,25 +522,53 @@ export default defineConfig({
               if (params.delete_original) args.push('--delete-source');
               if (!params.sync_metadata) args.push('--no-sync');
 
-              // Find python
-              const pythonPath = path.join(LORA_ROOT, 'python', 'python.exe');
-              const pythonBin = fs.existsSync(pythonPath) ? pythonPath : 'python';
+              const pyEnv = findPythonEnv();
 
-              const child = nodeSpawn(pythonBin, [scriptPath, ...args], {
+              _resizeState = { status: 'running', lines: [], pid: null };
+
+              const child = nodeSpawn(pyEnv.bin, [scriptPath, ...args], {
                 cwd: LORA_ROOT,
                 detached: false,
-                stdio: 'ignore',
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: pyEnv.env,
               });
-              child.unref();
+              _resizeState.pid = child.pid || null;
 
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ status: 'success', message: '图像预处理已在后台启动。' }));
+              const pushLine = (raw) => {
+                const text = raw.toString('utf-8').replace(/\r?\n$/, '');
+                if (text) {
+                  text.split(/\r?\n/).forEach(l => { if (l) _resizeState.lines.push(l); });
+                }
+              };
+              if (child.stdout) child.stdout.on('data', pushLine);
+              if (child.stderr) child.stderr.on('data', pushLine);
+
+              child.on('close', (code) => {
+                _resizeState.status = code === 0 ? 'done' : 'error';
+                _resizeState.lines.push(code === 0 ? '\n✅ 图像预处理完成。' : `\n❌ 图像预处理异常退出 (code: ${code})`);
+                _resizeState.pid = null;
+              });
+              child.on('error', (err) => {
+                _resizeState.status = 'error';
+                _resizeState.lines.push(`❌ 启动失败: ${err.message}`);
+                _resizeState.pid = null;
+              });
+
+              res.end(JSON.stringify({ status: 'success', message: '图像预处理已启动，请查看实时日志。' }));
             } catch (error) {
               res.statusCode = 500;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
               res.end(JSON.stringify({ status: 'error', message: error.message || '启动图像预处理失败。' }));
             }
           });
+        });
+
+        // 图像预处理状态轮询
+        server.middlewares.use('/api/local/image_resize_status', (req, res, next) => {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({
+            status: 'success',
+            data: { process_status: _resizeState.status, lines: _resizeState.lines, pid: _resizeState.pid },
+          }));
         });
 
         // ── 本地任务历史持久化 ──

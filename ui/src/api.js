@@ -193,9 +193,12 @@ export const api = {
   },
 
   runImageResize(params) {
-    return postJson('/api/image_resize', params);
+    return postJson('/api/local/image_resize', params);
   },
 
+  getImageResizeStatus() {
+    return request('/api/local/image_resize_status');
+  },
   runTraining(config) {
     return postJson('/api/run', config);
   },

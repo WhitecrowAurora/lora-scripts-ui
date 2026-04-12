@@ -2375,6 +2375,7 @@ function renderTagger() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('tagger-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('tagger-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="tagger-path" placeholder="./train/your_dataset">
           </div>
         </div>
@@ -2433,6 +2434,7 @@ function renderTagger() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('llm-tagger-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('llm-tagger-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="llm-tagger-path" placeholder="./train/your_dataset">
           </div>
         </div>
@@ -2533,6 +2535,53 @@ function showTaggerErrorHint(hintId, message) {
   }
 }
 
+let _taggerPollTimer = null;
+function _pollTaggerProgress(hintId) {
+  if (_taggerPollTimer) clearInterval(_taggerPollTimer);
+  let _imageCount = '';
+  _taggerPollTimer = setInterval(async () => {
+    try {
+      const tasksResp = await api.getTasks();
+      const tasks = tasksResp?.data?.tasks || [];
+      const running = tasks.filter(t => t.status === 'RUNNING');
+      if (running.length === 0) {
+        clearInterval(_taggerPollTimer);
+        _taggerPollTimer = null;
+        const doneMsg = '标注完成' + (_imageCount ? ` (${_imageCount})` : '') + '！标签文件已生成。';
+        showTaggerDoneHint(hintId, doneMsg);
+        showToast('✓ ' + doneMsg);
+        return;
+      }
+      const taskId = running[0].id || running[0].task_id;
+      if (taskId) {
+        const outResp = await api.getTaskOutput(taskId, 30);
+        const lines = outResp?.data?.lines || [];
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i];
+          const imgMatch = line.match(/[Ff]ound\s+(\d+)\s+image/i);
+          if (imgMatch) {
+            _imageCount = imgMatch[1] + ' 张图片';
+            const hint = document.getElementById(hintId);
+            if (hint) {
+              hint.innerHTML = '<span style="color:#f59e0b;">' + _ico('loader') + ' 标注中... 检测到 ' + _imageCount + '</span>';
+            }
+            break;
+          }
+          if (/all\s*done|识别完成|Unloaded/i.test(line)) {
+            clearInterval(_taggerPollTimer);
+            _taggerPollTimer = null;
+            const doneMsg = '标注完成' + (_imageCount ? ` (${_imageCount})` : '') + '！标签文件已生成。';
+            showTaggerDoneHint(hintId, doneMsg);
+            showToast('✓ ' + doneMsg);
+            return;
+          }
+        }
+      }
+    } catch (e) { /* 静默 */ }
+  }, 3000);
+}
+
+
 window.runLlmTagger = async () => {
   const pathVal = $('#llm-tagger-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
@@ -2560,6 +2609,7 @@ window.runLlmTagger = async () => {
     showTaggerRunningHint('llm-tagger-status-hint',
       'LLM 标注后台运行中... 进度请查看后端控制台窗口（任务栏最小化窗口 "LoRA-Backend"）');
     showToast('✓ LLM 标注任务已提交到后端，正在后台运行。完成后 .txt 标签文件会自动生成在图片旁边。');
+    _pollTaggerProgress('llm-tagger-status-hint');
   } catch (error) {
     setTaggerButtonLoading('btn-run-llm-tagger', 'llm-tagger-status-hint', false);
     showTaggerErrorHint('llm-tagger-status-hint', error.message || '提交失败');
@@ -2589,6 +2639,7 @@ window.runTagger = async () => {
     showTaggerRunningHint('tagger-status-hint',
       '标注后台运行中（首次需下载模型，可能需要几分钟）... 进度请查看后端控制台窗口');
     showToast('✓ 标注任务已提交到后端，正在后台运行。完成后 .txt 标签文件会自动生成在图片旁边。');
+    _pollTaggerProgress('tagger-status-hint');
   } catch (error) {
     setTaggerButtonLoading('btn-run-tagger', 'tagger-status-hint', false);
     showTaggerErrorHint('tagger-status-hint', error.message || '提交失败');
@@ -2675,6 +2726,7 @@ function renderImageResize() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('resize-input-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('resize-input-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="resize-input-path" placeholder="选择或输入数据集文件夹路径">
           </div>
           <p class="field-desc">选择或手动输入 train 目录下的数据集文件夹路径。</p>
@@ -2731,20 +2783,27 @@ function renderImageResize() {
           <label class="switch switch-compact"><input type="checkbox" id="resize-sync" checked><span class="slider round"></span></label>
         </div>
       </div>
-      <div class="tool-actions" style="display:flex;gap:8px;">
-        <button class="btn btn-primary btn-sm" type="button" onclick="runImageResize()">开始处理</button>
-        <button class="btn btn-outline btn-sm" type="button" onclick="openResizeGui()">打开图形界面</button>
+      <div class="tool-actions" style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-primary btn-sm" type="button" id="btn-resize-start" onclick="runImageResize()">开始处理</button>
+        <span id="resize-status-hint" style="font-size:0.82rem;color:var(--text-dim);"></span>
       </div>
+      <div id="resize-log-container" style="display:none;margin-top:12px;max-height:300px;overflow:auto;background:var(--bg-hover);border-radius:8px;padding:10px;font-family:monospace;font-size:0.78rem;white-space:pre-wrap;"></div>
     </section>
   `;
 }
 
 
+let _resizePollTimer = null;
+
 window.runImageResize = async () => {
   const inputDir = $('#resize-input-path')?.value?.trim();
   if (!inputDir) { showToast('请先填写输入目录。'); return; }
-  const btn = $('[onclick="runImageResize()"]');
+  const btn = $('#btn-resize-start');
+  const hint = $('#resize-status-hint');
+  const logEl = $('#resize-log-container');
   if (btn) { btn.disabled = true; btn.innerHTML = _ico('loader') + ' 处理中...'; }
+  if (hint) hint.innerHTML = '';
+  if (logEl) { logEl.style.display = 'block'; logEl.textContent = '正在启动图像预处理...\n'; }
   const params = {
     input_dir: inputDir,
     output_dir: $('#resize-output')?.value?.trim() || '',
@@ -2759,20 +2818,43 @@ window.runImageResize = async () => {
     sync_metadata: $('#resize-sync')?.checked ?? true,
   };
   try {
-    await api.runImageResize(params);
-    showToast('✓ 图像预处理任务已提交，正在后台运行...');
+    const resp = await api.runImageResize(params);
+    if (resp.status !== 'success') { throw new Error(resp.message || '启动失败'); }
+    showToast('✓ 图像预处理已启动');
+    if (hint) hint.innerHTML = '<span style="color:#f59e0b;">' + _ico('loader') + ' 处理中...</span>';
+    if (_resizePollTimer) clearInterval(_resizePollTimer);
+    _resizePollTimer = setInterval(async () => {
+      try {
+        const statusResp = await api.getImageResizeStatus();
+        const data = statusResp?.data;
+        if (!data) return;
+        if (logEl && data.lines) {
+          logEl.textContent = data.lines.join('\n');
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+        if (data.process_status === 'done' || data.process_status === 'error') {
+          clearInterval(_resizePollTimer);
+          _resizePollTimer = null;
+          if (btn) { btn.disabled = false; btn.textContent = '开始处理'; }
+          if (data.process_status === 'done') {
+            if (hint) hint.innerHTML = '<span style="color:#22c55e;">' + _ico('check-circle') + ' 处理完成</span>';
+            showToast('✓ 图像预处理完成');
+          } else {
+            if (hint) hint.innerHTML = '<span style="color:#ef4444;">' + _ico('x-circle') + ' 处理异常</span>';
+            showToast('图像预处理出现错误，请查看日志');
+          }
+        }
+      } catch (e) { /* 静默 */ }
+    }, 1000);
   } catch (error) {
-    showToast(error.message || '图像预处理启动失败。');
-  } finally {
     if (btn) { btn.disabled = false; btn.textContent = '开始处理'; }
+    if (hint) hint.innerHTML = '<span style="color:#ef4444;">' + _ico('x-circle') + ' ' + escapeHtml(error.message || '启动失败') + '</span>';
+    if (logEl) logEl.textContent = '❌ ' + (error.message || '启动图像预处理失败。');
+    showToast(error.message || '图像预处理启动失败。');
   }
 };
 
 
-
-window.openResizeGui = () => {
-  showToast('请在 train 目录下双击「训练图像缩放预处理工具.py」打开独立图形界面。');
-};
 
 // ========== 数据集分析 ==========
 function renderDatasetAnalysis() {
@@ -2789,6 +2871,7 @@ function renderDatasetAnalysis() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('analysis-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('analysis-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="analysis-path" placeholder="./train/your_dataset">
           </div>
         </div>
@@ -2864,6 +2947,7 @@ function renderCaptionCleanup() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('cleanup-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('cleanup-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="cleanup-path" placeholder="./train/your_dataset">
           </div>
         </div>
@@ -3010,6 +3094,7 @@ function renderCaptionBackups() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('backup-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('backup-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="backup-path" placeholder="./train/your_dataset">
           </div>
         </div>
@@ -3109,6 +3194,7 @@ function renderMaskedLossAudit() {
             <button class="picker-icon" type="button" onclick="pickPathForInput('maskedloss-path', 'folder')">
               <svg class="icon"><use href="#icon-folder"></use></svg>
             </button>
+            <button class="picker-mode-icon-btn" type="button" title="内置文件选择器（train 目录）" onclick="openBuiltinPickerForInput('maskedloss-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
             <input class="text-input" type="text" id="maskedloss-path" placeholder="./train/your_dataset">
           </div>
         </div>
@@ -3929,8 +4015,29 @@ window.selectBuiltinPickerItem = (item) => {
   const fullPath = `${root}/${item}`;
   state.builtinPicker.open = false;
   renderBuiltinPickerModal();
-  window.updateConfigValue(state.builtinPicker.fieldKey, fullPath);
-  if (state.activeModule === 'config') renderView('config');
+  // 如果是为普通 input 元素选择的（targetInputId 模式）
+  if (state.builtinPicker._targetInputId) {
+    const input = $(`#${state.builtinPicker._targetInputId}`);
+    if (input) {
+      input.value = fullPath;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    state.builtinPicker._targetInputId = null;
+  } else {
+    window.updateConfigValue(state.builtinPicker.fieldKey, fullPath);
+    if (state.activeModule === 'config') renderView('config');
+  }
+};
+
+window.openBuiltinPickerForInput = (inputId, pickerType) => {
+  state.builtinPicker = { open: true, fieldKey: '', pickerType, rootLabel: '', items: [], loading: true, _targetInputId: inputId };
+  renderBuiltinPickerModal();
+  api.getBuiltinPicker(pickerType)
+    .then((response) => {
+      state.builtinPicker = { ...state.builtinPicker, rootLabel: response?.data?.rootLabel || '', items: response?.data?.items || [], loading: false };
+      renderBuiltinPickerModal();
+    })
+    .catch((error) => { state.builtinPicker.open = false; renderBuiltinPickerModal(); showToast(error.message || '打开内置文件选择器失败。'); });
 };
 
 function setupFieldMenus() {
