@@ -130,6 +130,7 @@ const S_SPEED_SDXL = [
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', desc: '启用 sdpa', defaultValue: true },
   { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', desc: '启用 SageAttention（实验性）', defaultValue: false },
   { key: 'flashattn', type: 'boolean', label: '启用 FlashAttention 2', desc: '启用 FlashAttention 2（实验性，需要 FlashAttention 运行时）', defaultValue: false },
+  { key: 'cross_attn_fused_kv', type: 'boolean', label: '启用 Fused K/V', desc: '启用 SDXL cross-attn 的 fused K/V projection 实验开关', defaultValue: false },
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', desc: '启用省显存 attention（比 xformers 更兼容，但通常更慢）', defaultValue: false },
   { key: 'lowram', type: 'boolean', label: '低内存模式', desc: '低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中', defaultValue: false },
   { key: 'cache_latents', type: 'boolean', label: '缓存 Latent', desc: '缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用', defaultValue: true },
@@ -144,6 +145,7 @@ const S_SPEED_SDXL = [
   { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile', desc: '实验性：启用 PyTorch torch.compile', defaultValue: false },
   { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端', desc: 'torch.compile 后端', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
   { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '梯度检查点时将部分张量卸载到 CPU，节省显存', defaultValue: false },
+  { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化', desc: '训练前自动设置 PYTORCH_ALLOC_CONF=expandable_segments:True，缓解显存碎片导致的 OOM。一般对速度影响很小', defaultValue: true },
 ];
 const S_SPEED_FLOW = [
   { key: 'mixed_precision', type: 'select', label: '混合精度', desc: '训练混合精度, RTX30系列以后也可以指定 bf16', defaultValue: 'bf16', options: ['no', 'fp16', 'bf16'] },
@@ -169,7 +171,33 @@ const S_SPEED_FLOW = [
   { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile', desc: '实验性：启用 PyTorch torch.compile', defaultValue: false },
   { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端', desc: 'torch.compile 后端', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
   { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '梯度检查点时将部分张量卸载到 CPU省显存', defaultValue: false },
+  { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化', desc: '训练前自动设置 PYTORCH_ALLOC_CONF=expandable_segments:True，缓解显存碎片导致的 OOM。一般对速度影响很小', defaultValue: true },
 ];
+const S_DISTRIBUTED = [
+  { key: 'enable_distributed_training', type: 'boolean', label: '启用分布式训练', desc: '启用分布式启动。当前为最小实现，支持多进程/多机拉起，以及 worker 最小配置与缺失资源同步', defaultValue: false },
+  { key: 'num_processes', type: 'number', label: '进程数', desc: '每台机器启动的训练进程数。留空时会优先按所选 GPU 数量自动推断', defaultValue: '', min: 1, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'num_machines', type: 'number', label: '机器数', desc: '参与训练的机器总数', defaultValue: 1, min: 1, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'machine_rank', type: 'number', label: '当前机器编号', desc: '当前机器编号，从 0 开始；主节点为 0', defaultValue: 0, min: 0, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'main_process_ip', type: 'string', label: '主节点 IP', desc: '主节点 IP 地址。多机训练时必填', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'main_process_port', type: 'number', label: '主节点端口', desc: '主节点 rendezvous 端口', defaultValue: 29500, min: 1, max: 65535, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'nccl_socket_ifname', type: 'string', label: 'NCCL 网卡名', desc: '可选。NCCL 使用的网卡名，例如 Ethernet', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'gloo_socket_ifname', type: 'string', label: 'Gloo 网卡名', desc: '可选。Gloo 使用的网卡名，例如 Ethernet', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_config_from_main', type: 'boolean', label: '从主节点同步配置', desc: '仅 worker 使用。从主节点同步训练配置', defaultValue: true, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_config_keys_from_main', type: 'string', label: '同步配置键', desc: '要从主节点同步的顶层配置键，逗号分隔。* = 同步全部', defaultValue: '*', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_missing_assets_from_main', type: 'boolean', label: '从主节点补齐资源', desc: '仅 worker 使用。按需从主节点补齐缺失模型、数据集、resume 等路径', defaultValue: true, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_asset_keys', type: 'string', label: '补齐资源键', desc: '要从主节点补齐的资源键，逗号分隔', defaultValue: 'pretrained_model_name_or_path,train_data_dir,reg_data_dir,vae,resume', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_main_repo_dir', type: 'string', label: '主节点项目根目录', desc: '优先填写 worker 可直接访问的共享路径/UNC 路径', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_main_toml', type: 'string', label: '主节点 TOML 路径', desc: '主节点用于同步的 TOML 路径', defaultValue: './config/autosave/distributed-main-latest.toml', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_ssh_user', type: 'string', label: 'SSH 用户名', desc: '远程同步时使用的 SSH 用户名', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_ssh_port', type: 'number', label: 'SSH 端口', desc: '远程同步使用的 SSH 端口', defaultValue: 22, min: 1, max: 65535, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_use_password_auth', type: 'boolean', label: 'SSH 密码认证', desc: '远程同步时启用密码认证', defaultValue: false, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'sync_ssh_password', type: 'string', label: 'SSH 密码', desc: '远程同步密码。更推荐改用环境变量或共享路径', defaultValue: '', visibleWhen: all(when('enable_distributed_training', true), when('sync_use_password_auth', true)) },
+  { key: 'clear_dataset_npz_before_train', type: 'boolean', label: '训练前清除缓存', desc: 'worker 训练前清空 .npz 缓存和 metadata_cache.json', defaultValue: false, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'ddp_timeout', type: 'number', label: 'DDP 超时', desc: '分布式训练超时时间（秒）', defaultValue: '', min: 0, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'ddp_gradient_as_bucket_view', type: 'boolean', label: 'DDP Bucket View', defaultValue: false, visibleWhen: when('enable_distributed_training', true) },
+  { key: 'ddp_static_graph', type: 'boolean', label: 'DDP Static Graph', desc: '启用 DDP static_graph 优化', defaultValue: false, visibleWhen: when('enable_distributed_training', true) },
+];
+
 const S_LULYNX_SDXL = [
   { key: 'lulynx_experimental_core_enabled', type: 'boolean', label: '启用 Lulynx 实验核心', desc: '集中管理 SafeGuard、EMA、ResourceManager、BlockWeightManager、SmartRank 与 AutoController', defaultValue: false },
   { key: 'lulynx_safeguard_enabled', type: 'boolean', label: '启用 SafeGuard', defaultValue: false, visibleWhen: when('lulynx_experimental_core_enabled', true) },
@@ -208,6 +236,7 @@ const S_SPEED_SD15 = [
   { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile', desc: '实验性：启用 PyTorch torch.compile', defaultValue: false },
   { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端', desc: 'torch.compile 后端', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
   { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '梯度检查点时将部分张量卸载到 CPU，节省显存', defaultValue: false },
+  { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化', desc: '训练前自动设置 PYTORCH_ALLOC_CONF=expandable_segments:True，缓解显存碎片导致的 OOM。一般对速度影响很小', defaultValue: true },
 ];
 const S_ADV = [
   { key: 'gpu_ids', type: 'string', label: '指定显卡', desc: '指定参与训练的 GPU 编号，多卡用逗号分隔（如 0,1）。留空使用默认主显卡。可在启动日志中查看可用 GPU 编号', defaultValue: '' },
@@ -277,8 +306,8 @@ const ds = (reso, bucketMax = 2048, bucketStep = 64, extra = []) => [
 ];
 
 // LoRA network fields helper
-const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = []) => [
-  { key: 'network_module', type: 'select', label: '训练网络模块', desc: '训练网络模块', defaultValue: mod, options: [mod, ...(mod.includes('lycoris') ? [] : ['lycoris.kohya'])] },
+const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = [], extraModules = []) => [
+  { key: 'network_module', type: 'select', label: '训练网络模块', desc: '训练网络模块', defaultValue: mod, options: [mod, ...extraModules, ...(mod.includes('lycoris') ? [] : ['lycoris.kohya'])] },
   { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
   { key: 'network_dim', type: 'slider', label: '网络维度', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: dim, min: 1, max: maxDim, step: 1 },
   { key: 'network_alpha', type: 'slider', label: '网络 Alpha', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1。使用较小的 alpha 需要提升学习率', defaultValue: alpha, min: 1, max: maxDim, step: 1 },
@@ -346,6 +375,7 @@ const SDXL_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '噪声、种子与实验功能。', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 
@@ -372,6 +402,7 @@ const SD15_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- FLUX LoRA ----
@@ -394,7 +425,11 @@ const FLUX_LORA_SECTIONS = [
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('768,768', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
   sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
-  sec('network-settings', 'network', '网络设置', '', netLora('networks.lora_flux', 4, 16, 256)),
+  sec('network-settings', 'network', '网络设置', 'LoRA / T-LoRA / OFT / LyCORIS。', netLora('networks.lora_flux', 4, 16, 256, [
+    { key: 'tlora_min_rank', type: 'number', label: 'T-LoRA 最小 Rank', desc: 'T-LoRA 最小动态 rank。仅在 network_module=networks.tlora_flux 时生效', defaultValue: 1, min: 1, visibleWhen: when('network_module', 'networks.tlora_flux') },
+    { key: 'tlora_rank_schedule', type: 'select', label: 'T-LoRA Rank 调度', desc: 'T-LoRA 动态 rank 调度策略', defaultValue: 'cosine', options: ['cosine', 'linear'], visibleWhen: when('network_module', 'networks.tlora_flux') },
+    { key: 'tlora_orthogonal_init', type: 'boolean', label: 'T-LoRA 正交初始化', desc: 'T-LoRA 对 lora_down 使用正交初始化（实验性）', defaultValue: false, visibleWhen: when('network_module', 'networks.tlora_flux') },
+  ], ['networks.tlora_flux', 'networks.oft_flux'])),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(20)),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
@@ -403,6 +438,7 @@ const FLUX_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- SD3 LoRA ----
@@ -437,6 +473,7 @@ const SD3_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- Lumina LoRA ----
@@ -468,6 +505,7 @@ const LUMINA_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- HunyuanImage LoRA ----
@@ -499,6 +537,7 @@ const HUNYUAN_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- Anima LoRA ----
@@ -522,8 +561,8 @@ const ANIMA_LORA_SECTIONS = [
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
   sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
-  sec('network-settings', 'network', '网络设置', 'LoRA / LoKr 模式。', [
-    { key: 'lora_type', type: 'select', label: '适配器类型', desc: '适配器类型：lora 或 lokr', defaultValue: 'lora', options: ['lora', 'lokr'] },
+  sec('network-settings', 'network', '网络设置', 'LoRA / T-LoRA / LoKr 模式。', [
+    { key: 'lora_type', type: 'select', label: '适配器类型', desc: 'LoRA 更轻量；T-LoRA 会按时间步动态 rank；LoKr 走内置线性层注入的实验路线', defaultValue: 'lora', options: ['lora', 'tlora', 'lokr'] },
     { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'network_dim', type: 'slider', label: '网络维度', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'network_alpha', type: 'slider', label: '网络 Alpha', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1', defaultValue: 16, min: 1, max: 256, step: 1 },
@@ -531,6 +570,11 @@ const ANIMA_LORA_SECTIONS = [
     { key: 'scale_weight_norms', type: 'number', label: '最大范数正则化', desc: '最大范数正则化。如果使用，推荐为 1', defaultValue: '', min: 0, step: 0.01 },
     { key: 'train_norm', type: 'boolean', label: '训练 Norm 层', desc: '训练 Norm 层', defaultValue: false },
     { key: 'lokr_factor', type: 'number', label: 'LoKr 系数', desc: 'LoKr 系数，常用 4~无穷（-1 为无穷）', defaultValue: 8, min: -1, visibleWhen: when('lora_type', 'lokr') },
+    { key: 'network_dropout', type: 'number', label: 'Dropout', desc: 'Dropout 概率', defaultValue: 0, min: 0, step: 0.01, visibleWhen: (c) => c.lora_type === 'lora' || c.lora_type === 'tlora' },
+    { key: 'tlora_min_rank', type: 'number', label: 'T-LoRA 最小 Rank', desc: 'T-LoRA 最小动态 rank', defaultValue: 1, min: 1, visibleWhen: when('lora_type', 'tlora') },
+    { key: 'tlora_rank_schedule', type: 'select', label: 'T-LoRA Rank 调度', desc: 'T-LoRA 动态 rank 调度策略', defaultValue: 'cosine', options: ['cosine', 'linear'], visibleWhen: when('lora_type', 'tlora') },
+    { key: 'tlora_orthogonal_init', type: 'boolean', label: 'T-LoRA 正交初始化', desc: '对 lora_down 使用正交初始化（实验性）', defaultValue: false, visibleWhen: when('lora_type', 'tlora') },
+    { key: 'pissa_init', type: 'boolean', label: '启用 PiSSA 初始化', desc: '启用 PiSSA 初始化（实验性，仅 LoRA 类型下生效）', defaultValue: false, visibleWhen: when('lora_type', 'lora') },
   ]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
@@ -540,6 +584,7 @@ const ANIMA_LORA_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- SD DreamBooth / SDXL Finetune (共用 schema) ----
@@ -567,6 +612,7 @@ const DB_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 const SDXL_FT_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL 全参微调。', [
@@ -585,6 +631,7 @@ const SDXL_FT_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- FLUX Finetune ----
@@ -615,6 +662,7 @@ const FLUX_FT_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- SD3 Finetune ----
@@ -648,6 +696,7 @@ const SD3_FT_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- Lumina Finetune ----
@@ -677,6 +726,7 @@ const LUMINA_FT_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- Anima Finetune ----
@@ -706,6 +756,7 @@ const ANIMA_FT_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- ControlNet (SD / SDXL / FLUX) ----
@@ -754,6 +805,7 @@ const SD_CN_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 const SDXL_CN_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL ControlNet。', cnModel('sdxl-controlnet', 'SDXL', [{ key: 'v_parameterization', type: 'boolean', label: 'V 参数化', desc: 'V 参数化', defaultValue: false }])),
@@ -769,6 +821,7 @@ const SDXL_CN_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 const FLUX_CN_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'FLUX ControlNet。', [
@@ -792,6 +845,7 @@ const FLUX_CN_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- Textual Inversion ----
@@ -825,6 +879,7 @@ const SD_TI_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 const SDXL_TI_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL Textual Inversion。', tiModel('sdxl-textual-inversion', 'SDXL')),
@@ -841,6 +896,7 @@ const SDXL_TI_SECTIONS = [
   sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+  sec('distributed-settings', 'advanced', '分布式训练', '多 GPU / 多机分布式训练配置。', [...S_DISTRIBUTED]),
 ];
 
 // ---- YOLO 训练 ----

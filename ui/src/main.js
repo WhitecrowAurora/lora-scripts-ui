@@ -32,6 +32,9 @@ const CONDITIONAL_KEYS = new Set([
   'torch_compile',
   'enable_base_weight',
   'log_with',
+  'lora_type',
+  'enable_distributed_training',
+  'sync_use_password_auth',
   'lulynx_experimental_core_enabled',
   'lulynx_safeguard_enabled',
   'lulynx_ema_enabled',
@@ -1761,18 +1764,39 @@ function renderTraining(container) {
   }
 
   // Active params
+  var networkAlgo = state.config.network_module || '';
+  // Anima 使用 lora_type 字段而非 network_module
+  if (!networkAlgo && state.config.lora_type) {
+    var lt = state.config.lora_type;
+    if (lt === 'lora') networkAlgo = 'LoRA (Anima)';
+    else if (lt === 'tlora') networkAlgo = 'T-LoRA (Anima)';
+    else if (lt === 'lokr') networkAlgo = 'LoKr (Anima)';
+  }
+  if (networkAlgo === 'lycoris.kohya' && state.config.lycoris_algo) {
+    networkAlgo = 'LyCORIS / ' + state.config.lycoris_algo;
+  } else if (networkAlgo === 'networks.lora') { networkAlgo = 'LoRA'; }
+  else if (networkAlgo === 'networks.lora_flux') { networkAlgo = 'LoRA (FLUX)'; }
+  else if (networkAlgo === 'networks.tlora_flux') { networkAlgo = 'T-LoRA (FLUX)'; }
+  else if (networkAlgo === 'networks.oft_flux') { networkAlgo = 'OFT (FLUX)'; }
+  else if (networkAlgo === 'networks.lora_anima') { networkAlgo = 'LoRA (Anima)'; }
+  else if (networkAlgo === 'networks.tlora_anima') { networkAlgo = 'T-LoRA (Anima)'; }
+  else if (networkAlgo === 'networks.lora_sd3') { networkAlgo = 'LoRA (SD3)'; }
+  else if (networkAlgo === 'networks.lora_lumina') { networkAlgo = 'LoRA (Lumina)'; }
+  else if (networkAlgo === 'networks.lora_hunyuan_image') { networkAlgo = 'LoRA (HunyuanImage)'; }
+  else if (networkAlgo === 'networks.dylora') { networkAlgo = 'DyLoRA'; }
   var cfgParams = [
-    ['LR_SCHEDULER', state.config.lr_scheduler || '\u2014'],
-    ['OPTIMIZER', state.config.optimizer_type || '\u2014'],
-    ['BATCH_SIZE', state.config.train_batch_size || '\u2014'],
-    ['LEARNING_RATE', state.config.learning_rate || '\u2014'],
-    ['NETWORK_DIM', state.config.network_dim || '\u2014'],
-    ['NETWORK_ALPHA', state.config.network_alpha || '\u2014'],
-    ['RESOLUTION', state.config.resolution || '\u2014'],
-    ['MAX_TRAIN_EPOCHS', state.config.max_train_epochs || '\u2014'],
-    ['SAVE_EVERY_N_EPOCHS', state.config.save_every_n_epochs || '\u2014'],
-    ['CLIP_SKIP', state.config.clip_skip || '\u2014'],
-    ['SEED', state.config.seed || '\u2014'],
+    ['\u7f51\u7edc\u7b97\u6cd5', networkAlgo || '\u2014'],
+    ['\u5b66\u4e60\u7387\u8c03\u5ea6\u5668', state.config.lr_scheduler || '\u2014'],
+    ['\u4f18\u5316\u5668', state.config.optimizer_type || '\u2014'],
+    ['\u6279\u91cf\u5927\u5c0f', state.config.train_batch_size || '\u2014'],
+    ['\u5b66\u4e60\u7387', state.config.learning_rate || '\u2014'],
+    ['\u7f51\u7edc\u7ef4\u5ea6', state.config.network_dim || '\u2014'],
+    ['\u7f51\u7edc Alpha', state.config.network_alpha || '\u2014'],
+    ['\u8bad\u7ec3\u5206\u8fa8\u7387', state.config.resolution || '\u2014'],
+    ['\u6700\u5927\u8f6e\u6570', state.config.max_train_epochs || '\u2014'],
+    ['\u4fdd\u5b58\u95f4\u9694', state.config.save_every_n_epochs || '\u2014'],
+    ['CLIP \u8df3\u8fc7\u5c42', state.config.clip_skip || '\u2014'],
+    ['\u968f\u673a\u79cd\u5b50', state.config.seed || '\u2014'],
   ];
   var paramsHtml = cfgParams.map(function(p) {
     return '<div class="train-param-row">'
@@ -1830,7 +1854,7 @@ function renderTraining(container) {
 
   // Live Loss
   +     '<div class="train-side-section">'
-  +       '<div class="train-panel-title">LIVE LOSS</div>'
+  +       '<div class="train-panel-title">\u5b9e\u65f6 Loss</div>'
   +       '<div style="display:flex;justify-content:space-between;align-items:flex-end;">'
   +         '<span class="train-loss-big">' + (curLoss > 0 ? curLoss.toFixed(4) : '\u2014') + '</span>'
   +         '<span class="train-loss-delta" style="color:' + lossArrowColor + ';">' + lossArrow + ' ' + (lossDeltaPct !== 0 ? (lossDeltaPct > 0 ? '+' : '') + lossDeltaPct.toFixed(1) + '%' : '') + '</span>'
@@ -1845,10 +1869,10 @@ function renderTraining(container) {
   +     '<div class="train-side-section">'
   +       '<div class="train-panel-title">' + _ico('activity', 14) + ' \u786c\u4ef6 / \u8fd0\u884c\u65f6</div>'
   +       '<div class="train-hw-card">'
-  +         '<div class="train-hw-row"><span class="hw-label">GPU</span><span class="hw-value">' + escapeHtml(gpuName) + '</span></div>'
-  +         '<div class="train-hw-row"><span class="hw-label">SPEED</span><span id="train-live-speed" class="hw-value-accent">' + (curSpeed > 0 ? curSpeed.toFixed(2) + ' it/s' : '\u2014') + '</span></div>'
-  +         '<div class="train-hw-row"><span class="hw-label">RUNTIME</span><span class="hw-value">' + (state.runtime && state.runtime.runtime ? state.runtime.runtime.environment : 'standard') + '</span></div>'
-  + '<div class="train-hw-row" style="margin-top:4px;"><span class="hw-label">PRECISION</span><span class="hw-value">' + precisionTag + '</span></div>'
+  +         '<div class="train-hw-row"><span class="hw-label">\u663e\u5361</span><span class="hw-value">' + escapeHtml(gpuName) + '</span></div>'
+  +         '<div class="train-hw-row"><span class="hw-label">\u901f\u5ea6</span><span id="train-live-speed" class="hw-value-accent">' + (curSpeed > 0 ? curSpeed.toFixed(2) + ' it/s' : '\u2014') + '</span></div>'
+  +         '<div class="train-hw-row"><span class="hw-label">\u8fd0\u884c\u73af\u5883</span><span class="hw-value">' + (state.runtime && state.runtime.runtime ? state.runtime.runtime.environment : 'standard') + '</span></div>'
+  + '<div class="train-hw-row" style="margin-top:4px;"><span class="hw-label">\u7cbe\u5ea6</span><span class="hw-value">' + precisionTag + '</span></div>'
   +       '</div>'
   +     '</div>'
 

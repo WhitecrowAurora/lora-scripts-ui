@@ -186,6 +186,7 @@ const ANIMA_SECTIONS = [
       { key: 'blocks_to_swap', type: 'number', label: 'Block \u4ea4\u6362\u6570\u91cf', desc: 'CPU/GPU \u95f4\u4ea4\u6362\u7684 Transformer block \u6570\u3002', defaultValue: '', min: 1 },
       { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU Offload \u68af\u5ea6\u68c0\u67e5\u70b9', defaultValue: false },
       { key: 'disable_mmap_load_safetensors', type: 'boolean', label: '\u7981\u7528 mmap \u52a0\u8f7d', defaultValue: false },
+      { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '\u663e\u5b58\u788e\u7247\u4f18\u5316', desc: '\u8bad\u7ec3\u524d\u81ea\u52a8\u8bbe\u7f6e PYTORCH_ALLOC_CONF=expandable_segments:True\uff0c\u7f13\u89e3\u663e\u5b58\u788e\u7247\u5bfc\u81f4\u7684 OOM', defaultValue: true },
     ],
   },
   {
@@ -230,6 +231,27 @@ const ANIMA_SECTIONS = [
       { key: 'ui_custom_params', type: 'textarea', label: '\u81ea\u5b9a\u4e49 TOML \u8986\u76d6', desc: '\u5371\u9669\uff1a\u76f4\u63a5\u8986\u76d6\u754c\u9762\u53c2\u6570\u3002', defaultValue: '' },
     ],
   },
+  {
+    id: 'distributed-settings',
+    tab: 'advanced',
+    title: '\u5206\u5e03\u5f0f\u8bad\u7ec3',
+    description: '\u591a GPU / \u591a\u673a\u5206\u5e03\u5f0f\u8bad\u7ec3\u914d\u7f6e\u3002',
+    fields: [
+      { key: 'enable_distributed_training', type: 'boolean', label: '\u542f\u7528\u5206\u5e03\u5f0f\u8bad\u7ec3', desc: '\u542f\u7528\u5206\u5e03\u5f0f\u542f\u52a8', defaultValue: false },
+      { key: 'num_processes', type: 'number', label: '\u8fdb\u7a0b\u6570', desc: '\u6bcf\u53f0\u673a\u5668\u542f\u52a8\u7684\u8bad\u7ec3\u8fdb\u7a0b\u6570', defaultValue: '', min: 1, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'num_machines', type: 'number', label: '\u673a\u5668\u6570', defaultValue: 1, min: 1, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'machine_rank', type: 'number', label: '\u5f53\u524d\u673a\u5668\u7f16\u53f7', defaultValue: 0, min: 0, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'main_process_ip', type: 'string', label: '\u4e3b\u8282\u70b9 IP', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+      { key: 'main_process_port', type: 'number', label: '\u4e3b\u8282\u70b9\u7aef\u53e3', defaultValue: 29500, min: 1, max: 65535, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'nccl_socket_ifname', type: 'string', label: 'NCCL \u7f51\u5361\u540d', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+      { key: 'gloo_socket_ifname', type: 'string', label: 'Gloo \u7f51\u5361\u540d', defaultValue: '', visibleWhen: when('enable_distributed_training', true) },
+      { key: 'sync_config_from_main', type: 'boolean', label: '\u4ece\u4e3b\u8282\u70b9\u540c\u6b65\u914d\u7f6e', defaultValue: true, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'sync_missing_assets_from_main', type: 'boolean', label: '\u4ece\u4e3b\u8282\u70b9\u8865\u9f50\u8d44\u6e90', defaultValue: true, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'clear_dataset_npz_before_train', type: 'boolean', label: '\u8bad\u7ec3\u524d\u6e05\u9664\u7f13\u5b58', defaultValue: false, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'ddp_timeout', type: 'number', label: 'DDP \u8d85\u65f6', defaultValue: '', min: 0, visibleWhen: when('enable_distributed_training', true) },
+      { key: 'ddp_static_graph', type: 'boolean', label: 'DDP Static Graph', defaultValue: false, visibleWhen: when('enable_distributed_training', true) },
+    ],
+  },
 ];
 
 const ANIMA_CONDITIONAL_KEYS = new Set([
@@ -239,6 +261,7 @@ const ANIMA_CONDITIONAL_KEYS = new Set([
   'lulynx_ema_enabled', 'lulynx_resource_manager_enabled',
   'lulynx_block_weight_enabled', 'lulynx_smart_rank_enabled',
   'lulynx_auto_controller_enabled', 'lulynx_safeguard_auto_reduce_lr',
+  'enable_distributed_training',
 ]);
 
 export const ANIMA_LORA_SCHEMA = {
