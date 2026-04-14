@@ -199,6 +199,14 @@ export const api = {
   getImageResizeStatus() {
     return request('/api/local/image_resize_status');
   },
+
+  getSampleImages() {
+    return request('/api/local/sample_images');
+  },
+
+  openFolder(folder) {
+    return postJson('/api/local/open_folder', { folder: folder || 'output' });
+  },
   runTraining(config) {
     return postJson('/api/run', config);
   },

@@ -69,7 +69,7 @@ function findPythonEnv() {
   // 检查 Pillow 是否可用，不可用则自动安装
   try {
     execFileSync(pythonBin, ['-c', 'from PIL import Image'], { timeout: 10000, stdio: 'ignore' });
-  } catch {
+  } catch (_pillowCheckErr) {
     console.log('[image_resize] Pillow not found, installing...');
     try {
       execFileSync(pythonBin, ['-m', 'pip', 'install', 'Pillow', '--quiet', '--disable-pip-version-check'], {
@@ -561,6 +561,78 @@ export default defineConfig({
             }
           });
         });
+
+        // ── 训练预览图 API ──
+        server.middlewares.use('/api/local/sample_images', (req, res, next) => {
+          try {
+            const sampleDir = path.join(LORA_ROOT, 'output', 'sample');
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            if (!fs.existsSync(sampleDir) || !fs.statSync(sampleDir).isDirectory()) {
+              res.end(JSON.stringify({ status: 'success', data: { images: [], total: 0 } }));
+              return;
+            }
+            const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp'];
+            const allFiles = fs.readdirSync(sampleDir)
+              .filter(f => imgExts.includes(path.extname(f).toLowerCase()))
+              .sort((a, b) => {
+                const ta = fs.statSync(path.join(sampleDir, a)).mtimeMs;
+                const tb = fs.statSync(path.join(sampleDir, b)).mtimeMs;
+                return tb - ta;
+              });
+            const images = allFiles.map(f => ({
+              name: f,
+              path: path.join(sampleDir, f).replaceAll('\\', '/'),
+              mtime: fs.statSync(path.join(sampleDir, f)).mtimeMs,
+            }));
+            res.end(JSON.stringify({ status: 'success', data: { images, total: images.length } }));
+          } catch (_e) {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ status: 'error', message: _e.message || 'Failed' }));
+          }
+        });
+
+        // 训练预览图文件服务
+        server.middlewares.use('/api/local/sample_file', (req, res, next) => {
+          try {
+            const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+            const fileName = requestUrl.searchParams.get('name') || '';
+            if (!fileName || fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) throw new Error('Invalid file name');
+            const filePath = path.join(LORA_ROOT, 'output', 'sample', fileName);
+            if (!fs.existsSync(filePath)) { res.statusCode = 404; res.end('Not found'); return; }
+            const ext = path.extname(fileName).toLowerCase();
+            const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.bmp': 'image/bmp' };
+            res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+            fs.createReadStream(filePath).pipe(res);
+          } catch (_e) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'text/plain');
+            res.end(_e.message || 'Error');
+          }
+        });
+
+        // 打开文件夹（资源管理器）
+        server.middlewares.use('/api/local/open_folder', (req, res, next) => {
+          if (req.method !== 'POST') { next(); return; }
+          let body = '';
+          req.on('data', (chunk) => { body += chunk; });
+          req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            try {
+              const { folder } = JSON.parse(body);
+              const targetDir = path.resolve(LORA_ROOT, folder || 'output');
+              if (!fs.existsSync(targetDir)) { fs.mkdirSync(targetDir, { recursive: true }); }
+              // Windows: explorer, macOS: open, Linux: xdg-open
+              const opener = process.platform === 'win32' ? 'explorer' : (process.platform === 'darwin' ? 'open' : 'xdg-open');
+              nodeSpawn(opener, [targetDir], { detached: true, stdio: 'ignore' }).unref();
+              res.end(JSON.stringify({ status: 'success' }));
+            } catch (_e) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ status: 'error', message: _e.message || 'Failed' }));
+            }
+          });
+        });
+
 
         // 图像预处理状态轮询
         server.middlewares.use('/api/local/image_resize_status', (req, res, next) => {

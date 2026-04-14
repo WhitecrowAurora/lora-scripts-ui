@@ -12,7 +12,8 @@ echo.
 :: ============================
 :: 基础检查
 :: ============================
-set "UI_DIR=%CD%\ui"
+:: 用 %~dp0 而非 %CD% — 避免 chcp 65001 + 延迟展开 + 特殊字符路径时 %CD% 返回异常
+set "UI_DIR=%~dp0ui"
 
 if not exist "gui.py" (
     echo [X] 未找到 gui.py，请将此 bat 放在仓库根目录下运行。
@@ -20,10 +21,24 @@ if not exist "gui.py" (
     exit /b 1
 )
 if not exist "%UI_DIR%\package.json" (
-    echo [X] 未找到新前端目录: %UI_DIR%
-    echo     请确认 ui 文件夹存在于根目录中。
-    pause
-    exit /b 1
+    echo [!] 未找到新前端文件，正在尝试初始化 git submodule...
+    where git >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [X] 未找到 git，无法自动初始化 submodule。
+        echo     请手动执行: git submodule update --init ui
+        echo     或从 Release 页面下载完整包。
+        pause
+        exit /b 1
+    )
+    git submodule update --init ui
+    if not exist "%UI_DIR%\package.json" (
+        echo [X] submodule 初始化失败，未找到 ui/package.json
+        echo     请手动执行: git submodule update --init ui
+        echo     或从 Release 页面下载完整包。
+        pause
+        exit /b 1
+    )
+    echo [OK] ui submodule 已初始化。
 )
 
 :: ============================
@@ -31,14 +46,17 @@ if not exist "%UI_DIR%\package.json" (
 :: ============================
 echo [0/3] 选择运行时:
 echo.
-echo   [1] 默认 Python
-echo   [2] FlashAttention 2 (NVIDIA)
-echo   [3] SageAttention (NVIDIA)
-echo   [4] Intel XPU
-echo   [5] Intel XPU + Sage
-echo   [6] AMD ROCm
-echo   [7] AMD ROCm + Sage
+echo   [1] 默认 Python (RTX 40 系列及以下)
+echo   [2] Blackwell (RTX 50 / RTX PRO)
+echo   [3] FlashAttention 2 (NVIDIA)
+echo   [4] SageAttention (NVIDIA)
+echo   [5] SageAttention 2 (NVIDIA 实验)
+echo   [6] Intel XPU
+echo   [7] Intel XPU + Sage
+echo   [8] AMD ROCm
 echo   [0] 自动检测 (默认)
+echo.
+echo   * 选择 2~8 前需先运行对应的安装脚本初始化运行时环境
 echo.
 set "RC=0"
 set /p "RC=请输入编号 (默认=0): "
@@ -46,12 +64,13 @@ set /p "RC=请输入编号 (默认=0): "
 :: 将用户选择映射为 launcher.ps1 能识别的 selection 参数
 set "LAUNCHER_SELECTION="
 if "!RC!"=="1" set "LAUNCHER_SELECTION=portable"
-if "!RC!"=="2" set "LAUNCHER_SELECTION=flashattention"
-if "!RC!"=="3" set "LAUNCHER_SELECTION=sageattention"
-if "!RC!"=="4" set "LAUNCHER_SELECTION=intel-xpu"
-if "!RC!"=="5" set "LAUNCHER_SELECTION=intel-xpu-sage"
-if "!RC!"=="6" set "LAUNCHER_SELECTION=rocm-amd"
-if "!RC!"=="7" set "LAUNCHER_SELECTION=rocm-amd-sage"
+if "!RC!"=="2" set "LAUNCHER_SELECTION=blackwell" & set "MIKAZUKI_PREFERRED_RUNTIME=blackwell" & set "MIKAZUKI_BLACKWELL_STARTUP=1"
+if "!RC!"=="3" set "LAUNCHER_SELECTION=flashattention" & set "MIKAZUKI_PREFERRED_RUNTIME=flashattention" & set "MIKAZUKI_FLASHATTENTION_STARTUP=1"
+if "!RC!"=="4" set "LAUNCHER_SELECTION=sageattention" & set "MIKAZUKI_PREFERRED_RUNTIME=sageattention" & set "MIKAZUKI_SAGEATTENTION_STARTUP=1"
+if "!RC!"=="5" set "LAUNCHER_SELECTION=sageattention2" & set "MIKAZUKI_PREFERRED_RUNTIME=sageattention2"
+if "!RC!"=="6" set "LAUNCHER_SELECTION=intel-xpu" & set "MIKAZUKI_PREFERRED_RUNTIME=intel-xpu" & set "MIKAZUKI_INTEL_XPU_EXPERIMENTAL=1" & set "MIKAZUKI_INTEL_XPU_STARTUP=1" & set "MIKAZUKI_STARTUP_ATTENTION_POLICY=runtime_guarded"
+if "!RC!"=="7" set "LAUNCHER_SELECTION=intel-xpu-sage" & set "MIKAZUKI_PREFERRED_RUNTIME=intel-xpu-sage" & set "MIKAZUKI_INTEL_XPU_EXPERIMENTAL=1" & set "MIKAZUKI_INTEL_XPU_SAGE_EXPERIMENTAL=1" & set "MIKAZUKI_INTEL_XPU_SAGE_STARTUP=1" & set "MIKAZUKI_STARTUP_ATTENTION_POLICY=runtime_guarded"
+if "!RC!"=="8" set "LAUNCHER_SELECTION=rocm-amd" & set "MIKAZUKI_PREFERRED_RUNTIME=rocm-amd" & set "MIKAZUKI_AMD_EXPERIMENTAL=1" & set "MIKAZUKI_ROCM_AMD_STARTUP=1" & set "MIKAZUKI_STARTUP_ATTENTION_POLICY=runtime_guarded"
 if not defined LAUNCHER_SELECTION set "LAUNCHER_SELECTION=auto"
 
 echo.
@@ -72,7 +91,7 @@ set "HF_HOME=huggingface"
 set "HF_HUB_DISABLE_SYMLINKS_WARNING=1"
 
 :: 生成临时 PowerShell 脚本，用于在最小化窗口中运行后端
-set "_WORKDIR=!CD!"
+set "_WORKDIR=%~dp0."
 set "_T=%TEMP%\_lora_backend.ps1"
 (
     echo $ErrorActionPreference = 'Continue'
