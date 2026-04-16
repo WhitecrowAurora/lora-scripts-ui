@@ -29,6 +29,7 @@ export const TRAINING_TYPES = [
   { id: 'lumina-lora',        group: 'LoRA',              label: 'Lumina' },
   { id: 'hunyuan-image-lora', group: 'LoRA',              label: '混元图像' },
   { id: 'anima-lora',         group: 'LoRA',              label: 'Anima' },
+  { id: 'newbie-lora',         group: 'LoRA',              label: 'Newbie (实验)' },
   // Finetune
   { id: 'sd-dreambooth',      group: 'Finetune',          label: 'SD DreamBooth' },
   { id: 'sdxl-finetune',      group: 'Finetune',          label: 'SDXL' },
@@ -368,6 +369,30 @@ const SDXL_LORA_SECTIONS = [
   ])),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '学习率、调度器与优化器。', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '训练轮数、批量与梯度。', S_TRAIN(10)),
+  sec('low-vram-settings', 'speed', 'SDXL 低显存优化 (≤6GB)', '开启后会按低显存预设自动调整缓存、预览和训练目标。', [
+    { key: 'sdxl_low_vram_optimization', type: 'boolean', label: '启用低显存优化', desc: '低显存优化（≤6GB）。开启后会按低显存预设自动调整缓存、预览和训练目标', defaultValue: false },
+    { key: 'sdxl_low_vram_resolution_mode', type: 'select', label: '分辨率规划模式', desc: '推荐 long_edge；short_edge 细节更强但更吃显存', defaultValue: 'long_edge', options: ['long_edge', 'short_edge'], visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_bucket_reso_steps', type: 'number', label: 'Bucket 步长', desc: '低显存模式 bucket 步长。推荐 32', defaultValue: 32, visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_two_phase_cache', type: 'boolean', label: '两阶段缓存', desc: '启用两阶段缓存流程。会优先把缓存阶段与正式训练阶段解耦', defaultValue: true, visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_component_cpu_residency', type: 'boolean', label: '组件 CPU 驻留', desc: 'VAE / 文本编码器会尽量只在需要时临时上 GPU', defaultValue: true, visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_fixed_block_swap', type: 'boolean', label: 'U-Net Block Swap', desc: '启用 SDXL U-Net block swap', defaultValue: true, visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_swap_input_blocks', type: 'boolean', label: '交换 Input Blocks', desc: '交换 U-Net input blocks。显存收益较大但更慢', defaultValue: false, visibleWhen: all(when('sdxl_low_vram_optimization', true), when('sdxl_low_vram_fixed_block_swap', true)) },
+    { key: 'sdxl_low_vram_swap_middle_block', type: 'boolean', label: '交换 Middle Block', desc: '交换 U-Net middle block。通常比较划算', defaultValue: true, visibleWhen: all(when('sdxl_low_vram_optimization', true), when('sdxl_low_vram_fixed_block_swap', true)) },
+    { key: 'sdxl_low_vram_swap_output_blocks', type: 'boolean', label: '交换 Output Blocks', desc: '交换 U-Net output blocks。通常建议优先尝试', defaultValue: true, visibleWhen: all(when('sdxl_low_vram_optimization', true), when('sdxl_low_vram_fixed_block_swap', true)) },
+    { key: 'sdxl_low_vram_swap_offload_after_backward', type: 'boolean', label: '反向后卸载', desc: '反向传播结束后把已交换 block 立即移回 CPU。更省显存但更慢', defaultValue: true, visibleWhen: all(when('sdxl_low_vram_optimization', true), when('sdxl_low_vram_fixed_block_swap', true)) },
+    { key: 'sdxl_low_vram_swap_vram_threshold', type: 'number', label: '显存水线 (%)', desc: 'block swap 的软显存水线。0 表示始终尽快卸载', defaultValue: 0, min: 0, max: 99, step: 1, visibleWhen: all(when('sdxl_low_vram_optimization', true), when('sdxl_low_vram_fixed_block_swap', true)) },
+    { key: 'sdxl_low_vram_preview_policy', type: 'select', label: '预览策略', desc: '低显存模式预览策略', defaultValue: 'every_4_epochs', options: ['every_2_epochs', 'every_4_epochs', 'disable'], visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_auto_protection', type: 'boolean', label: 'OOM 自动保护', desc: '预览 OOM 时先降频再自动关闭预览', defaultValue: true, visibleWhen: when('sdxl_low_vram_optimization', true) },
+    { key: 'sdxl_low_vram_auto_resolution_probe', type: 'boolean', label: '自动分辨率探测', desc: '启动前自动预跑检查显存，必要时下调分辨率', defaultValue: true, visibleWhen: when('sdxl_low_vram_optimization', true) },
+  ]),
+  sec('staged-resolution-settings', 'advanced', '阶段分辨率训练', '实验性。1024 基准使用 512/768/1024；2048 基准使用 1024/1536/2048。', [
+    { key: 'enable_mixed_resolution_training', type: 'boolean', label: '启用阶段分辨率训练', desc: '实验性，仅支持 SDXL', defaultValue: false },
+    { key: 'staged_resolution_ratio_512', type: 'number', label: '512 阶段占比 (%)', desc: '当最终分辨率最大边 < 512 时忽略', defaultValue: 20, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+    { key: 'staged_resolution_ratio_768', type: 'number', label: '768 阶段占比 (%)', desc: '当最终分辨率最大边 < 768 时忽略', defaultValue: 30, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+    { key: 'staged_resolution_ratio_1024', type: 'number', label: '1024 阶段占比 (%)', desc: '1024 基准和 2048 基准都会用到', defaultValue: 50, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+    { key: 'staged_resolution_ratio_1536', type: 'number', label: '1536 阶段占比 (%)', desc: '仅 2048 基准会用到', defaultValue: 30, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+    { key: 'staged_resolution_ratio_2048', type: 'number', label: '2048 阶段占比 (%)', desc: '仅 2048 基准会用到', defaultValue: 50, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+  ]),
   sec('preview-settings', 'preview', '预览图设置', '训练中生成预览图。', [...S_PREVIEW]),
   sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('lulynx-settings', 'advanced', 'Lulynx 实验核心 (SDXL)', 'SafeGuard、EMA、ResourceManager、BlockWeight (SDXL 分层)、SmartRank、AutoController。', S_LULYNX_SDXL),
@@ -971,6 +996,85 @@ const AESTHETIC_SCORER_SECTIONS = [
   ]),
 ];
 
+// ---- Newbie LoRA (实验) ----
+const NEWBIE_LORA_SECTIONS = [
+  sec('model-settings', 'model', '训练用模型', 'Newbie 基座模型与可选组件路径。', [
+    { key: 'model_train_type', type: 'hidden', defaultValue: 'newbie-lora' },
+    { key: 'pretrained_model_name_or_path', type: 'folder', pickerType: 'folder', label: 'Newbie 基座模型目录', desc: '必填，要求完整本地目录', defaultValue: '' },
+    { key: 'transformer_path', type: 'folder', pickerType: 'folder', label: 'Transformer 目录', desc: '单独指定 transformer 目录（可选）', defaultValue: '' },
+    { key: 'gemma_model_path', type: 'folder', pickerType: 'folder', label: 'Gemma 文本编码器目录', desc: '单独指定 Gemma 文本编码器目录（可选）', defaultValue: '' },
+    { key: 'clip_model_path', type: 'folder', pickerType: 'folder', label: 'Jina CLIP 目录', desc: '单独指定 Jina CLIP 目录（可选）', defaultValue: '' },
+    { key: 'vae_path', type: 'folder', pickerType: 'folder', label: 'VAE 目录', desc: '单独指定 VAE 目录（可选）', defaultValue: '' },
+    { key: 'resume', type: 'folder', pickerType: 'folder', label: '继续训练路径', desc: '从已有 checkpoint / save_state 路径继续训练（可选）', defaultValue: '' },
+  ]),
+  sec('dataset-settings', 'dataset', '数据集设置', '训练数据与分辨率。', [
+    { key: 'train_data_dir', type: 'folder', pickerType: 'folder', label: '训练图片目录', desc: '训练图片目录', defaultValue: './train/aki' },
+    { key: 'resolution', type: 'string', label: '训练分辨率', desc: '训练分辨率，宽x高。当前建议 1024 起步', defaultValue: '1024,1024' },
+    { key: 'enable_bucket', type: 'boolean', label: '启用 Bucket', desc: '启用 bucket 以适配不同宽高比素材', defaultValue: true },
+    { key: 'min_bucket_reso', type: 'number', label: 'Bucket 最小分辨率', desc: 'bucket 最小分辨率', defaultValue: 256, min: 64 },
+    { key: 'max_bucket_reso', type: 'number', label: 'Bucket 最大分辨率', desc: 'bucket 最大分辨率', defaultValue: 2048, min: 64 },
+    { key: 'bucket_reso_steps', type: 'number', label: 'Bucket 步长', desc: 'bucket 分辨率步长', defaultValue: 64, min: 1 },
+    { key: 'caption_extension', type: 'string', label: 'Caption 扩展名', desc: '回退读取的 caption 扩展名', defaultValue: '.txt' },
+  ]),
+  sec('save-settings', 'model', '训练与保存', '训练参数与输出设置。', [
+    { key: 'output_dir', type: 'folder', pickerType: 'folder', label: '输出目录', desc: '输出目录', defaultValue: './output/newbie' },
+    { key: 'output_name', type: 'string', label: '输出名称', desc: '输出名称', defaultValue: 'newbie-lora' },
+    { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', desc: '每 N 步保存一次。0 表示仅在训练结束时保存', defaultValue: 0, min: 0 },
+    { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', desc: '每 N 个 epoch 保存一次。留空表示仅在训练结束时保存', defaultValue: '', min: 1 },
+    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', desc: '最大训练 epoch', defaultValue: 10, min: 1 },
+    { key: 'max_train_steps', type: 'number', label: '最大训练步数', desc: '最大训练步数。0 表示按 epoch 推导', defaultValue: 0, min: 0 },
+    { key: 'train_batch_size', type: 'number', label: '批量大小', desc: '单卡 batch size', defaultValue: 1, min: 1 },
+    { key: 'gradient_accumulation_steps', type: 'number', label: '梯度累积', desc: '梯度累积步数', defaultValue: 1, min: 1 },
+    { key: 'gradient_checkpointing', type: 'boolean', label: '梯度检查点', desc: '启用梯度检查点', defaultValue: true },
+    { key: 'mixed_precision', type: 'select', label: '训练精度', desc: '训练精度', defaultValue: 'bf16', options: ['bf16', 'fp16', 'fp32'] },
+    { key: 'seed', type: 'number', label: '随机种子', desc: '随机种子', defaultValue: 1337 },
+  ]),
+  sec('optimizer-settings', 'training', '优化器与学习率', '', [
+    { key: 'optimizer_type', type: 'select', label: '优化器', desc: '优化器', defaultValue: 'AdamW8bit', options: ['AdamW8bit', 'AdamW'] },
+    { key: 'learning_rate', type: 'string', label: '学习率', desc: '学习率', defaultValue: '0.0001' },
+    { key: 'weight_decay', type: 'number', label: '权重衰减', desc: '权重衰减', defaultValue: 0, min: 0, step: 0.0001 },
+    { key: 'lr_scheduler', type: 'select', label: '学习率调度器', desc: '学习率调度器', defaultValue: 'cosine', options: ['cosine', 'cosine_with_restarts', 'linear', 'constant'] },
+    { key: 'lr_warmup_steps', type: 'number', label: 'Warmup 步数', desc: 'warmup 步数', defaultValue: 0, min: 0 },
+    { key: 'max_grad_norm', type: 'number', label: '梯度裁剪', desc: '梯度裁剪', defaultValue: 1.0, min: 0, step: 0.01 },
+  ]),
+  sec('adapter-settings', 'network', '适配器设置', 'LoRA / LoKr 适配器参数。', [
+    { key: 'adapter_type', type: 'select', label: '适配器类型', desc: '适配器类型', defaultValue: 'lora', options: ['lora', 'lokr'] },
+    { key: 'network_dim', type: 'number', label: 'Rank (Dim)', desc: 'LoRA / LoKr rank', defaultValue: 16, min: 1 },
+    { key: 'network_alpha', type: 'number', label: 'Alpha', desc: 'LoRA / LoKr alpha', defaultValue: 16, min: 1 },
+    { key: 'network_dropout', type: 'number', label: 'Dropout', desc: 'LoRA dropout', defaultValue: 0, min: 0, step: 0.01 },
+    { key: 'newbie_target_modules', type: 'textarea', label: '目标模块列表', desc: '目标模块列表，一行一个', defaultValue: 'attention.qkv\nattention.out\nfeed_forward.w2\ntime_text_embed.1\nclip_text_pooled_proj.1' },
+    { key: 'lokr_rank', type: 'number', label: 'LoKr Rank', desc: 'LoKr rank', defaultValue: 16, min: 1, visibleWhen: when('adapter_type', 'lokr') },
+    { key: 'lokr_alpha', type: 'number', label: 'LoKr Alpha', desc: 'LoKr alpha', defaultValue: 16, min: 1, visibleWhen: when('adapter_type', 'lokr') },
+    { key: 'lokr_factor', type: 'number', label: 'LoKr Factor', desc: 'LoKr factor。-1 表示自动', defaultValue: -1, visibleWhen: when('adapter_type', 'lokr') },
+    { key: 'lokr_dropout', type: 'number', label: 'LoKr Dropout', desc: 'LoKr dropout', defaultValue: 0, min: 0, step: 0.01, visibleWhen: when('adapter_type', 'lokr') },
+    { key: 'lokr_rank_dropout', type: 'number', label: 'LoKr Rank Dropout', desc: 'LoKr rank dropout', defaultValue: 0, min: 0, step: 0.01, visibleWhen: when('adapter_type', 'lokr') },
+    { key: 'lokr_module_dropout', type: 'number', label: 'LoKr Module Dropout', desc: 'LoKr module dropout', defaultValue: 0, min: 0, step: 0.01, visibleWhen: when('adapter_type', 'lokr') },
+    { key: 'lokr_train_norm', type: 'boolean', label: 'LoKr 训练 Norm', desc: 'LoKr 额外训练 Norm 参数', defaultValue: false, visibleWhen: when('adapter_type', 'lokr') },
+  ]),
+  sec('cache-runtime-settings', 'speed', '缓存与运行时', '缓存流程控制与显存管理。', [
+    { key: 'use_cache', type: 'boolean', label: '启用缓存流程', desc: '当前强烈建议保持开启', defaultValue: true },
+    { key: 'newbie_force_cache_only', type: 'boolean', label: '仅缓存完备样本参与训练', desc: '只使用缓存完备样本进入正式训练', defaultValue: true },
+    { key: 'newbie_rebuild_cache', type: 'boolean', label: '强制重建缓存', desc: '强制重建已有缓存', defaultValue: false },
+    { key: 'newbie_gemma_max_token_length', type: 'number', label: 'Gemma 最大 Token', desc: 'Gemma 最大 token 长度', defaultValue: 256, min: 32 },
+    { key: 'newbie_clip_max_token_length', type: 'number', label: 'CLIP 最大 Token', desc: 'CLIP 最大 token 长度', defaultValue: 256, min: 32 },
+    { key: 'newbie_caption_length_bucket_size', type: 'number', label: 'Caption Bucket 大小', desc: 'caption 长度 bucket 大小', defaultValue: 32, min: 1 },
+    { key: 'blocks_to_swap', type: 'number', label: 'CPU 交换 Block 数', desc: '交换到 CPU 的 block 数量。0 表示关闭', defaultValue: 0, min: 0 },
+    { key: 'newbie_auto_swap_release', type: 'boolean', label: '自动 Swap 释放', desc: '开启后会在显存占用持续偏低时逐步减少 blocks_to_swap，以回收一部分训练速度', defaultValue: false },
+    { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', desc: '实验性：checkpointing 时把部分张量卸载到 CPU', defaultValue: false },
+    { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化', desc: '启用 PyTorch CUDA expandable_segments 以降低碎片化 OOM', defaultValue: true },
+    { key: 'newbie_safe_fallback', type: 'boolean', label: 'OOM 安全回退', desc: 'OOM 时自动尝试更保守的 Newbie 安全回退', defaultValue: true },
+    { key: 'trust_remote_code', type: 'boolean', label: '允许远程代码', desc: '允许 transformers / diffusers 加载远程自定义代码', defaultValue: true },
+  ]),
+  sec('log-settings', 'model', '日志设置', '', [
+    { key: 'log_with', type: 'select', label: '日志模块', desc: '日志模块', defaultValue: 'tensorboard', options: ['tensorboard', 'wandb'] },
+    { key: 'logging_dir', type: 'folder', pickerType: 'folder', label: '日志保存文件夹', desc: '日志保存文件夹', defaultValue: './logs' },
+    { key: 'log_prefix', type: 'string', label: '日志前缀', desc: '日志前缀', defaultValue: '' },
+    { key: 'wandb_api_key', type: 'string', label: 'WandB API Key', desc: 'wandb 的 api 密钥', defaultValue: '', visibleWhen: when('log_with', 'wandb') },
+  ]),
+  sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
+];
+
+
 
 // ================================================================
 // SECTIONS_MAP
@@ -983,6 +1087,7 @@ const SECTIONS_MAP = {
   'lumina-lora':            LUMINA_LORA_SECTIONS,
   'hunyuan-image-lora':     HUNYUAN_LORA_SECTIONS,
   'anima-lora':             ANIMA_LORA_SECTIONS,
+  'newbie-lora':            NEWBIE_LORA_SECTIONS,
   'sd-dreambooth':          DB_SECTIONS,
   'sdxl-finetune':          SDXL_FT_SECTIONS,
   'flux-finetune':          FLUX_FT_SECTIONS,
@@ -1251,6 +1356,13 @@ export function buildRunConfig(config, typeId) {
   // ── huber_schedule 空值清理 ──
 
   if (payload.huber_schedule === '') delete payload.huber_schedule;
+
+  // ── Newbie: newbie_target_modules textarea → 换行分隔保留原始字符串 ──
+  // 后端 newbie_lora_train.py 自行 split('\n')，所以保持 \n 分隔的字符串即可
+  if (payload.newbie_target_modules && typeof payload.newbie_target_modules === 'string') {
+    const cleaned = payload.newbie_target_modules.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    payload.newbie_target_modules = cleaned || undefined;
+  }
 
   return payload;
 }

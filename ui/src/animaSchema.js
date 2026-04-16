@@ -147,6 +147,20 @@ const ANIMA_SECTIONS = [
     ],
   },
   {
+    id: 'staged-resolution-settings',
+    tab: 'training',
+    title: '\u9636\u6bb5\u5206\u8fa8\u7387\u8bad\u7ec3',
+    description: '\u5b9e\u9a8c\u6027\uff0c\u652f\u6301 Anima\u30021024 \u57fa\u51c6\u4f7f\u7528 512/768/1024\uff1b2048 \u57fa\u51c6\u4f7f\u7528 1024/1536/2048\u3002',
+    fields: [
+      { key: 'enable_mixed_resolution_training', type: 'boolean', label: '\u542f\u7528\u9636\u6bb5\u5206\u8fa8\u7387\u8bad\u7ec3', defaultValue: false },
+      { key: 'staged_resolution_ratio_512', type: 'number', label: '512 \u9636\u6bb5\u5360\u6bd4 (%)', desc: '\u5f53\u6700\u7ec8\u5206\u8fa8\u7387\u6700\u5927\u8fb9 < 512 \u65f6\u5ffd\u7565', defaultValue: 20, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+      { key: 'staged_resolution_ratio_768', type: 'number', label: '768 \u9636\u6bb5\u5360\u6bd4 (%)', desc: '\u5f53\u6700\u7ec8\u5206\u8fa8\u7387\u6700\u5927\u8fb9 < 768 \u65f6\u5ffd\u7565', defaultValue: 30, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+      { key: 'staged_resolution_ratio_1024', type: 'number', label: '1024 \u9636\u6bb5\u5360\u6bd4 (%)', desc: '1024 \u57fa\u51c6\u548c 2048 \u57fa\u51c6\u90fd\u4f1a\u7528\u5230', defaultValue: 50, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+      { key: 'staged_resolution_ratio_1536', type: 'number', label: '1536 \u9636\u6bb5\u5360\u6bd4 (%)', desc: '\u4ec5 2048 \u57fa\u51c6\u4f1a\u7528\u5230', defaultValue: 30, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+      { key: 'staged_resolution_ratio_2048', type: 'number', label: '2048 \u9636\u6bb5\u5360\u6bd4 (%)', desc: '\u4ec5 2048 \u57fa\u51c6\u4f1a\u7528\u5230', defaultValue: 50, min: 0, max: 100, step: 1, visibleWhen: when('enable_mixed_resolution_training', true) },
+    ],
+  },
+  {
     id: 'preview-settings',
     tab: 'preview',
     title: '\u8bad\u7ec3\u9884\u89c8\u56fe',

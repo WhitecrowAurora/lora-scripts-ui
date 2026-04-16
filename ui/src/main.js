@@ -1435,9 +1435,26 @@ async function saveLocalTaskHistory() {
 
 /** Merge local history with backend live tasks. Backend tasks take priority by id. */
 function mergeTaskHistory(backendTasks, localHistory) {
+  const META_KEYS = ['output_name', 'model_train_type', 'created_at', 'training_type_label', 'resolution', 'network_dim'];
   const byId = new Map();
-  for (const t of localHistory) byId.set(t.id, t);
-  for (const t of backendTasks) byId.set(t.id, t);
+  const localById = new Map();
+  for (const t of localHistory) {
+    localById.set(t.id, t);
+    byId.set(t.id, { ...t });
+  }
+  for (const t of backendTasks) {
+    const existing = byId.get(t.id);
+    if (existing) {
+      const saved = localById.get(t.id);
+      // 后端覆盖 status/returncode，但保留本地已有的元数据
+      for (const k of META_KEYS) {
+        if (saved && saved[k] && !t[k]) t[k] = saved[k];
+      }
+      Object.assign(existing, t);
+    } else {
+      byId.set(t.id, { ...t });
+    }
+  }
   const arr = Array.from(byId.values());
   arr.sort((a, b) => {
     if (a.status === 'RUNNING' && b.status !== 'RUNNING') return -1;
@@ -1992,6 +2009,12 @@ function renderTraining(container) {
   else if (networkAlgo === 'networks.lora_lumina') { networkAlgo = 'LoRA (Lumina)'; }
   else if (networkAlgo === 'networks.lora_hunyuan_image') { networkAlgo = 'LoRA (HunyuanImage)'; }
   else if (networkAlgo === 'networks.dylora') { networkAlgo = 'DyLoRA'; }
+  // Newbie 使用 adapter_type 字段
+  if (!networkAlgo && state.config.adapter_type && state.config.model_train_type === 'newbie-lora') {
+    var at = state.config.adapter_type;
+    if (at === 'lora') networkAlgo = 'LoRA (Newbie)';
+    else if (at === 'lokr') networkAlgo = 'LoKr (Newbie)';
+  }
   var cfgParams = [
     ['\u7f51\u7edc\u7b97\u6cd5', networkAlgo || '\u2014'],
     ['\u5b66\u4e60\u7387\u8c03\u5ea6\u5668', state.config.lr_scheduler || '\u2014'],
@@ -2113,11 +2136,14 @@ function renderTraining(container) {
     var badge = hasCached ? _ico('bar-chart', 14) : (canScore ? '点击评分' : '');
     var taskLabel = task.output_name || task.id.substring(0, 8);
     var timeStr = task.created_at || '';
+    var typeTag = task.training_type_label || task.model_train_type || '';
+    var metaParts = [timeStr, task.resolution ? ('分辨率 ' + task.resolution) : '', task.network_dim ? ('dim ' + task.network_dim) : ''].filter(Boolean);
+    var metaStr = metaParts.join(' · ');
     return '<div style="border-bottom:1px solid var(--border);padding:5px 0;" id="task-row-' + task.id + '">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;">'
       + '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;' + (canScore ? 'cursor:pointer;' : '') + '" ' + (canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : '') + '>'
       + '<span style="font-size:0.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(taskLabel) + '</span>'
-      + (task.model_train_type ? '<span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:1px 5px;border-radius:3px;">' + escapeHtml(task.model_train_type) + '</span>' : '')
+      + (typeTag ? '<span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:1px 5px;border-radius:3px;">' + escapeHtml(typeTag) + '</span>' : '')
       + (badge ? '<span style="font-size:0.68rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : '')
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
@@ -2126,7 +2152,7 @@ function renderTraining(container) {
 
       + '</div>'
       + '</div>'
-      + (timeStr ? '<div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(timeStr) + '</div>' : '')
+      + (metaStr ? '<div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(metaStr) + '</div>' : '')
       + '<div id="task-summary-' + task.id + '" style="display:' + (hasCached ? 'block' : 'none') + ';" data-loaded="' + (hasCached ? 'true' : 'false') + '">' + (hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : '') + '</div>'
       + '</div>';
   }).join(''))
@@ -4941,7 +4967,23 @@ window.executeTraining = async () => {
     state.lastMessage = response.message || '训练已启动。';
     showToast(state.lastMessage);
     const tasksResponse = await api.getTasks();
-    state.tasks = tasksResponse?.data?.tasks || [];
+    const freshTasks = tasksResponse?.data?.tasks || [];
+    // 为刚启动的新任务注入元数据，后端 dump 只返回 id/status/returncode
+    const cfg = state.config;
+    const localHistory = await loadLocalTaskHistory();
+    const knownIds = new Set(localHistory.map(t => t.id));
+    for (const t of freshTasks) {
+      if (!knownIds.has(t.id) && t.status === 'RUNNING') {
+        // 新任务：注入训练元数据
+        t.output_name = cfg.output_name || '';
+        t.model_train_type = cfg.model_train_type || state.activeTrainingType || '';
+        t.created_at = new Date().toLocaleString('zh-CN', { hour12: false });
+        t.training_type_label = (TRAINING_TYPES.find(x => x.id === (cfg.model_train_type || state.activeTrainingType)) || {}).label || '';
+        t.resolution = cfg.resolution || '';
+        t.network_dim = cfg.network_dim || '';
+      }
+    }
+    state.tasks = mergeTaskHistory(freshTasks, localHistory);
     saveLocalTaskHistory();
     startTrainingLogPolling();
   } catch (error) {

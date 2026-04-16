@@ -46,17 +46,19 @@ if not exist "%UI_DIR%\package.json" (
 :: ============================
 echo [0/3] 选择运行时:
 echo.
-echo   [1] 默认 Python (RTX 40 系列及以下)
-echo   [2] Blackwell (RTX 50 / RTX PRO)
-echo   [3] FlashAttention 2 (NVIDIA)
-echo   [4] SageAttention (NVIDIA)
-echo   [5] SageAttention 2 (NVIDIA 实验)
-echo   [6] Intel XPU
-echo   [7] Intel XPU + Sage
-echo   [8] AMD ROCm
-echo   [0] 自动检测 (默认)
+echo   [1] 默认 Python           适用 RTX 40 系列及以下，无需额外安装
+echo   [2] Blackwell             适用 RTX 50 / RTX PRO，需先运行 install_blackwell.ps1
+echo   [3] FlashAttention 2      NVIDIA FA2 加速，需先运行 install_flashattention.ps1
+echo   [4] SageAttention         NVIDIA Sage 加速，需先运行 install_sageattention.ps1
+echo   [5] SageAttention 2       NVIDIA Sage 2.2 实验，需先运行 install_sageattention2.ps1
+echo   [6] Intel XPU             Intel Arc / Xe，需先运行 install_intel_xpu.ps1
+echo   [7] Intel XPU + Sage      Intel Arc + Sage 实验，需先运行 install_intel_xpu_sage.ps1
+echo   [8] AMD ROCm              AMD RX 7000 系列，需先运行 install_rocm_amd.ps1
+echo   [0] 自动检测              默认，自动选择已安装的最佳运行时
 echo.
-echo   * 选择 2~8 前需先运行对应的安装脚本初始化运行时环境
+echo   提示: 选择 2~8 前请确保已运行过对应的安装脚本 (install_*.ps1)
+echo         首次安装需要下载依赖，请耐心等待
+echo         旧前端对应启动脚本: run_For_*.bat
 echo.
 set "RC=0"
 set /p "RC=请输入编号 (默认=0): "
