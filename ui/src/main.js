@@ -42,6 +42,24 @@ const CONDITIONAL_KEYS = new Set([
   'lulynx_block_weight_enabled',
   'lulynx_smart_rank_enabled',
   'lulynx_auto_controller_enabled',
+  'lulynx_lisa_enabled',
+  'lulynx_pcgrad_enabled',
+  'lulynx_pause_enabled',
+  'lulynx_prodigy_guard_enabled',
+  'lulynx_advanced_stats_enabled',
+  'enable_block_weights',
+  'sdxl_low_vram_optimization',
+  'sdxl_low_vram_fixed_block_swap',
+  'enable_mixed_resolution_training',
+  'adapter_type',
+  'bucket_selection_mode',
+  'peak_vram_control_enabled',
+  'peak_vram_startup_guard_enabled',
+  'peak_vram_micro_batch_enabled',
+  'peak_vram_diagnostics_enabled',
+  'pissa_init',
+  'enable_debug_options',
+  'caption_tag_dropout_target_mode',
 ]);
 const DRAFT_STORAGE_KEY = 'sd-rescripts:ui:sdxl-draft';
 
@@ -239,7 +257,7 @@ async function loadBootstrapData() {
   if (tasksResult.status === 'fulfilled') {
     const backendTasks = tasksResult.value?.data?.tasks || [];
     const localHistory = await loadLocalTaskHistory();
-    state.tasks = mergeTaskHistory(backendTasks, localHistory);
+    state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
   }
   if (interrogatorsResult.status === 'fulfilled') {
     state.interrogators = interrogatorsResult.value?.data || null;
@@ -266,7 +284,7 @@ function startTaskPolling() {
       const response = await api.getTasks();
       const backendTasks = response?.data?.tasks || [];
       const localHistory = await loadLocalTaskHistory();
-      state.tasks = mergeTaskHistory(backendTasks, localHistory);
+      state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
       const hasRunning = state.tasks.some((t) => t.status === 'RUNNING');
       saveLocalTaskHistory();  // persist completed tasks
 
@@ -1423,7 +1441,7 @@ async function loadLocalTaskHistory() {
 
 /** Save completed tasks to local persistent file */
 async function saveLocalTaskHistory() {
-  const completed = state.tasks.filter(t => t.status !== 'RUNNING' && t.status !== 'CREATED');
+  const completed = state.tasks.filter(t => t.status !== 'CREATED');
   try {
     await fetch('/api/local/task_history', {
       method: 'POST',
@@ -1434,10 +1452,12 @@ async function saveLocalTaskHistory() {
 }
 
 /** Merge local history with backend live tasks. Backend tasks take priority by id. */
-function mergeTaskHistory(backendTasks, localHistory) {
+function mergeTaskHistory(backendTasks, localHistory, currentTasks) {
   const META_KEYS = ['output_name', 'model_train_type', 'created_at', 'training_type_label', 'resolution', 'network_dim'];
   const byId = new Map();
   const localById = new Map();
+  const currentById = new Map();
+  for (const t of (currentTasks || [])) currentById.set(t.id, t);
   for (const t of localHistory) {
     localById.set(t.id, t);
     byId.set(t.id, { ...t });
@@ -1448,7 +1468,8 @@ function mergeTaskHistory(backendTasks, localHistory) {
       const saved = localById.get(t.id);
       // 后端覆盖 status/returncode，但保留本地已有的元数据
       for (const k of META_KEYS) {
-        if (saved && saved[k] && !t[k]) t[k] = saved[k];
+        if (saved && saved[k] !== undefined && saved[k] !== '' && !t[k]) t[k] = saved[k];
+        if (!t[k]) { const cur = currentById.get(t.id); if (cur && cur[k] !== undefined && cur[k] !== '') t[k] = cur[k]; }
       }
       Object.assign(existing, t);
     } else {
@@ -4983,7 +5004,7 @@ window.executeTraining = async () => {
         t.network_dim = cfg.network_dim || '';
       }
     }
-    state.tasks = mergeTaskHistory(freshTasks, localHistory);
+    state.tasks = mergeTaskHistory(freshTasks, localHistory, state.tasks);
     saveLocalTaskHistory();
     startTrainingLogPolling();
   } catch (error) {
