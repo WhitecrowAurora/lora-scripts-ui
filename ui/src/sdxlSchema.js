@@ -358,6 +358,19 @@ const flowParams = (defaults = {}) => [
   { key: 'loss_type', type: 'select', label: '损失函数类型', desc: '损失函数类型', defaultValue: defaults.lt || 'l2', options: ['l1', 'l2', 'huber', 'smooth_l1'] },
 ];
 
+const rectifiedFlowParams = () => [
+  { key: 'flow_model', type: 'boolean', label: '启用 Rectified Flow', desc: '启用 RF / Flow Matching 训练目标。不能与 V 参数化同时开启', defaultValue: false },
+  { key: 'flow_use_ot', type: 'boolean', label: 'RF 最优传输配对', desc: '按 cosine OT 重新配对 latent 与噪声。batch 大于 1 时才有实际收益', defaultValue: false, visibleWhen: when('flow_model', true) },
+  { key: 'flow_timestep_distribution', type: 'select', label: 'RF 时间步分布', desc: 'RF 时间步采样分布', defaultValue: 'logit_normal', options: ['logit_normal', 'uniform'], visibleWhen: when('flow_model', true) },
+  { key: 'flow_logit_mean', type: 'number', label: 'RF Logit Mean', desc: 'logit-normal 时间步采样均值', defaultValue: 0.0, step: 0.01, visibleWhen: all(when('flow_model', true), when('flow_timestep_distribution', 'logit_normal')) },
+  { key: 'flow_logit_std', type: 'number', label: 'RF Logit Std', desc: 'logit-normal 时间步采样标准差，必须大于 0', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: all(when('flow_model', true), when('flow_timestep_distribution', 'logit_normal')) },
+  { key: 'flow_uniform_shift', type: 'boolean', label: 'RF 分辨率偏移', desc: '按图像像素数动态偏移 RF 时间步', defaultValue: false, visibleWhen: when('flow_model', true) },
+  { key: 'flow_uniform_base_pixels', type: 'number', label: 'RF 基准像素数', desc: '分辨率偏移的基准像素数。1024x1024 = 1048576', defaultValue: 1048576, min: 1, step: 1, visibleWhen: all(when('flow_model', true), when('flow_uniform_shift', true)) },
+  { key: 'flow_uniform_static_ratio', type: 'number', label: 'RF 固定偏移比率', desc: '填写后覆盖分辨率动态偏移。留空则不使用固定比率', defaultValue: '', min: 0.001, step: 0.001, visibleWhen: when('flow_model', true) },
+  { key: 'contrastive_flow_matching', type: 'boolean', label: '对比 Flow Matching', desc: '启用 CFM 辅助项。需要同时开启 Rectified Flow', defaultValue: false, visibleWhen: when('flow_model', true) },
+  { key: 'cfm_lambda', type: 'number', label: 'CFM 权重', desc: '对比 Flow Matching 权重', defaultValue: 0.05, min: 0, step: 0.001, visibleWhen: all(when('flow_model', true), when('contrastive_flow_matching', true)) },
+];
+
 // helper: section factory
 const sec = (id, tab, title, desc, fields) => ({ id, tab, title, description: desc, fields });
 
@@ -401,6 +414,7 @@ const SDXL_LORA_SECTIONS = [
     { key: 'up_lr_weight', type: 'string', label: 'Decoder 分层权重 (12层)', desc: 'U-Net Decoder 各层的学习率权重，逗号分隔共 12 个值。设为 0 可冻结该层', defaultValue: '1,1,1,1,1,1,1,1,1,1,1,1', visibleWhen: when('enable_block_weights', true) },
     { key: 'block_lr_zero_threshold', type: 'number', label: '分层置零阈值', desc: '低于该阈值的 block 权重按 0 处理', defaultValue: 0, step: 0.01, visibleWhen: when('enable_block_weights', true) },
   ]),
+  sec('rf-settings', 'training', 'Rectified Flow', 'RF / Flow Matching 训练目标与时间步策略。', rectifiedFlowParams()),
   sec('peak-vram-settings', 'speed', '显存峰值控制', '目标等效 batch、启动峰值保护、micro-batch 拆分与显存诊断。', [...S_PEAK_VRAM]),
 
   sec('low-vram-settings', 'speed', 'SDXL 低显存优化 (≤6GB)', '开启后会按低显存预设自动调整缓存、预览和训练目标。', [
@@ -455,6 +469,7 @@ const SD15_LORA_SECTIONS = [
   sec('network-settings', 'network', '网络设置', '', netLora('networks.lora', 32, 32, 256)),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
+  sec('rf-settings', 'training', 'Rectified Flow', 'RF / Flow Matching 训练目标与时间步策略。', rectifiedFlowParams()),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
   sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SD15]),
@@ -684,6 +699,7 @@ const SDXL_FT_SECTIONS = [
   sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
+  sec('rf-settings', 'training', 'Rectified Flow', 'RF / Flow Matching 训练目标与时间步策略。', rectifiedFlowParams()),
   sec('preview-settings', 'preview', '预览图设置', '', [...S_PREVIEW]),
   sec('validation-settings', 'preview', '验证设置', '验证集划分与验证频率。', [...S_VALIDATION]),
   sec('speed-settings', 'speed', '速度优化', '', [...S_SPEED_SDXL]),

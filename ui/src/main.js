@@ -57,6 +57,10 @@ const CONDITIONAL_KEYS = new Set([
   'peak_vram_startup_guard_enabled',
   'peak_vram_micro_batch_enabled',
   'peak_vram_diagnostics_enabled',
+  'flow_model',
+  'flow_timestep_distribution',
+  'flow_uniform_shift',
+  'contrastive_flow_matching',
   'pissa_init',
   'enable_debug_options',
   'caption_tag_dropout_target_mode',
@@ -4956,6 +4960,26 @@ function validateConfigConflicts() {
   // 13. blocks_to_swap 与 cpu_offload_checkpointing 冲突（Anima 特有）
   if (toNum(c.blocks_to_swap) > 0 && toBool(c.cpu_offload_checkpointing)) {
     warnings.push('blocks_to_swap 与 cpu_offload_checkpointing 通常不建议同时使用。');
+  }
+
+  // 14. Rectified Flow 与 v-parameterization 冲突
+  if (toBool(c.flow_model) && toBool(c.v_parameterization)) {
+    errors.push('Rectified Flow 不能与「V 参数化」同时开启。请二选一。');
+  }
+
+  // 15. 对比 Flow Matching 依赖 Rectified Flow
+  if (toBool(c.contrastive_flow_matching) && !toBool(c.flow_model)) {
+    errors.push('启用「对比 Flow Matching」前，必须先开启「Rectified Flow」。');
+  }
+
+  // 16. RF logit-normal 标准差必须大于 0
+  if (toBool(c.flow_model) && String(c.flow_timestep_distribution || 'logit_normal') === 'logit_normal' && toNum(c.flow_logit_std) <= 0) {
+    errors.push('RF Logit Std 必须大于 0。');
+  }
+
+  // 17. RF 固定偏移比率必须为正数
+  if (toBool(c.flow_model) && c.flow_uniform_static_ratio !== '' && c.flow_uniform_static_ratio != null && toNum(c.flow_uniform_static_ratio) <= 0) {
+    errors.push('RF 固定偏移比率必须大于 0。');
   }
 
 

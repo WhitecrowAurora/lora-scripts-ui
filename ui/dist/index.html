@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoRA v2.4.0 | RE-SCRIPTS</title>
-  <script type="module" crossorigin src="./assets/index-llNdsWb2.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BOVZfp37.css">
+    <title>LoRA v2.0.0 | RE-SCRIPTS</title>
+  <script type="module" crossorigin src="./assets/index-CvZpiUZC.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DP32gC37.css">
 </head>
 
 <body class="dark-theme">
@@ -15,7 +15,7 @@
         <aside class="sidebar">
             <div class="logo">
                 <div class="logo-text">LORA<span>RESCRIPTS</span></div>
-                <div class="logo-version">V2.0.0</div>
+                <div class="logo-version">v2.0.0</div>
             </div>
             <nav class="nav-links">
                 <div class="expand-toggle-btn" id="navigator-expand-btn">
@@ -27,45 +27,45 @@
                     <svg class="icon">
                         <use href="#icon-layout"></use>
                     </svg>
-                    <span data-i18n="nav.config">CONFIG</span>
+                    <span data-i18n="nav.config">配置</span>
                 </a>
                 <a href="#" class="nav-item" data-module="training" title="Training">
                     <svg class="icon">
                         <use href="#icon-training"></use>
                     </svg>
-                    <span data-i18n="nav.training">TRAINING</span>
+                    <span data-i18n="nav.training">训练</span>
                 </a>
                 <a href="#" class="nav-item" data-module="dataset" title="Dataset">
                     <svg class="icon">
                         <use href="#icon-dataset"></use>
                     </svg>
-                    <span data-i18n="nav.dataset">DATASET</span>
+                    <span data-i18n="nav.dataset">数据集</span>
                 </a>
                 <a href="#" class="nav-item" data-module="logs" title="Logs">
                     <svg class="icon">
                         <use href="#icon-logs"></use>
                     </svg>
-                    <span data-i18n="nav.logs">LOGS</span>
+                 <span data-i18n="nav.logs">日志</span>
                 </a>
                 <a href="#" class="nav-item" data-module="tools" title="Tools">
                     <svg class="icon">
                         <use href="#icon-tools"></use>
                     </svg>
-                    <span data-i18n="nav.tools">TOOLS</span>
+                    <span data-i18n="nav.tools">工具</span>
                 </a>
                 <a href="#" class="nav-item" data-module="settings" title="Settings">
                     <svg class="icon">
                         <use href="#icon-settings"></use>
                     </svg>
-                    <span data-i18n="nav.settings">SETTINGS</span>
+                    <span data-i18n="nav.settings">设置</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
-                <a href="#" class="nav-item" data-module="support" title="Support">
+                <a href="#" class="nav-item" data-module="about" title="About">
                     <svg class="icon">
                         <use href="#icon-support"></use>
                     </svg>
-                    <span data-i18n="nav.support">SUPPORT</span>
+                    <span data-i18n="nav.about">关于</span>
                 </a>
                 <div class="theme-toggle" id="theme-toggle">
                     <svg class="icon moon-icon">
@@ -90,11 +90,8 @@
             </div>
 
             <section class="nav-section" id="section-training-types">
-                <div class="section-header collapsible">
+                <div class="section-header">
                     <h4 data-i18n="navigator.training_types">TRAINING TYPES</h4>
-                    <span class="chevron"><svg class="icon">
-                            <use href="#icon-chevron-down"></use>
-                        </svg></span>
                 </div>
                 <div class="section-content">
                     <div class="nav-group">
@@ -107,21 +104,6 @@
                             <li>ANIME</li>
                             <li>NEWBIE</li>
                         </ul>
-                    </div>
-                </div>
-            </section>
-
-            <section class="nav-section" id="section-preset-list">
-                <div class="section-header collapsible">
-                    <h4 data-i18n="navigator.preset_list">参数管理</h4>
-                    <span class="chevron"><svg class="icon">
-                            <use href="#icon-chevron-down"></use>
-                        </svg></span>
-                </div>
-                <div class="section-content">
-                    <div class="workspace-item active">
-                        <span class="status-indicator"></span>
-                        <span class="label" data-i18n="navigator.editing">EDITING...</span>
                     </div>
                 </div>
             </section>
@@ -143,16 +125,12 @@
                     <a href="#" class="top-nav-item" data-i18n="topbar.tools">Tools</a>
                     <a href="#" class="top-nav-item" data-i18n="topbar.help">Help</a>
                 </nav>
-                <div class="top-actions">
-                    <button class="icon-btn" title="终端"><svg class="icon">
-                            <use href="#icon-terminal"></use>
-                        </svg></button>
-                    <button class="icon-btn" title="翻译"><svg class="icon">
-                            <use href="#icon-translate"></use>
-                        </svg></button>
-                    <button class="icon-btn" title="主题"><svg class="icon">
-                            <use href="#icon-theme"></use>
-                        </svg></button>
+                <div class="topbar-search" id="topbar-search">
+                    <div class="topbar-search-input-wrap">
+                        <svg class="icon" style="width:14px;height:14px;opacity:0.5;flex-shrink:0;"><use href="#icon-search"></use></svg>
+                        <input type="text" id="topbar-search-input" placeholder="搜索配置项..." autocomplete="off">
+                    </div>
+                    <div class="topbar-search-dropdown" id="topbar-search-dropdown"></div>
                 </div>
             </header>
 
@@ -261,9 +239,10 @@
   }
 }</code></pre>
             </div>
+            <div class="panel-preset-actions" id="panel-preset-actions"></div>
         </aside>
     </div>
-    <input type="file" id="config-file-input" accept="application/json,.json" hidden>
+    <input type="file" id="config-file-input" accept=".toml,.json,application/json" hidden>
     <input type="file" id="native-picker-input" hidden>
     <div class="builtin-picker-modal" id="builtin-picker-modal">
         <div class="builtin-picker-dialog">
@@ -381,8 +360,45 @@
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
         </symbol>
-    </svg>
+        <symbol id="icon-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" x2="20" y1="19" y2="19" />
+        </symbol>
+        <symbol id="icon-translate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" />
+            <path d="m22 22-5-10-5 10" /><path d="M14 18h6" />
+        </symbol>
+        <symbol id="icon-theme" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" /><path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" /><path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
+        </symbol>
+        <symbol id="icon-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+        <symbol id="icon-trending-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></symbol>
+        <symbol id="icon-trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
+        <symbol id="icon-minus-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></symbol>
+        <symbol id="icon-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></symbol>
+        <symbol id="icon-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+        <symbol id="icon-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></symbol>
+        <symbol id="icon-alert-tri" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+        <symbol id="icon-x-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+        <symbol id="icon-bar-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></symbol>
+        <symbol id="icon-loader" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></symbol>
+        <symbol id="icon-stop-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect width="6" height="6" x="9" y="9"/></symbol>
+        <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+        <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+        <symbol id="icon-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></symbol>
+        <symbol id="icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
 
+
+
+    </svg>
+
 </body>
 
 </html>
