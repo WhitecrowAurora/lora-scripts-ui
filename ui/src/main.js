@@ -121,6 +121,8 @@ const state = {
   runtimeError: '',
   lastMessage: '',
   backendOffline: false,
+  _taskHistoryDirty: false,
+  _deletedTaskIds: new Set(),
   loading: {
     runtime: false,
     preflight: false,
@@ -148,6 +150,17 @@ function init() {
   renderView(state.activeModule);
   startTaskPolling();
   setupTopbarSearch();
+
+  // 页面关闭前用 sendBeacon 同步保存任务历史，防止异步 fetch 被中断
+  // 使用标记避免与正常保存操作竞态
+  window.addEventListener('beforeunload', () => {
+    if (state._taskHistoryDirty) {
+      const completed = state.tasks.filter(t => t.status !== 'CREATED');
+      if (completed.length > 0) {
+        navigator.sendBeacon('/api/local/task_history', JSON.stringify({ tasks: completed }));
+      }
+    }
+  });
 }
 
 function escapeHtml(value) {
@@ -258,6 +271,7 @@ async function loadBootstrapData() {
     const backendTasks = tasksResult.value?.data?.tasks || [];
     const localHistory = await loadLocalTaskHistory();
     state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
+    state._taskHistoryDirty = true;
   }
   if (interrogatorsResult.status === 'fulfilled') {
     state.interrogators = interrogatorsResult.value?.data || null;
@@ -281,12 +295,14 @@ function startTaskPolling() {
   async function poll() {
     try {
       const hadRunning = state.tasks.some((t) => t.status === 'RUNNING');
+      const prevRunningIds = state.tasks.filter(t => t.status === 'RUNNING').map(t => t.id);
       const response = await api.getTasks();
       const backendTasks = response?.data?.tasks || [];
       const localHistory = await loadLocalTaskHistory();
       state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
+      state._taskHistoryDirty = true;
       const hasRunning = state.tasks.some((t) => t.status === 'RUNNING');
-      saveLocalTaskHistory();  // persist completed tasks
+      await saveLocalTaskHistory();  // persist completed tasks
 
       // 后端恢复在线
       if (_pollFailCount > 0) {
@@ -298,8 +314,9 @@ function startTaskPolling() {
 
       // 检测训练结束：之前有运行中的任务，现在没了
       if (hadRunning && !hasRunning) {
-        const lastTask = state.tasks[state.tasks.length - 1];
-        // returncode 可能不存在（后端 dump 不一定返回），用 status 兜底
+        // 找到刚刚从 RUNNING 变成其他状态的那个任务
+        const lastTask = state.tasks.find(t => prevRunningIds.includes(t.id))
+          || state.tasks[state.tasks.length - 1];
         const failed = lastTask && (lastTask.status === 'TERMINATED' || (lastTask.returncode != null && lastTask.returncode !== 0));
         state.trainingSummary = generateTrainingSummary();
         if (lastTask && state.trainingSummary) {
@@ -1448,21 +1465,25 @@ async function saveLocalTaskHistory() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tasks: completed }),
     });
+    state._taskHistoryDirty = false;
   } catch (e) { /* ignore */ }
 }
 
 /** Merge local history with backend live tasks. Backend tasks take priority by id. */
 function mergeTaskHistory(backendTasks, localHistory, currentTasks) {
+  const deletedIds = state._deletedTaskIds || new Set();
   const META_KEYS = ['output_name', 'model_train_type', 'created_at', 'training_type_label', 'resolution', 'network_dim'];
   const byId = new Map();
   const localById = new Map();
   const currentById = new Map();
   for (const t of (currentTasks || [])) currentById.set(t.id, t);
   for (const t of localHistory) {
+    if (deletedIds.has(t.id)) continue;
     localById.set(t.id, t);
     byId.set(t.id, { ...t });
   }
   for (const t of backendTasks) {
+    if (deletedIds.has(t.id)) continue;
     const existing = byId.get(t.id);
     if (existing) {
       const saved = localById.get(t.id);
@@ -5005,7 +5026,8 @@ window.executeTraining = async () => {
       }
     }
     state.tasks = mergeTaskHistory(freshTasks, localHistory, state.tasks);
-    saveLocalTaskHistory();
+    state._taskHistoryDirty = true;
+    await saveLocalTaskHistory();
     startTrainingLogPolling();
   } catch (error) {
     showToast(error.message || '训练请求失败。');
@@ -5045,8 +5067,11 @@ window.terminateAllTasks = async () => {
     }
     showToast('已发送终止请求。');
     const tasksResponse = await api.getTasks();
-    state.tasks = tasksResponse?.data?.tasks || [];
-    saveLocalTaskHistory();
+    const backendTasks = tasksResponse?.data?.tasks || [];
+    const localHistory = await loadLocalTaskHistory();
+    state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
+    state._taskHistoryDirty = true;
+    await saveLocalTaskHistory();
     syncFooterAction();
     if (state.activeModule === 'config') {
       renderView('config');
@@ -5061,9 +5086,10 @@ window.terminateAllTasks = async () => {
 window.deleteTaskHistory = async (taskId) => {
   try {
     await api.deleteTask(taskId);
+    state._deletedTaskIds.add(taskId);
     // 从前端状态中移除
     state.tasks = state.tasks.filter((t) => t.id !== taskId);
-    saveLocalTaskHistory();
+    await saveLocalTaskHistory();
     delete state.taskSummaries[taskId];
     try {
       var cache = JSON.parse(sessionStorage.getItem('sd-rescripts:task-summaries') || '{}');
@@ -5087,7 +5113,10 @@ window.clearAllTaskHistory = async () => {
     showToast('已清空 ' + (resp?.data?.deleted || 0) + ' 条任务记录');
     // 重新拉取任务列表
     const tasksResponse = await api.getTasks();
-    state.tasks = tasksResponse?.data?.tasks || [];
+    // 把所有非运行中的任务加入黑名单，防止轮询又拉回来
+    const allBackendTasks = tasksResponse?.data?.tasks || [];
+    for (const t of allBackendTasks) { if (t.status !== 'RUNNING') state._deletedTaskIds.add(t.id); }
+    state.tasks = allBackendTasks.filter(t => !state._deletedTaskIds.has(t.id));
     try { await fetch('/api/local/task_history', { method: 'DELETE' }); } catch (e) {}
     state.taskSummaries = {};
     try { sessionStorage.removeItem('sd-rescripts:task-summaries'); } catch (e) {}
