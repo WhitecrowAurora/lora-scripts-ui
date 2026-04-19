@@ -18,6 +18,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
 
 const TOPBAR_TABS = UI_TABS.map((tab) => tab.key);
+const BUILTIN_LEGACY_UI_PROFILE_ID = 'builtin-legacy';
 const CONDITIONAL_KEYS = new Set([
   'v_parameterization',
   'save_state',
@@ -57,6 +58,10 @@ const CONDITIONAL_KEYS = new Set([
   'peak_vram_startup_guard_enabled',
   'peak_vram_micro_batch_enabled',
   'peak_vram_diagnostics_enabled',
+  'flow_model',
+  'flow_timestep_distribution',
+  'flow_uniform_shift',
+  'contrastive_flow_matching',
   'pissa_init',
   'enable_debug_options',
   'caption_tag_dropout_target_mode',
@@ -3126,6 +3131,19 @@ function renderSettings(container) {
           </div>
         </div>
       </section>
+
+      <section class="form-section">
+        <header class="section-header"><h3>UI 切换</h3></header>
+        <div class="section-content" style="display:block;">
+          <div class="settings-row" style="align-items:flex-start;">
+            <div>
+              <label>切换回经典 UI</label>
+              <p class="field-desc">当前正在使用新 UI。如果想返回原本的内置界面，可以直接在这里切换。</p>
+            </div>
+            <button class="btn btn-outline btn-sm" type="button" id="switch-legacy-ui-btn">切换回经典 UI</button>
+          </div>
+        </div>
+      </section>
     </div>
   `;
 
@@ -3147,6 +3165,23 @@ function renderSettings(container) {
     const checkedScheds = [...$$('#settings-schedulers input:checked')].map((i) => i.value);
     localStorage.setItem('sd-rescripts:visible-schedulers', JSON.stringify(checkedScheds));
     showToast('训练 UI 设置已保存。');
+  });
+  $('#switch-legacy-ui-btn')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '切换中...';
+    try {
+      await api.activateUiProfile(BUILTIN_LEGACY_UI_PROFILE_ID);
+      showToast('已切换到经典 UI，正在返回...');
+      setTimeout(() => {
+        window.location.assign('/');
+      }, 250);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = originalText;
+      showToast(error.message || '切换 UI 失败。');
+    }
   });
 }
 
@@ -5566,6 +5601,26 @@ function validateConfigConflicts() {
   // 13. blocks_to_swap 与 cpu_offload_checkpointing 冲突（Anima 特有）
   if (toNum(c.blocks_to_swap) > 0 && toBool(c.cpu_offload_checkpointing)) {
     warnings.push('blocks_to_swap 与 cpu_offload_checkpointing 通常不建议同时使用。');
+  }
+
+  // 14. Rectified Flow 与 v-parameterization 冲突
+  if (toBool(c.flow_model) && toBool(c.v_parameterization)) {
+    errors.push('Rectified Flow 不能与「V 参数化」同时开启。请二选一。');
+  }
+
+  // 15. 对比 Flow Matching 依赖 Rectified Flow
+  if (toBool(c.contrastive_flow_matching) && !toBool(c.flow_model)) {
+    errors.push('启用「对比 Flow Matching」前，必须先开启「Rectified Flow」。');
+  }
+
+  // 16. RF logit-normal 标准差必须大于 0
+  if (toBool(c.flow_model) && String(c.flow_timestep_distribution || 'logit_normal') === 'logit_normal' && toNum(c.flow_logit_std) <= 0) {
+    errors.push('RF Logit Std 必须大于 0。');
+  }
+
+  // 17. RF 固定偏移比率必须为正数
+  if (toBool(c.flow_model) && c.flow_uniform_static_ratio !== '' && c.flow_uniform_static_ratio != null && toNum(c.flow_uniform_static_ratio) <= 0) {
+    errors.push('RF 固定偏移比率必须大于 0。');
   }
 
 

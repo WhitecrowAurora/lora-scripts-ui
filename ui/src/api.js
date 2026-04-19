@@ -288,6 +288,11 @@ export const api = {
     return request('/api/gpu_status');
   },
 
+  /** 切换当前启用的 UI */
+  activateUiProfile(profileId) {
+    return postJson('/api/ui_profiles/activate', { profile_id: profileId });
+  },
+
   /** 列出数据集文件夹中的图片 */
   listDatasetImages(folder, limit = 6) {
     return request(`/api/dataset/list_images?folder=${encodeURIComponent(folder)}&limit=${limit}`);
