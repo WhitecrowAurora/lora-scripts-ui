@@ -2923,7 +2923,7 @@ function renderGuide(container) {
       <section class="form-section" style="margin-bottom:24px;">
         <header class="section-header"><h3 style="font-size:1.3rem;">5. 训练</h3></header>
         <div class="section-content" style="display:block;line-height:1.8;">
-          <p>我是 4080S，16G 显存。bs 主要是为了训练速度，所以不用太在意。默认开着仅训练 U-Net，也不用管。</p>
+          <p>我是 4080S，16G 显存。bs 主要是为了训练速度，所以不用太在意。默认开着仅训练 U-Net，也不用管。我的lokr/locon的epoch设置比较保守，实际体验的话不用这么多ep</p>
           <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:0.9rem;">
             <thead><tr style="border-bottom:2px solid var(--border);text-align:left;">
               <th style="padding:8px 12px;">类型</th>
