@@ -28,6 +28,7 @@ const ANIMA_SECTIONS = [
       { key: 'qwen3', type: 'file', pickerType: 'model-file', label: 'Qwen3 \u6587\u672c\u6a21\u578b\u8def\u5f84', desc: '\u53ef\u586b\u5355\u4e2a safetensors \u6216\u672c\u5730\u6a21\u578b6ee\u5f55\u3002', defaultValue: '' },
       { key: 'llm_adapter_path', type: 'file', pickerType: 'model-file', label: 'LLM Adapter \u8def\u5f84', desc: '\uff08\u53ef\u9009\uff09\u8986\u76d6 Anima \u5185\u7f6e Adapter\u3002', defaultValue: '' },
       { key: 't5_tokenizer_path', type: 'folder', pickerType: 'folder', label: 'T5 Tokenizer \u76ee\u5f55', desc: '\uff08\u53ef\u9009\uff09\u7559\u7a7a\u56de\u9000\u5230 configs/t5_old\u3002', defaultValue: '' },
+      { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '\u7ee7\u7eed\u8bad\u7ec3 LoRA', desc: '\u4ece\u5df2\u6709\u7684 LoRA \u6a21\u578b\u4e0a\u7ee7\u7eed\u8bad\u7ec3\uff0c\u586b\u5199\u8def\u5f84', defaultValue: '' },
       { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '\u7ee7\u7eed\u8bad\u7ec3\u8def\u5f84', desc: '\u4ece save_state \u4fdd\u5b58\u7684\u4e2d\u65ad\u72b6\u6001\u7ee7\u7eed\u8bad\u7ec3\u3002', defaultValue: '' },
     ],
   },
@@ -120,7 +121,6 @@ const ANIMA_SECTIONS = [
     description: 'LoRA / T-LoRA / LoKr \u9002\u914d\u5668\u53c2\u6570\u3002',
     fields: [
       { key: 'lora_type', type: 'select', label: '\u9002\u914d\u5668\u7c7b\u578b', desc: 'LoRA \u66f4\u8f7b\u91cf\uff1bT-LoRA \u52a8\u6001 rank\uff1bLoKr \u5b9e\u9a8c\u3002', defaultValue: 'lora', options: ['lora', 'tlora', 'lokr'] },
-      { key: 'network_weights', type: 'file', pickerType: 'model-file', label: '\u7ee7\u7eed\u8bad\u7ec3\u6743\u91cd', defaultValue: '' },
       { key: 'network_dim', type: 'slider', label: '\u7f51\u7edc\u7ef4\u5ea6', defaultValue: 16, min: 1, max: 512, step: 1 },
       { key: 'network_alpha', type: 'slider', label: '\u7f51\u7edc Alpha', defaultValue: 16, min: 1, max: 512, step: 1 },
       { key: 'dim_from_weights', type: 'boolean', label: '\u4ece\u6743\u91cd\u63a8\u65ad Dim', defaultValue: false },
