@@ -272,6 +272,10 @@ async function loadBootstrapData() {
     const localHistory = await loadLocalTaskHistory();
     state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
     state._taskHistoryDirty = true;
+    // 从持久化的任务对象恢复摘要数据
+    for (const t of state.tasks) {
+      if (t._summary && t._summary._v >= 2) state.taskSummaries[t.id] = t._summary;
+    }
   }
   if (interrogatorsResult.status === 'fulfilled') {
     state.interrogators = interrogatorsResult.value?.data || null;
@@ -321,6 +325,7 @@ function startTaskPolling() {
         state.trainingSummary = generateTrainingSummary();
         if (lastTask && state.trainingSummary) {
           saveTaskSummary(lastTask.id, state.trainingSummary);
+          await saveLocalTaskHistory();  // 立即持久化摘要
         }
         state.trainingFailed = !!failed;
         if (!failed) showToast('' + _ico('check-circle') + ' 训练已完成');
@@ -403,6 +408,14 @@ function renderView(module) {
   }
   if (module === 'about') {
     renderAbout(container);
+    return;
+  }
+  if (module === 'guide') {
+    renderGuide(container);
+    return;
+  }
+  if (module === 'wizard') {
+    renderWizard(container);
     return;
   }
   if (module === 'training') {
@@ -1422,6 +1435,10 @@ function renderTrainingSummaryHTML() {
 /** Save task summary to session cache */
 function saveTaskSummary(taskId, summary) {
   state.taskSummaries[taskId] = summary;
+  // 持久化：存到任务对象上，随 task_history.json 一起保存
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
+  if (task) { task._summary = summary; }
+  state._taskHistoryDirty = true;
   try {
     var cache = JSON.parse(sessionStorage.getItem('sd-rescripts:task-summaries') || '{}');
     cache[taskId] = summary;
@@ -1459,6 +1476,7 @@ async function loadLocalTaskHistory() {
 /** Save completed tasks to local persistent file */
 async function saveLocalTaskHistory() {
   const completed = state.tasks.filter(t => t.status !== 'CREATED');
+  if (completed.length === 0) return;
   try {
     await fetch('/api/local/task_history', {
       method: 'POST',
@@ -1472,7 +1490,7 @@ async function saveLocalTaskHistory() {
 /** Merge local history with backend live tasks. Backend tasks take priority by id. */
 function mergeTaskHistory(backendTasks, localHistory, currentTasks) {
   const deletedIds = state._deletedTaskIds || new Set();
-  const META_KEYS = ['output_name', 'model_train_type', 'created_at', 'training_type_label', 'resolution', 'network_dim'];
+  const META_KEYS = ['output_name', 'model_train_type', 'created_at', 'training_type_label', 'resolution', 'network_dim', '_summary'];
   const byId = new Map();
   const localById = new Map();
   const currentById = new Map();
@@ -1551,6 +1569,7 @@ window.showTaskSummary = async function(taskId) {
     }
     var summary = generateSummaryFromTaskLog(lines);
     saveTaskSummary(taskId, summary);
+    await saveLocalTaskHistory();  // 持久化摘要到磁盘
     panel.innerHTML = renderSummaryCard(summary);
     panel.dataset.loaded = 'true';
   } catch (e) {
@@ -2195,7 +2214,7 @@ function renderTraining(container) {
       + '</div>'
       + '</div>'
       + (metaStr ? '<div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(metaStr) + '</div>' : '')
-      + '<div id="task-summary-' + task.id + '" style="display:' + (hasCached ? 'block' : 'none') + ';" data-loaded="' + (hasCached ? 'true' : 'false') + '">' + (hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : '') + '</div>'
+      + '<div id="task-summary-' + task.id + '" style="display:none;" data-loaded="' + (hasCached ? 'true' : 'false') + '">' + (hasCached ? renderSummaryCard(state.taskSummaries[task.id]) : '') + '</div>'
       + '</div>';
   }).join(''))
   + '</div>'
@@ -2477,6 +2496,534 @@ async function _fetchGpuStatus() {
     if (vramText) vramText.textContent = g.allocated_mb + ' / ' + g.total_mb + ' MB (' + g.utilization_pct + '%)';
     if (vramFill) vramFill.style.width = Math.min(g.utilization_pct, 100) + '%';
   } catch(e) { /* silent */ }
+}
+
+// ================================================================
+// 快速训练流程 (Wizard)
+// ================================================================
+function renderWizard(container) {
+  var c = state.config;
+  // 参数预览
+  var previewRows = [
+    ['pretrained_model_name_or_path', 'SDXL 底模', c.pretrained_model_name_or_path],
+    ['train_data_dir', '训练数据集', c.train_data_dir],
+    ['output_name', '保存名称', c.output_name],
+    ['network_module', '网络模块', c.network_module],
+    ['network_dim', 'Rank', c.network_dim],
+    ['network_alpha', 'Alpha', c.network_alpha],
+    ['lycoris_algo', 'LyCORIS 算法', c.network_module === 'lycoris.kohya' ? c.lycoris_algo : ''],
+    ['unet_lr', 'U-Net 学习率', c.unet_lr],
+    ['optimizer_type', '优化器', c.optimizer_type],
+    ['lr_scheduler', '调度器', c.lr_scheduler],
+    ['max_train_epochs', '训练轮数', c.max_train_epochs],
+    ['train_batch_size', '批量大小', c.train_batch_size],
+    ['gradient_accumulation_steps', '梯度累加', c.gradient_accumulation_steps],
+    ['enable_preview', '预览图', c.enable_preview ? '开启' : '关闭'],
+    ['mixed_precision', '混合精度', c.mixed_precision],
+  ];
+  var previewHtml = '<table class="wizard-preview-table">';
+  for (var i = 0; i < previewRows.length; i++) {
+    var key = previewRows[i][0], label = previewRows[i][1], val = previewRows[i][2];
+    if (val === '' || val === undefined || val === null) continue;
+    var display = escapeHtml(String(val));
+    previewHtml += '<tr class="wizard-preview-row" title="' + escapeHtml(key) + '">'
+      + '<td class="wizard-preview-key">' + escapeHtml(label) + '</td>'
+      + '<td class="wizard-preview-val">' + display + '</td>'
+      + '</tr>';
+  }
+  previewHtml += '</table>';
+
+  // 网络模块选项
+  var netModOptions = ['networks.lora', 'lycoris.kohya', 'networks.dylora', 'networks.oft'];
+  var netModSelect = netModOptions.map(function(m) {
+    return '<option value="' + m + '"' + (c.network_module === m ? ' selected' : '') + '>' + escapeHtml(m) + '</option>';
+  }).join('');
+
+  // LyCORIS 算法选项
+  var lycoAlgos = ['locon', 'loha', 'lokr', 'ia3', 'dylora', 'glora', 'diag-oft', 'boft'];
+  var lycoSelect = lycoAlgos.map(function(a) {
+    return '<option value="' + a + '"' + (c.lycoris_algo === a ? ' selected' : '') + '>' + a + '</option>';
+  }).join('');
+  var lycoVisible = c.network_module === 'lycoris.kohya' ? '' : 'display:none;';
+  var lokrVisible = (c.network_module === 'lycoris.kohya' && c.lycoris_algo === 'lokr') ? '' : 'display:none;';
+
+  // 优化器选项
+  var optimizers = ['AdamW8bit', 'Prodigy', 'AdamW', 'Lion8bit', 'Lion', 'SGDNesterov8bit', 'DAdaptation', 'Adafactor'];
+  var optSelect = optimizers.map(function(o) {
+    return '<option value="' + o + '"' + (c.optimizer_type === o ? ' selected' : '') + '>' + o + '</option>';
+  }).join('');
+
+  // 学习率调度器选项
+  var schedulers = ['cosine', 'cosine_with_restarts', 'polynomial', 'constant', 'constant_with_warmup', 'linear', 'adafactor'];
+  var schSelect = schedulers.map(function(s) {
+    return '<option value="' + s + '"' + (c.lr_scheduler === s ? ' selected' : '') + '>' + s + '</option>';
+  }).join('');
+
+  // 预览图开关
+  var previewOn = !!c.enable_preview;
+  var previewDisplay = previewOn ? '' : 'display:none;';
+
+  // 速度优化开关生成器
+  var boolSwitch = function(k, lbl, checked) {
+    return '<label style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:pointer;">'
+      + '<input type="checkbox"' + (checked ? ' checked' : '') + ' onchange="wizardSet(\'' + k + '\', this.checked)" />'
+      + escapeHtml(lbl) + '</label>';
+  };
+
+  container.innerHTML = `
+    <div class="form-container">
+      <header class="section-title">
+        <h2 style="font-size:1.5rem;">🚀 快速训练流程</h2>
+        <p style="color:var(--text-muted);margin-top:4px;">目前仅供 SDXL LoRA 训练，记得先处理训练集</p>
+      </header>
+
+      <div class="wizard-layout">
+        <div class="wizard-body">
+
+          <!-- 1. 底模路径 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">① SDXL 底模路径</label>
+            <div class="input-picker">
+              <button class="picker-icon" type="button" onclick="pickPathForInput('wz-model', 'file')">
+                <svg class="icon"><use href="#icon-folder"></use></svg>
+              </button>
+              <button class="picker-mode-icon-btn" type="button" title="内置文件选择器" onclick="openBuiltinPickerForInput('wz-model', 'file')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+              <input class="text-input" type="text" id="wz-model"
+                value="${escapeHtml(c.pretrained_model_name_or_path || '')}"
+                placeholder="选择 .safetensors 底模文件"
+                oninput="wizardSet('pretrained_model_name_or_path', this.value)" />
+            </div>
+          </div>
+
+          <!-- 2. 训练数据集路径 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">② 训练数据集路径</label>
+            <div class="input-picker">
+              <button class="picker-icon" type="button" onclick="pickPathForInput('wz-data', 'folder')">
+                <svg class="icon"><use href="#icon-folder"></use></svg>
+              </button>
+              <button class="picker-mode-icon-btn" type="button" title="内置文件选择器" onclick="openBuiltinPickerForInput('wz-data', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+              <input class="text-input" type="text" id="wz-data"
+                value="${escapeHtml(c.train_data_dir || '')}"
+                placeholder="包含子文件夹的 train 目录"
+                oninput="wizardSet('train_data_dir', this.value)" />
+            </div>
+          </div>
+
+          <!-- 3. 保存名称 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">③ 保存名称</label>
+            <input class="text-input" type="text" id="wz-name"
+              value="${escapeHtml(c.output_name || '')}"
+              placeholder="例如: my_lora"
+              oninput="wizardSet('output_name', this.value); wizardSet('logging_dir', this.value ? './logs/' + this.value : '')" />
+            <div class="wizard-field-hint">同时作为模型保存名称和日志目录名称</div>
+          </div>
+
+          <!-- 4. 网络选择 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">④ 网络设置</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">网络模块</label>
+                <select class="field-select" onchange="wizardSet('network_module', this.value); renderView('wizard')">${netModSelect}</select>
+              </div>
+              <div style="${lycoVisible}">
+                <label style="font-size:0.82rem;color:var(--text-muted);">LyCORIS 算法</label>
+                <select class="field-select" onchange="wizardSet('lycoris_algo', this.value); renderView('wizard')">${lycoSelect}</select>
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">网络维度 (Rank)</label>
+                <input class="text-input" type="number" value="${c.network_dim || 32}" min="1" max="512" oninput="wizardSet('network_dim', this.value)" />
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">网络 Alpha</label>
+                <input class="text-input" type="number" value="${c.network_alpha || 32}" min="1" max="512" oninput="wizardSet('network_alpha', this.value)" />
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">网络 Dropout</label>
+                <input class="text-input" type="number" value="${c.network_dropout || 0}" min="0" max="1" step="0.01" oninput="wizardSet('network_dropout', this.value)" />
+              </div>
+              <div style="${lycoVisible}">
+                <label style="font-size:0.82rem;color:var(--text-muted);">卷积维度</label>
+                <input class="text-input" type="number" value="${c.conv_dim || 4}" min="1" oninput="wizardSet('conv_dim', this.value)" />
+              </div>
+              <div style="${lycoVisible}">
+                <label style="font-size:0.82rem;color:var(--text-muted);">卷积 Alpha</label>
+                <input class="text-input" type="number" value="${c.conv_alpha || 1}" min="1" oninput="wizardSet('conv_alpha', this.value)" />
+              </div>
+              <div style="${lycoVisible}">
+                <label style="font-size:0.82rem;color:var(--text-muted);">LyCORIS Dropout</label>
+                <input class="text-input" type="number" value="${c.dropout || 0}" min="0" max="1" step="0.01" oninput="wizardSet('dropout', this.value)" />
+              </div>
+              <div style="${lokrVisible}">
+                <label style="font-size:0.82rem;color:var(--text-muted);">LoKr 系数</label>
+                <input class="text-input" type="number" value="${c.lokr_factor === undefined ? -1 : c.lokr_factor}" min="-1" oninput="wizardSet('lokr_factor', this.value)" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. 优化器 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">⑤ 优化器设置</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">U-Net 学习率</label>
+                <input class="text-input" type="text" value="${c.unet_lr || '1e-4'}" oninput="wizardSet('unet_lr', this.value)" />
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">调度器</label>
+                <select class="field-select" onchange="wizardSet('lr_scheduler', this.value)">${schSelect}</select>
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">优化器</label>
+                <select class="field-select" onchange="wizardSet('optimizer_type', this.value)">${optSelect}</select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. 训练参数 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">⑥ 训练参数</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 12px;">
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">最大训练轮数</label>
+                <input class="text-input" type="number" value="${c.max_train_epochs || 10}" min="1" oninput="wizardSet('max_train_epochs', this.value)" />
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">批量大小</label>
+                <input class="text-input" type="number" value="${c.train_batch_size || 1}" min="1" max="32" oninput="wizardSet('train_batch_size', this.value)" />
+              </div>
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">梯度累加步数</label>
+                <input class="text-input" type="number" value="${c.gradient_accumulation_steps || 1}" min="1" oninput="wizardSet('gradient_accumulation_steps', this.value)" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 7. 预览图 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label" style="display:flex;align-items:center;gap:10px;">
+              ⑦ 预览图
+              <label class="switch switch-compact" style="margin:0;"><input type="checkbox" ${previewOn ? 'checked' : ''} onchange="wizardSet('enable_preview', this.checked); renderView('wizard')" /><span class="slider round"></span></label>
+            </label>
+            <div id="wz-preview-fields" style="${previewDisplay}display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-top:8px;">
+              <div>
+                <label style="font-size:0.82rem;color:var(--text-muted);">每 N 轮生成预览</label>
+                <input class="text-input" type="number" value="${c.sample_every_n_epochs || ''}" min="1" placeholder="留空=每轮" oninput="wizardSet('sample_every_n_epochs', this.value)" />
+              </div>
+              <div style="grid-column:1/-1;">
+                <label style="font-size:0.82rem;color:var(--text-muted);">正向提示词</label>
+                <textarea class="field-input" rows="2" oninput="wizardSet('positive_prompts', this.value)" style="width:100%;">${escapeHtml(c.positive_prompts || 'masterpiece, best quality, 1girl, solo')}</textarea>
+              </div>
+              <div style="grid-column:1/-1;">
+                <label style="font-size:0.82rem;color:var(--text-muted);">反向提示词</label>
+                <textarea class="field-input" rows="2" oninput="wizardSet('negative_prompts', this.value)" style="width:100%;">${escapeHtml(c.negative_prompts || 'lowres, bad anatomy, bad hands, text, error')}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. 速度优化 -->
+          <div class="wizard-field-group">
+            <label class="wizard-field-label">⑧ 速度优化</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+              ${boolSwitch('cache_text_encoder_outputs', '缓存文本编码器输出', !!c.cache_text_encoder_outputs)}
+              ${boolSwitch('xformers', '启用 xformers', c.xformers !== false)}
+              ${boolSwitch('sdpa', '启用 SDPA', c.sdpa !== false)}
+              ${boolSwitch('sageattn', '启用 SageAttention', !!c.sageattn)}
+              ${boolSwitch('flashattn', '启用 FlashAttention 2', !!c.flashattn)}
+              ${boolSwitch('cross_attn_fused_kv', '启用 Fused K/V', !!c.cross_attn_fused_kv)}
+            </div>
+          </div>
+
+          <!-- 开始训练 -->
+          <div style="text-align:center;margin-top:28px;padding-top:20px;border-top:1px solid var(--border);">
+            <button class="btn btn-primary" type="button" onclick="wizardStartTraining()" style="padding:12px 48px;font-size:1.05rem;">
+              🚀 开始训练
+            </button>
+            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">点击后将自动跳转到训练模块</div>
+          </div>
+
+        </div>
+
+        <!-- 右侧参数预览 -->
+        <aside class="wizard-preview">
+          <div class="wizard-preview-title">📋 当前参数预览</div>
+          <div class="wizard-preview-content" id="wz-preview">${previewHtml}</div>
+        </aside>
+      </div>
+    </div>
+  `;
+
+  // 自动设置隐藏默认值
+  _wizardApplyDefaults();
+}
+
+/* wizard: 设置参数并刷新预览 */
+window.wizardSet = function(key, value) {
+  updateConfigValue(key, value);
+  // 刷新右侧预览
+  var previewEl = document.getElementById('wz-preview');
+  if (previewEl) {
+    var c = state.config;
+    var rows = [
+      ['pretrained_model_name_or_path', 'SDXL 底模', c.pretrained_model_name_or_path],
+      ['train_data_dir', '训练数据集', c.train_data_dir],
+      ['output_name', '保存名称', c.output_name],
+      ['network_module', '网络模块', c.network_module],
+      ['network_dim', 'Rank', c.network_dim],
+      ['network_alpha', 'Alpha', c.network_alpha],
+      ['lycoris_algo', 'LyCORIS 算法', c.network_module === 'lycoris.kohya' ? c.lycoris_algo : ''],
+      ['unet_lr', 'U-Net 学习率', c.unet_lr],
+      ['optimizer_type', '优化器', c.optimizer_type],
+      ['lr_scheduler', '调度器', c.lr_scheduler],
+      ['max_train_epochs', '训练轮数', c.max_train_epochs],
+      ['train_batch_size', '批量大小', c.train_batch_size],
+      ['gradient_accumulation_steps', '梯度累加', c.gradient_accumulation_steps],
+      ['enable_preview', '预览图', c.enable_preview ? '开启' : '关闭'],
+      ['mixed_precision', '混合精度', c.mixed_precision],
+    ];
+    var html = '<table class="wizard-preview-table">';
+    for (var i = 0; i < rows.length; i++) {
+      var k = rows[i][0], lbl = rows[i][1], val = rows[i][2];
+      if (val === '' || val === undefined || val === null) continue;
+      html += '<tr class="wizard-preview-row" title="' + escapeHtml(k) + '">'
+        + '<td class="wizard-preview-key">' + escapeHtml(lbl) + '</td>'
+        + '<td class="wizard-preview-val">' + escapeHtml(String(val)) + '</td>'
+        + '</tr>';
+    }
+    html += '</table>';
+    previewEl.innerHTML = html;
+  }
+};
+
+/* wizard: 自动设置隐藏默认值 */
+function _wizardApplyDefaults() {
+  var c = state.config;
+  // 数据集默认参数
+  if (c.max_bucket_reso === undefined || c.max_bucket_reso === '') updateConfigValue('max_bucket_reso', 1536);
+  if (c.bucket_reso_steps === undefined || c.bucket_reso_steps === '') updateConfigValue('bucket_reso_steps', 64);
+  if (!c.shuffle_caption) updateConfigValue('shuffle_caption', true);
+  if (c.keep_tokens === undefined || c.keep_tokens === '') updateConfigValue('keep_tokens', 1);
+  // 训练默认参数
+  if (!c.gradient_checkpointing) updateConfigValue('gradient_checkpointing', true);
+  if (!c.network_train_unet_only) updateConfigValue('network_train_unet_only', true);
+  // 预览图默认参数
+  if (!c.sample_at_first) updateConfigValue('sample_at_first', true);
+  if (!c.sample_width || c.sample_width === 512) updateConfigValue('sample_width', 832);
+  if (!c.sample_height || c.sample_height === 512) updateConfigValue('sample_height', 1216);
+  if (!c.sample_cfg || c.sample_cfg === 7) updateConfigValue('sample_cfg', 5);
+  if (!c.sample_seed) updateConfigValue('sample_seed', 2778);
+  if (c.sample_sampler !== 'euler_a') updateConfigValue('sample_sampler', 'euler_a');
+  // 缓存文本编码器默认关闭
+  if (c.cache_text_encoder_outputs === undefined) updateConfigValue('cache_text_encoder_outputs', false);
+}
+
+/* wizard: 开始训练并跳转 */
+window.wizardStartTraining = async function() {
+  // 切换到训练模块
+  state.activeModule = 'training';
+  state.trainSubTab = 'monitor';
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.module === 'training');
+  });
+  renderView('training');
+  // 触发训练
+  await executeTraining();
+};
+
+
+
+function renderGuide(container) {
+  container.innerHTML = `
+    <div class="form-container">
+      <header class="section-title">
+        <h2>简易教程</h2>
+        <p>SDXL LoRA 训练入门指南（仅供参考，出自个人经验）</p>
+      </header>
+
+      <div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:20px;padding:12px 16px;background:var(--bg-hover);border-radius:8px;line-height:1.7;">
+        相信使用这个丹炉的各位都对 LoRA 有一定了解了，这个简易教程不讲什么定义，只说参数和简单的解释。<br>
+        其他参数我不多做说明，都是出自个人经验，仅供参考。我优先使用神童（Prodigy）优化器。<br>
+        我们从训练模块从左往右开始说：
+      </div>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">1. 模型</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">训练用模型</h4>
+          <p>选择最基础的底模即可，如 noob eps1.1、il0.1、cknb0.5 等，也可以选择微调没那么严重的混合版本（wai13 这种比较早的版本）。</p>
+          <p>如果是 v 预测模型，需要开启 <strong>V 参数化</strong>。</p>
+
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">保存设置</h4>
+          <p>主要改变「模型保存名称」「日志名称」即可，还有「每 N 轮保存」。</p>
+          <p>这个看情况，我喜欢用 2 ep 一保存，因为我的参数训练出来体积不大可以这么干。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">2. 数据集</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">数据集设置</h4>
+          <p>将训练集文件夹置于 <code>train</code> 内时，可以使用右侧的按钮直接检测到。</p>
+          <p>需要按 <code>xxx--y_xxx</code> 的结构保存，<code>y</code> 是重复次数。如果不确定实际训练的图片数量，可以在设置训练集路径后看下方「训练」模块里的预检，里面会自动帮你计算好。</p>
+
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">正则化数据集路径</h4>
+          <p>有很多教程了，这里说说我的经验：训练人物可以无脑开启，可以防止过拟合。</p>
+          <p>画风的正则作用是尽量让画风都吸收进一个触发词里。</p>
+
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">分桶</h4>
+          <p>最大分辨率 <strong>1536</strong>，划分单位 <strong>64</strong>，其他默认即可。</p>
+          <p>记得处理你的训练集分辨率，不然你的图会被分桶切的七零八落。</p>
+
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">Caption 选项</h4>
+          <p>没什么好说的，有触发词就打乱 + 保留 1 个标签，没有就无所谓。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">3. 网络</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <p>我是 LyCORIS 忠实用户，这里只讲 LyCORIS 3 个设置：</p>
+
+          <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:12px 0;">
+            <h4 style="font-size:1.05rem;margin:0 0 8px;color:var(--accent);">LoCoN</h4>
+            <p>更全面的 LoRA，所以你可以当作lora来训练，用的参数也是差不多的，缺点是容易过拟合，可以开启 DoRA 减少这种情况，与 LoKr 不是很兼容。</p>
+            <p style="margin-top:6px;">炼人物：<code>dim 16, alpha 1</code>　　画风：<code>dim 32, alpha 16</code></p>
+            <p>LyCORIS Dropout 可以开 <code>0.1</code> 减少过拟合。</p>
+          </div>
+
+          <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:12px 0;">
+            <h4 style="font-size:1.05rem;margin:0 0 8px;color:var(--accent);">LoKr</h4>
+            <p>学习高手，训练慢些，推荐炼画风和概念。dim 拉到极大值（如 10000000）是为了直接触发 <strong>Full Matrix Mode</strong>（全矩阵模式），此时 LoKr 不再做低秩分解，而是学习完整的权重变化矩阵，表达能力最强。</p>
+            <p style="margin-top:6px;"><code>dim 10000000, alpha 1（或者与dim相同，影响不大可以不用管）</code>　　<code>LoKr 系数(factor) 8</code></p>
+          </div>
+
+          <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:12px 0;">
+            <h4 style="font-size:1.05rem;margin:0 0 8px;color:var(--accent);">LoHa</h4>
+            <p>通用性强，显存要求大一点，也同样慢一点，推荐训练人物，可以多人炼进一个丹。dim设置其实就是正常lora的开平方版。</p>
+            <p style="margin-top:6px;"><code>dim 4, alpha 1</code>　　可以酌情开启 DoRA，会更容易拟合。</p>
+          </div>
+
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">其余参数</h4>
+          <p><strong>最大范数正则化</strong>：使用时不能使用神童优化器，同时学习率需要提升，我这边要 <code>1e-3</code> 开始才行。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">4. 优化器</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <h4 style="font-size:1.05rem;margin:16px 0 8px;color:var(--text-main);">学习率与优化器</h4>
+          <p>我就说一个优化器：<strong>Prodigy</strong>（神童）。</p>
+          <p>调度器选 <code>constant</code>，其他学习率全部设置为 <code>1</code>。</p>
+          <p>其他的优化器自己找教程捏，我只用 Adam 和神童。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">5. 训练</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <p>我是 4080S，16G 显存。bs 主要是为了训练速度，所以不用太在意。默认开着仅训练 U-Net，也不用管。</p>
+          <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:0.9rem;">
+            <thead><tr style="border-bottom:2px solid var(--border);text-align:left;">
+              <th style="padding:8px 12px;">类型</th>
+              <th style="padding:8px 12px;">Epoch</th>
+              <th style="padding:8px 12px;">Batch Size</th>
+              <th style="padding:8px 12px;">梯度累加</th>
+            </tr></thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 12px;">LoCoN / LoKr</td>
+                <td style="padding:8px 12px;">30</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">3</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 12px;">LoHa</td>
+                <td style="padding:8px 12px;">18</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">6. 预览</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <p>需要就开着，记得写触发词，但是跟实际使用情况还是有偏差的。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">7. 加速</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <p>备注都写好了，用什么环境开什么加速，其他设置我基本都没用。</p>
+          <p>如果开启了随机打乱标签，记得关闭<strong>缓存文本编码器输出</strong>。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">8. 高级</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <p>自己看，一般来说我不用。</p>
+        </div>
+      </section>
+
+      <section class="form-section" style="margin-bottom:24px;">
+        <header class="section-header"><h3 style="font-size:1.3rem;">📋 总结</h3></header>
+        <div class="section-content" style="display:block;line-height:1.8;">
+          <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:0.9rem;">
+            <thead><tr style="border-bottom:2px solid var(--border);text-align:left;">
+              <th style="padding:8px 12px;">类型</th>
+              <th style="padding:8px 12px;">适用</th>
+              <th style="padding:8px 12px;">Dim</th>
+              <th style="padding:8px 12px;">Alpha</th>
+              <th style="padding:8px 12px;">Epoch</th>
+              <th style="padding:8px 12px;">BS</th>
+              <th style="padding:8px 12px;">梯度累加</th>
+              <th style="padding:8px 12px;">备注</th>
+            </tr></thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 12px;font-weight:600;color:var(--accent);">LoCoN</td>
+                <td style="padding:8px 12px;">人物 / 概念</td>
+                <td style="padding:8px 12px;">人16 / 概念32</td>
+                <td style="padding:8px 12px;">人1 / 概念16</td>
+                <td style="padding:8px 12px;">30</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">可开 DoRA</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 12px;font-weight:600;color:var(--accent);">LoKr</td>
+                <td style="padding:8px 12px;">画风 / 概念</td>
+                <td style="padding:8px 12px;">10000000</td>
+                <td style="padding:8px 12px;">1 (或拉满)</td>
+                <td style="padding:8px 12px;">30</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">factor 8</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 12px;font-weight:600;color:var(--accent);">LoHa</td>
+                <td style="padding:8px 12px;">人物</td>
+                <td style="padding:8px 12px;">4</td>
+                <td style="padding:8px 12px;">1</td>
+                <td style="padding:8px 12px;">18</td>
+                <td style="padding:8px 12px;">3</td>
+                <td style="padding:8px 12px;">2</td>
+                <td style="padding:8px 12px;">可开 DoRA</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="margin-top:12px;color:var(--text-muted);font-size:0.85rem;">以上参数均基于 Prodigy 优化器 + constant 调度器 + 学习率全 1 的配置。</p>
+        </div>
+      </section>
+
+    </div>
+  `;
 }
 
 
@@ -4181,8 +4728,57 @@ function setupImportConfig() {
       } else {
         parsed = JSON.parse(text);
       }
+      // ── 旧格式兼容：把 network_args 数组反向映射回独立 UI 字段 ──
+      if (Array.isArray(parsed.network_args) && !parsed.lycoris_algo) {
+        const argMap = {};
+        for (const item of parsed.network_args) {
+          const eq = String(item).indexOf('=');
+          if (eq > 0) argMap[String(item).slice(0, eq).trim()] = String(item).slice(eq + 1).trim();
+        }
+        if (argMap.algo) {
+          parsed.lycoris_algo = argMap.algo;
+          if (!parsed.network_module) parsed.network_module = 'lycoris.kohya';
+        }
+        if (argMap.conv_dim != null) { const n = Number(argMap.conv_dim); parsed.conv_dim = Number.isNaN(n) ? '' : n; }
+        if (argMap.conv_alpha != null) { const n = Number(argMap.conv_alpha); parsed.conv_alpha = Number.isNaN(n) ? '' : n; }
+        if (argMap.dropout != null) { const n = Number(argMap.dropout); parsed.dropout = Number.isNaN(n) ? '' : n; }
+        if (argMap.train_norm != null) parsed.train_norm = argMap.train_norm === 'True';
+        if (argMap.factor != null) { const n = Number(argMap.factor); parsed.lokr_factor = Number.isNaN(n) ? '' : n; }
+        if (argMap.dora_wd != null) parsed.dora_wd = argMap.dora_wd === 'True';
+        if (argMap.scale_weight_norms != null) { const n = Number(argMap.scale_weight_norms); parsed.scale_weight_norms = Number.isNaN(n) ? '' : n; }
+        const structured = new Set(['algo', 'conv_dim', 'conv_alpha', 'dropout', 'train_norm', 'factor', 'dora_wd', 'scale_weight_norms']);
+        const remaining = parsed.network_args.filter(a => { const k = String(a).split('=')[0].trim(); return !structured.has(k); });
+        if (remaining.length > 0) parsed.network_args_custom = remaining.join('\n');
+        delete parsed.network_args;
+      }
+      // 旧格式：optimizer_args 数组 → 还原 Prodigy 字段
+      if (Array.isArray(parsed.optimizer_args) && !parsed.optimizer_args_custom) {
+        const remainingArgs = [];
+        for (const arg of parsed.optimizer_args) {
+          const eqIdx = String(arg).indexOf('=');
+          const k = eqIdx > 0 ? String(arg).slice(0, eqIdx).trim() : '';
+          const v = eqIdx > 0 ? String(arg).slice(eqIdx + 1).trim() : '';
+          if (k === 'd_coef') { parsed.prodigy_d_coef = v; }
+          else if (k === 'd0') { parsed.prodigy_d0 = v; }
+          else { remainingArgs.push(String(arg)); }
+        }
+        if (remainingArgs.length > 0) parsed.optimizer_args_custom = remainingArgs.join('\n');
+        delete parsed.optimizer_args;
+      }
+      // 旧格式：lr_scheduler_args 数组 → string
+      if (Array.isArray(parsed.lr_scheduler_args)) {
+        parsed.lr_scheduler_args = parsed.lr_scheduler_args.join('\n');
+      }
+      // 导入文件时先重置为默认配置，防止旧参数残留
+      const importType = parsed.model_train_type || state.activeTrainingType;
+      if (importType && importType !== state.activeTrainingType) {
+        window.switchTrainingType(importType);
+      }
+      state.config = createDefaultConfig(state.activeTrainingType);
       mergeConfigPatch(parsed);
-      syncConfigState();
+      state.hasLocalDraft = true;
+      saveDraft();
+      renderView(state.activeModule);
       showToast('配置文件已导入。');
     } catch (error) {
       showToast(error.message || '导入配置文件失败。');
@@ -4566,13 +5162,13 @@ window.loadNamedConfig = async (name) => {
         data.lycoris_algo = argMap.algo;
         if (!data.network_module) data.network_module = 'lycoris.kohya';
       }
-      if (argMap.conv_dim != null) data.conv_dim = Number(argMap.conv_dim) || '';
-      if (argMap.conv_alpha != null) data.conv_alpha = Number(argMap.conv_alpha) || '';
-      if (argMap.dropout != null) data.dropout = Number(argMap.dropout) || '';
+      if (argMap.conv_dim != null) { const n = Number(argMap.conv_dim); data.conv_dim = Number.isNaN(n) ? '' : n; }
+      if (argMap.conv_alpha != null) { const n = Number(argMap.conv_alpha); data.conv_alpha = Number.isNaN(n) ? '' : n; }
+      if (argMap.dropout != null) { const n = Number(argMap.dropout); data.dropout = Number.isNaN(n) ? '' : n; }
       if (argMap.train_norm != null) data.train_norm = argMap.train_norm === 'True';
-      if (argMap.factor != null) data.lokr_factor = Number(argMap.factor) || '';
+      if (argMap.factor != null) { const n = Number(argMap.factor); data.lokr_factor = Number.isNaN(n) ? '' : n; }
       if (argMap.dora_wd != null) data.dora_wd = argMap.dora_wd === 'True';
-      if (argMap.scale_weight_norms != null) data.scale_weight_norms = Number(argMap.scale_weight_norms) || '';
+      if (argMap.scale_weight_norms != null) { const n = Number(argMap.scale_weight_norms); data.scale_weight_norms = Number.isNaN(n) ? '' : n; }
       // 剩余非结构化的 args 放入 network_args_custom
       const structured = new Set(['algo', 'conv_dim', 'conv_alpha', 'dropout', 'train_norm', 'factor', 'dora_wd', 'scale_weight_norms']);
       const remaining = data.network_args.filter(a => { const k = String(a).split('=')[0].trim(); return !structured.has(k); });
@@ -4763,7 +5359,21 @@ function _configToToml(config) {
 
 function _parseSimpleToml(text) {
   const result = {};
-  for (const raw of text.split(/\r?\n/)) {
+  // 预处理：将多行数组合并为单行，以便逐行解析
+  const rawLines = text.split(/\r?\n/);
+  const mergedLines = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    let line = rawLines[i];
+    // 检测行尾有未闭合的 [ （简单启发式：= [ 但同行没有 ]）
+    if (/=\s*\[/.test(line) && !line.includes(']')) {
+      while (i + 1 < rawLines.length && !rawLines[i].includes(']')) {
+        i++;
+        line += ' ' + rawLines[i].trim();
+      }
+    }
+    mergedLines.push(line);
+  }
+  for (const raw of mergedLines) {
     // Strip comments, but only outside quoted strings.
     // Simple heuristic: if a # appears, check if it's inside a quoted value.
     const commentIdx = raw.indexOf('#');
@@ -5013,13 +5623,16 @@ window.executeTraining = async () => {
     // 为刚启动的新任务注入元数据，后端 dump 只返回 id/status/returncode
     const cfg = state.config;
     const localHistory = await loadLocalTaskHistory();
-    const knownIds = new Set(localHistory.map(t => t.id));
+    const localById = new Map(localHistory.map(t => [t.id, t]));
     for (const t of freshTasks) {
-      if (!knownIds.has(t.id) && t.status === 'RUNNING') {
-        // 新任务：注入训练元数据
+      // 对 RUNNING 任务且缺少 output_name 的注入元数据（新任务 or 之前漏注入的）
+      const local = localById.get(t.id);
+      const memTask = state.tasks.find(x => x.id === t.id);
+      const hasName = (local && local.output_name) || (memTask && memTask.output_name) || t.output_name;
+      if (t.status === 'RUNNING' && !hasName) {
         t.output_name = cfg.output_name || '';
         t.model_train_type = cfg.model_train_type || state.activeTrainingType || '';
-        t.created_at = new Date().toLocaleString('zh-CN', { hour12: false });
+        if (!t.created_at && !(local && local.created_at) && !(memTask && memTask.created_at)) t.created_at = new Date().toLocaleString('zh-CN', { hour12: false });
         t.training_type_label = (TRAINING_TYPES.find(x => x.id === (cfg.model_train_type || state.activeTrainingType)) || {}).label || '';
         t.resolution = cfg.resolution || '';
         t.network_dim = cfg.network_dim || '';

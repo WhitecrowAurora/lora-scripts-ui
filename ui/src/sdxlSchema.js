@@ -328,7 +328,6 @@ const ds = (reso, bucketMax = 2048, bucketStep = 64, extra = []) => [
 // LoRA network fields helper
 const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = [], extraModules = []) => [
   { key: 'network_module', type: 'select', label: '训练网络模块', desc: '训练网络模块', defaultValue: mod, options: [mod, ...extraModules, ...(mod.includes('lycoris') ? [] : ['lycoris.kohya'])] },
-  { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
   { key: 'network_dim', type: 'slider', label: '网络维度', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: dim, min: 1, max: maxDim, step: 1 },
   { key: 'network_alpha', type: 'slider', label: '网络 Alpha', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1。使用较小的 alpha 需要提升学习率', defaultValue: alpha, min: 1, max: maxDim, step: 1 },
   { key: 'network_dropout', type: 'number', label: '网络 Dropout', desc: 'dropout 概率（与 lycoris 不兼容，需要用 lycoris 自带的）', defaultValue: 0, min: 0, step: 0.01 },
@@ -372,6 +371,7 @@ const SDXL_LORA_SECTIONS = [
     { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'SDXL 底模路径', desc: '底模文件路径', defaultValue: './sd-models/model.safetensors' },
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
     { key: 'vae', type: 'file', pickerType: 'model-file', label: 'VAE 路径', desc: '(可选) VAE 模型文件路径，使用外置 VAE 文件覆盖模型内本身的', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'v_parameterization', type: 'boolean', label: 'V 参数化', desc: 'v-parameterization 学习（训练 Illustrious 等 v-pred 模型时需要开启）', defaultValue: false },
     { key: 'zero_terminal_snr', type: 'boolean', label: '零终端 SNR', desc: 'Zero Terminal SNR（v-pred 模型训练推荐开启）', defaultValue: true, visibleWhen: when('v_parameterization', true) },
     { key: 'scale_v_pred_loss_like_noise_pred', type: 'boolean', label: '缩放 v-pred 损失', desc: '缩放 v-prediction 损失（v-pred 模型训练推荐开启）', defaultValue: true, visibleWhen: when('v_parameterization', true) },
@@ -445,6 +445,7 @@ const SD15_LORA_SECTIONS = [
     { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'SD1.5 底模路径', desc: '底模文件路径', defaultValue: './sd-models/model.safetensors' },
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
     { key: 'vae', type: 'file', pickerType: 'model-file', label: 'VAE 路径', desc: '(可选) VAE 模型文件路径，使用外置 VAE 文件覆盖模型内本身的', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'v2', type: 'boolean', label: 'SD 2.x 模型', desc: '使用 SD 2.x 模型', defaultValue: false },
     { key: 'v_parameterization', type: 'boolean', label: 'V 参数化', desc: 'v-parameterization 学习（训练 Illustrious 等 v-pred 模型时需要开启）', defaultValue: false },
   ]),
@@ -472,6 +473,8 @@ const FLUX_LORA_SECTIONS = [
     { key: 'ae', type: 'file', pickerType: 'model-file', label: 'AE 模型路径', desc: 'AutoEncoder 模型路径', defaultValue: '' },
     { key: 'clip_l', type: 'file', pickerType: 'model-file', label: 'CLIP-L 路径', desc: 'CLIP-L 文本编码器路径', defaultValue: '' },
     { key: 't5xxl', type: 'file', pickerType: 'model-file', label: 'T5-XXL 路径', desc: 'T5-XXL 文本编码器路径', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
+
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
   ]),
   sec('flux-params', 'model', 'FLUX 专用参数', '时间步采样、CFG、损失函数等。', [
@@ -508,6 +511,7 @@ const SD3_LORA_SECTIONS = [
     { key: 'clip_l', type: 'file', pickerType: 'model-file', label: 'CLIP-L 路径', desc: 'CLIP-L 文本编码器路径', defaultValue: '' },
     { key: 'clip_g', type: 'file', pickerType: 'model-file', label: 'CLIP-G 路径', desc: 'CLIP-G 文本编码器路径', defaultValue: '' },
     { key: 't5xxl', type: 'file', pickerType: 'model-file', label: 'T5-XXL 路径', desc: 'T5-XXL 文本编码器路径', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
   ]),
   sec('sd3-params', 'model', 'SD3 专用参数', '', [
@@ -542,6 +546,8 @@ const LUMINA_LORA_SECTIONS = [
     { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'Lumina 模型路径', desc: '底模文件路径', defaultValue: './sd-models/model.safetensors' },
     { key: 'ae', type: 'file', pickerType: 'model-file', label: 'AE 模型路径', desc: 'AutoEncoder 模型路径', defaultValue: '' },
     { key: 'gemma2', type: 'file', pickerType: 'model-file', label: 'Gemma2 模型路径', desc: 'Gemma2 文本模型路径', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
+
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
   ]),
   sec('lumina-params', 'model', 'Lumina 专用参数', '', [
@@ -574,6 +580,8 @@ const HUNYUAN_LORA_SECTIONS = [
     { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'HunyuanImage 模型路径', desc: '底模文件路径', defaultValue: './sd-models/model.safetensors' },
     { key: 'text_encoder', type: 'file', pickerType: 'model-file', label: 'Qwen2.5-VL 文本编码器', desc: '文本编码器路径', defaultValue: '' },
     { key: 'byt5', type: 'file', pickerType: 'model-file', label: 'ByT5 模型路径', desc: 'ByT5 模型路径', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
+
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
   ]),
   sec('hunyuan-params', 'model', 'HunyuanImage 专用参数', '', [
@@ -607,6 +615,7 @@ const ANIMA_LORA_SECTIONS = [
     { key: 'vae', type: 'file', pickerType: 'model-file', label: 'Qwen Image VAE 路径', desc: '(可选) VAE 模型文件路径，使用外置 VAE 文件覆盖模型内本身的', defaultValue: '' },
     { key: 'qwen3', type: 'file', pickerType: 'model-file', label: 'Qwen3 文本模型路径', desc: 'Qwen3 文本模型路径', defaultValue: '' },
     { key: 'llm_adapter_path', type: 'file', pickerType: 'model-file', label: 'LLM Adapter 路径', desc: 'LLM Adapter 路径', defaultValue: '' },
+    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
   ]),
   sec('anima-params', 'model', 'Anima 专用参数', '', [
@@ -622,7 +631,6 @@ const ANIMA_LORA_SECTIONS = [
   sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
   sec('network-settings', 'network', '网络设置', 'LoRA / T-LoRA / LoKr 模式。', [
     { key: 'lora_type', type: 'select', label: '适配器类型', desc: 'LoRA 更轻量；T-LoRA 会按时间步动态 rank；LoKr 走内置线性层注入的实验路线', defaultValue: 'lora', options: ['lora', 'tlora', 'lokr'] },
-    { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
     { key: 'network_dim', type: 'slider', label: '网络维度', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'network_alpha', type: 'slider', label: '网络 Alpha', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'dim_from_weights', type: 'boolean', label: '从权重推断 Dim', desc: '从已有 network_weights 自动推断 rank / dim', defaultValue: false },
