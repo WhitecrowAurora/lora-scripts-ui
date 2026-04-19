@@ -18,6 +18,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
 
 const TOPBAR_TABS = UI_TABS.map((tab) => tab.key);
+const BUILTIN_LEGACY_UI_PROFILE_ID = 'builtin-legacy';
 const CONDITIONAL_KEYS = new Set([
   'v_parameterization',
   'save_state',
@@ -2583,6 +2584,19 @@ function renderSettings(container) {
           </div>
         </div>
       </section>
+
+      <section class="form-section">
+        <header class="section-header"><h3>UI 切换</h3></header>
+        <div class="section-content" style="display:block;">
+          <div class="settings-row" style="align-items:flex-start;">
+            <div>
+              <label>切换回经典 UI</label>
+              <p class="field-desc">当前正在使用新 UI。如果想返回原本的内置界面，可以直接在这里切换。</p>
+            </div>
+            <button class="btn btn-outline btn-sm" type="button" id="switch-legacy-ui-btn">切换回经典 UI</button>
+          </div>
+        </div>
+      </section>
     </div>
   `;
 
@@ -2604,6 +2618,23 @@ function renderSettings(container) {
     const checkedScheds = [...$$('#settings-schedulers input:checked')].map((i) => i.value);
     localStorage.setItem('sd-rescripts:visible-schedulers', JSON.stringify(checkedScheds));
     showToast('训练 UI 设置已保存。');
+  });
+  $('#switch-legacy-ui-btn')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '切换中...';
+    try {
+      await api.activateUiProfile(BUILTIN_LEGACY_UI_PROFILE_ID);
+      showToast('已切换到经典 UI，正在返回...');
+      setTimeout(() => {
+        window.location.assign('/');
+      }, 250);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = originalText;
+      showToast(error.message || '切换 UI 失败。');
+    }
   });
 }
 
