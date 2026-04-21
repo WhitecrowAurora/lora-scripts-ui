@@ -1,6 +1,6 @@
 # LoRA ReScripts UI V2.0.0
 
-秋叶 LoRA 训练包的独立前端界面，提供中文本地化的 SDXL LoRA 训练参数配置、数据集处理、日志查看和实用工具。
+秋叶 LoRA 训练包的独立前端界面，提供中文本地化的 SDXL LoRA 训练参数配置、数据集处理、日志查看和实用工具。大部分功能主要适配重置版后端，请在这里下载https://github.com/WhitecrowAurora/lora-rescripts
 
 ## 目录结构
 
