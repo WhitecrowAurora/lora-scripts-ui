@@ -143,6 +143,7 @@ const ANIMA_SECTIONS = [
       { key: 'learning_rate', type: 'string', label: '\u603b\u5b66\u4e60\u7387', defaultValue: '1e-4' },
       { key: 'unet_lr', type: 'string', label: 'DiT \u5b66\u4e60\u7387', defaultValue: '1e-4' },
       { key: 'text_encoder_lr', type: 'string', label: '\u6587\u672c\u7f16\u7801\u5668\u5b66\u4e60\u7387', defaultValue: '1e-5' },
+      { key: 'weight_decay', type: 'number', label: '\u6743\u91cd\u8870\u51cf', desc: '\u6743\u91cd\u8870\u51cf\uff08\u7b49\u4ef7\u4e8e\u81ea\u52a8\u6ce8\u5165 optimizer_args: weight_decay=...\uff09', defaultValue: '', step: 0.0001 },
       { key: 'lr_scheduler', type: 'select', label: '\u5b66\u4e60\u7387\u8c03\u5ea6\u5668', defaultValue: 'cosine_with_restarts', options: ['linear', 'cosine', 'cosine_with_restarts', 'polynomial', 'constant', 'constant_with_warmup'] },
       { key: 'lr_warmup_steps', type: 'number', label: '\u9884\u70ed\u6b65\u6570', defaultValue: 0, min: 0 },
       { key: 'lr_scheduler_num_cycles', type: 'number', label: '\u91cd\u542f\u6b21\u6570', defaultValue: 1, min: 1, visibleWhen: when('lr_scheduler', 'cosine_with_restarts') },
