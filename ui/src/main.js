@@ -817,12 +817,25 @@ function renderNavigator() {
       if (!groups[tt.group]) groups[tt.group] = [];
       groups[tt.group].push(tt);
     }
-    trainingTypeList.innerHTML = Object.entries(groups).map(([group, items]) =>
-      `<li class="group-header" style="pointer-events:none;user-select:none;">${group}</li>` +
-      items.map((tt) =>
-        `<li class="${tt.id === state.activeTrainingType ? 'active' : ''}" onclick="switchTrainingType('${tt.id}')">${tt.label}</li>`
-      ).join('')
-    ).join('');
+    // 默认折叠的组
+    const defaultCollapsed = new Set(['ControlNet', 'Textual Inversion', '其他模型训练']);
+    const _collapsedGroups = state._collapsedTrainingGroups || (state._collapsedTrainingGroups = new Set(defaultCollapsed));
+    // 仅在用户切换训练类型时自动展开该组（通过标记避免每次渲染都展开）
+    const activeGroup = TRAINING_TYPES.find(t => t.id === state.activeTrainingType)?.group || '';
+    if (activeGroup && _collapsedGroups.has(activeGroup) && state._lastExpandedForType !== state.activeTrainingType) {
+      _collapsedGroups.delete(activeGroup);
+      state._lastExpandedForType = state.activeTrainingType;
+    }
+
+    trainingTypeList.innerHTML = Object.entries(groups).map(([group, items]) => {
+      const collapsed = _collapsedGroups.has(group);
+      const arrow = collapsed ? '▸' : '▾';
+      return `<li class="group-header${collapsed ? ' collapsed' : ''}" onclick="toggleTrainingGroup('${group}')">`
+        + `<span class="group-arrow">${arrow}</span> ${group} <span class="group-count">${items.length}</span></li>`
+        + (collapsed ? '' : items.map((tt) =>
+            `<li class="${tt.id === state.activeTrainingType ? 'active' : ''}" onclick="switchTrainingType('${tt.id}')">${tt.label}</li>`
+          ).join(''));
+    }).join('');
   }
 
   const presetPanel = $('#panel-preset-actions');
@@ -840,6 +853,17 @@ function renderNavigator() {
   }
 
 }
+
+window.toggleTrainingGroup = function(group) {
+  if (!state._collapsedTrainingGroups) state._collapsedTrainingGroups = new Set();
+  if (state._collapsedTrainingGroups.has(group)) {
+    state._collapsedTrainingGroups.delete(group);
+  } else {
+    state._collapsedTrainingGroups.add(group);
+  }
+  renderNavigator();
+};
+
 
 function applyLayoutPreferences() {
   const showConfigChrome = state.activeModule === 'config';
@@ -4267,16 +4291,94 @@ function renderLogs(container) {
         <div id="tb-retry" style="display:none;text-align:center;padding:40px;color:var(--text-dim);">
           <p>TensorBoard 加载失败。可能尚未启动或训练结束后被回收。</p>
           <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('tb-retry').style.display='none';document.getElementById('tb-iframe').src='${tbUrl}'">重试连接</button>
-
         </div>
       </section>
       <div style="margin-top:12px;display:flex;gap:8px;">
         <a class="btn btn-outline btn-sm" href="${tbUrl}" target="_blank" rel="noopener">在新窗口中打开 TensorBoard</a>
         <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('tb-iframe').src='${tbUrl}'">刷新</button>
       </div>
+
+      <section class="form-section" style="margin-top:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;font-size:1rem;">📁 日志管理</h3>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" type="button" onclick="loadTbRuns()">刷新列表</button>
+            <button class="btn btn-sm" type="button" style="background:#ef4444;color:#fff;" onclick="deleteSelectedTbRuns()">删除选中</button>
+          </div>
+        </div>
+        <div id="tb-runs-container" style="color:var(--text-muted);font-size:0.8rem;">加载中...</div>
+      </section>
     </div>
   `;
+  loadTbRuns();
 }
+
+// ── TensorBoard Log Management ─────────────────────────
+window.loadTbRuns = async function() {
+  var el = document.getElementById('tb-runs-container');
+  if (!el) return;
+  el.innerHTML = '<span style="color:var(--text-muted);">' + _ico('loader', 14) + ' 加载中...</span>';
+  try {
+    var resp = await api.getTbRuns();
+    var runs = (resp && resp.data && resp.data.runs) || [];
+    var root = (resp && resp.data && resp.data.root) || './logs';
+    if (runs.length === 0) {
+      el.innerHTML = '<div style="padding:12px;color:var(--text-muted);">暂无日志目录</div>';
+      return;
+    }
+    var totalSize = runs.reduce(function(s, r) { return s + (r.size_mb || 0); }, 0);
+    var html = '<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.75rem;color:var(--text-muted);">'
+      + '<input type="checkbox" id="tb-select-all" onchange="toggleAllTbRuns(this.checked)" style="width:14px;height:14px;"> 全选'
+      + '</label>'
+      + '<span style="font-size:0.72rem;color:var(--text-dim);">共 ' + runs.length + ' 个日志，合计 ' + totalSize.toFixed(1) + ' MB · ' + escapeHtml(root) + '</span>'
+      + '</div>';
+    html += '<div class="tb-runs-list">';
+    runs.forEach(function(r) {
+      // Parse name: model__runNNN__timestamp
+      var parts = r.name.match(/^(.+?)__run(\d+)__(.+)$/);
+      var label = parts ? parts[1] : r.name;
+      var runNum = parts ? '#' + parseInt(parts[2], 10) : '';
+      var timeStr = r.modified || '';
+      html += '<label class="tb-run-item">'
+        + '<input type="checkbox" value="' + escapeHtml(r.name) + '" class="tb-run-check" style="width:14px;height:14px;">'
+        + '<div class="tb-run-info">'
+        +   '<span class="tb-run-name">' + escapeHtml(label) + (runNum ? ' <span class="tb-run-num">' + runNum + '</span>' : '') + '</span>'
+        +   '<span class="tb-run-meta">' + r.size_mb + ' MB · ' + r.file_count + ' 个文件 · ' + escapeHtml(timeStr) + '</span>'
+        + '</div>'
+        + '</label>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:#ef4444;">加载失败：' + escapeHtml(e.message || '未知错误') + '</div>';
+  }
+};
+
+window.toggleAllTbRuns = function(checked) {
+  document.querySelectorAll('.tb-run-check').forEach(function(cb) { cb.checked = checked; });
+};
+
+window.deleteSelectedTbRuns = async function() {
+  var checks = document.querySelectorAll('.tb-run-check:checked');
+  var names = Array.from(checks).map(function(cb) { return cb.value; });
+  if (names.length === 0) {
+    showToast('请先勾选要删除的日志目录');
+    return;
+  }
+  if (!confirm('确定要永久删除 ' + names.length + ' 个日志目录？此操作不可撤销。')) return;
+  try {
+    var resp = await api.deleteTbRuns(names);
+    var deleted = (resp && resp.data && resp.data.deleted) || [];
+    var errors = (resp && resp.data && resp.data.errors) || [];
+    if (deleted.length > 0) showToast('✓ 已删除 ' + deleted.length + ' 个日志目录');
+    if (errors.length > 0) showToast('⚠ 部分删除失败：' + errors.join('; '));
+    loadTbRuns();
+  } catch (e) {
+    showToast('删除失败：' + (e.message || '未知错误'));
+  }
+};
+
 
 function renderTools(container) {
   const tools = [

@@ -23,20 +23,20 @@ function all(...fns) { return (c) => fns.every((f) => f(c)); }
 export const TRAINING_TYPES = [
   // LoRA
   { id: 'sdxl-lora',          group: 'LoRA',              label: 'SDXL' },
-  { id: 'sd-lora',            group: 'LoRA',              label: 'SD 1.5' },
+  { id: 'anima-lora',         group: 'LoRA',              label: 'Anima' },
+  { id: 'newbie-lora',        group: 'LoRA',              label: 'Newbie (实验)' },
   { id: 'flux-lora',          group: 'LoRA',              label: 'FLUX' },
   { id: 'sd3-lora',           group: 'LoRA',              label: 'SD3' },
   { id: 'lumina-lora',        group: 'LoRA',              label: 'Lumina' },
   { id: 'hunyuan-image-lora', group: 'LoRA',              label: '混元图像' },
-  { id: 'anima-lora',         group: 'LoRA',              label: 'Anima' },
-  { id: 'newbie-lora',         group: 'LoRA',              label: 'Newbie (实验)' },
+  { id: 'sd-lora',            group: 'LoRA',              label: 'SD 1.5' },
   // Finetune
-  { id: 'sd-dreambooth',      group: 'Finetune',          label: 'SD DreamBooth' },
   { id: 'sdxl-finetune',      group: 'Finetune',          label: 'SDXL' },
+  { id: 'anima-finetune',     group: 'Finetune',          label: 'Anima' },
   { id: 'flux-finetune',      group: 'Finetune',          label: 'FLUX' },
   { id: 'sd3-finetune',       group: 'Finetune',          label: 'SD3' },
   { id: 'lumina-finetune',    group: 'Finetune',          label: 'Lumina' },
-  { id: 'anima-finetune',     group: 'Finetune',          label: 'Anima' },
+  { id: 'sd-dreambooth',      group: 'Finetune',          label: 'SD DreamBooth' },
   // ControlNet
   { id: 'sd-controlnet',      group: 'ControlNet',        label: 'SD 1.5' },
   { id: 'sdxl-controlnet',    group: 'ControlNet',        label: 'SDXL' },
