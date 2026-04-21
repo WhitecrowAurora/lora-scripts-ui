@@ -288,6 +288,11 @@ export const api = {
     return request('/api/gpu_status');
   },
 
+  /** 系统资源监控 (GPU VRAM + CPU + RAM) */
+  getSystemMonitor() {
+    return request('/api/system_monitor');
+  },
+
   /** 切换当前启用的 UI */
   activateUiProfile(profileId) {
     return postJson('/api/ui_profiles/activate', { profile_id: profileId });

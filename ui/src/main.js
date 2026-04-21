@@ -126,6 +126,7 @@ const state = {
   runtimeError: '',
   lastMessage: '',
   backendOffline: false,
+  sysMonitor: null,
   _taskHistoryDirty: false,
   _deletedTaskIds: new Set(),
   loading: {
@@ -356,6 +357,7 @@ function startTaskPolling() {
         // 如果有运行中的任务且在训练模块，自动启动日志轮询
         if (hasRunning && !_trainingLogPollTimer) {
           startTrainingLogPolling();
+          startSysMonitorPolling();
         }
       }
     } catch (error) {
@@ -365,6 +367,19 @@ function startTaskPolling() {
         console.warn('[TaskPoll] 后端不可达，轮询将自动降频重试。', error.message || '');
         state.backendOffline = true;
         renderTaskStatus();
+        syncFooterAction();
+      }
+      // 后端离线超过 3 次 (约 9 秒+)，将 RUNNING 任务标记为 TERMINATED
+      if (_pollFailCount >= 3) {
+        var hadRunning = state.tasks.some((t) => t.status === 'RUNNING');
+        state.tasks.forEach(function(t) {
+          if (t.status === 'RUNNING') t.status = 'TERMINATED';
+        });
+        if (hadRunning) {
+          state.trainingFailed = true;
+          syncFooterAction();
+          if (state.activeModule === 'training') renderView('training');
+        }
       }
     }
 
@@ -2166,14 +2181,15 @@ function renderTraining(container) {
 
   // Hardware
   +     '<div class="train-side-section">'
-  +       '<div class="train-panel-title">' + _ico('activity', 14) + ' \u786c\u4ef6 / \u8fd0\u884c\u65f6</div>'
+  +       '<div class="train-panel-title">' + _ico('activity', 14) + ' \u786c\u4ef6 / \u8d44\u6e90\u76d1\u63a7</div>'
   +       '<div class="train-hw-card">'
   +         '<div class="train-hw-row"><span class="hw-label">\u663e\u5361</span><span class="hw-value">' + escapeHtml(gpuName) + '</span></div>'
   +         '<div class="train-hw-row"><span class="hw-label">\u901f\u5ea6</span><span id="train-live-speed" class="hw-value-accent">' + (curSpeed > 0 ? curSpeed.toFixed(2) + ' it/s' : '\u2014') + '</span></div>'
   +         '<div class="train-hw-row"><span class="hw-label">\u8fd0\u884c\u73af\u5883</span><span class="hw-value">' + (state.runtime && state.runtime.runtime ? state.runtime.runtime.environment : 'standard') + '</span></div>'
-  + '<div class="train-hw-row" style="margin-top:4px;"><span class="hw-label">\u7cbe\u5ea6</span><span class="hw-value">' + precisionTag + '</span></div>'
+  +         '<div class="train-hw-row"><span class="hw-label">\u7cbe\u5ea6</span><span class="hw-value">' + precisionTag + '</span></div>'
   +       '</div>'
-  +     '</div>'
+  +       '<div id="sys-monitor-panel" class="sysmon-panel">' + _buildSysMonitorHTML() + '</div>'
+  +       '</div>'
 
   // Active params
   +     '<div class="train-side-section">'
@@ -2229,7 +2245,12 @@ function renderTraining(container) {
   + '</div>'; // close train-dashboard
 
   syncFooterAction();
-  if (hasRunning) startTrainingLogPolling();
+  if (hasRunning) {
+    startTrainingLogPolling();
+    startSysMonitorPolling();
+  } else {
+    _pollSystemMonitor(); // 即使没有训练也获取一次当前状态
+  }
 
 
 }
@@ -2298,6 +2319,104 @@ function startTrainingLogPolling() {
     }
     refreshTrainingLog();
   }, 2000);
+}
+
+// ── System Monitor Polling ─────────────────────────────
+let _sysMonitorTimer = null;
+
+async function _pollSystemMonitor() {
+  try {
+    var resp = await api.getSystemMonitor();
+    if (resp && resp.data) {
+      state.sysMonitor = resp.data;
+      _renderSysMonitorInPlace();
+    }
+  } catch (e) { /* silent */ }
+}
+
+function startSysMonitorPolling() {
+  if (_sysMonitorTimer) return;
+  _pollSystemMonitor();
+  _sysMonitorTimer = setInterval(() => {
+    if (!state.tasks.some((t) => t.status === 'RUNNING')) {
+      clearInterval(_sysMonitorTimer);
+      _sysMonitorTimer = null;
+      _pollSystemMonitor(); // final update
+      return;
+    }
+    _pollSystemMonitor();
+  }, 3000);
+}
+
+function _renderSysMonitorInPlace() {
+  var el = document.getElementById('sys-monitor-panel');
+  if (!el) return;
+  el.innerHTML = _buildSysMonitorHTML();
+}
+
+function _buildSysMonitorHTML() {
+  var d = state.sysMonitor;
+  if (!d) return '<div style="color:var(--text-muted);font-size:0.72rem;">等待数据...</div>';
+  var html = '';
+
+  // GPU VRAM
+  if (d.gpu && d.gpu.available && d.gpu.gpus && d.gpu.gpus.length > 0) {
+    d.gpu.gpus.forEach(function(g) {
+      var pct = g.utilization_pct || 0;
+      var barColor = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : 'var(--accent)';
+      var usedMB = g.used_mb || g.allocated_mb || 0;
+      html += '<div class="sysmon-row">'
+        + '<div class="sysmon-label">' + _ico('cpu', 12) + ' VRAM' + (d.gpu.gpus.length > 1 ? ' #' + g.index : '') + '</div>'
+        + '<div class="sysmon-bar-wrap">'
+        +   '<div class="sysmon-bar" style="width:' + pct + '%;background:' + barColor + ';"></div>'
+        + '</div>'
+        + '<div class="sysmon-val">' + usedMB + ' / ' + g.total_mb + ' MB <span style="opacity:0.7;">(' + pct + '%)</span></div>'
+        + '</div>';
+      // GPU temperature + power (if available from nvidia-smi)
+      var extraParts = [];
+      if (g.temperature_c != null) extraParts.push(g.temperature_c + '°C');
+      if (g.power_draw_w != null) extraParts.push(g.power_draw_w + 'W');
+      if (extraParts.length > 0) {
+        html += '<div class="sysmon-row sysmon-sub">'
+          + '<div class="sysmon-label" style="padding-left:18px;">状态</div>'
+          + '<div></div>'
+          + '<div class="sysmon-val">' + extraParts.join(' · ') + '</div>'
+          + '</div>';
+      }
+    });
+  } else {
+    html += '<div class="sysmon-row"><div class="sysmon-label">' + _ico('cpu', 12) + ' VRAM</div><div class="sysmon-val" style="color:var(--text-muted);">不可用</div></div>';
+  }
+
+  // CPU
+  if (d.cpu && d.cpu.percent !== undefined) {
+    var cpuPct = d.cpu.percent;
+    var cpuColor = cpuPct > 90 ? '#ef4444' : cpuPct > 70 ? '#f59e0b' : '#3b82f6';
+    html += '<div class="sysmon-row">'
+      + '<div class="sysmon-label">' + _ico('activity', 12) + ' CPU</div>'
+      + '<div class="sysmon-bar-wrap">'
+      +   '<div class="sysmon-bar" style="width:' + cpuPct + '%;background:' + cpuColor + ';"></div>'
+      + '</div>'
+      + '<div class="sysmon-val">' + cpuPct + '%' + (d.cpu.count ? ' <span style="opacity:0.5;">(' + d.cpu.count + ' cores)</span>' : '') + '</div>'
+      + '</div>';
+  }
+
+  // RAM
+  if (d.ram && d.ram.total_mb) {
+    var ramPct = d.ram.percent || 0;
+    var ramColor = ramPct > 90 ? '#ef4444' : ramPct > 70 ? '#f59e0b' : '#8b5cf6';
+    var ramUsedGB = (d.ram.used_mb / 1024).toFixed(1);
+    var ramTotalGB = (d.ram.total_mb / 1024).toFixed(1);
+    html += '<div class="sysmon-row">'
+      + '<div class="sysmon-label">' + _ico('database', 12) + ' RAM</div>'
+      + '<div class="sysmon-bar-wrap">'
+      +   '<div class="sysmon-bar" style="width:' + ramPct + '%;background:' + ramColor + ';"></div>'
+      + '</div>'
+      + '<div class="sysmon-val">' + ramUsedGB + ' / ' + ramTotalGB + ' GB <span style="opacity:0.7;">(' + ramPct + '%)</span></div>'
+      + '</div>';
+  }
+
+  return html;
 }
 
 /** Parse ANSI escape codes + keyword-based semantic coloring for log lines */
@@ -5697,6 +5816,7 @@ window.executeTraining = async () => {
     state._taskHistoryDirty = true;
     await saveLocalTaskHistory();
     startTrainingLogPolling();
+    startSysMonitorPolling();
   } catch (error) {
     showToast(error.message || '训练请求失败。');
   } finally {

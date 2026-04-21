@@ -2882,3 +2882,50 @@ body.compact-layout .config-group.row {
     max-height: none;
   }
 }
+
+/* ── System Monitor Panel ─────────────────────────── */
+.sysmon-panel {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sysmon-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+.sysmon-row.sysmon-sub {
+  opacity: 0.6;
+  font-size: 0.68rem;
+}
+.sysmon-label {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.sysmon-bar-wrap {
+  height: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 60px;
+}
+.sysmon-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  min-width: 2px;
+}
+.sysmon-val {
+  color: var(--text-dim);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  text-align: right;
+}
+
