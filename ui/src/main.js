@@ -1,6 +1,19 @@
 import { t } from './i18n.js';
 import { api } from './api.js';
 import {
+  pluginStore,
+  loadPluginRuntime,
+  loadPluginCapabilities,
+  loadPluginHooks,
+  loadPluginAudit,
+  reloadAllPlugins,
+  approvePlugin,
+  revokePlugin,
+  toggleDeveloperMode,
+  renderSlot,
+  getRegisteredSlots,
+} from './pluginHost.js';
+import {
   UI_TABS,
   SDXL_SECTIONS,
   TRAINING_TYPES,
@@ -438,6 +451,10 @@ function renderView(module) {
     renderWizard(container);
     return;
   }
+  if (module === 'plugins') {
+    renderPlugins(container);
+    return;
+  }
   if (module === 'training') {
     renderTraining(container);
     return;
@@ -473,6 +490,7 @@ function renderConfig(container) {
       </header>
       <div class="status-deck" id="status-deck">${renderStatusDeck()}</div>
       ${renderPreflightReport()}
+      ${renderSlot('config.after_status_deck')}
       <div class="section-toolbar">
         <div class="toolbar-actions toolbar-check-actions">
           <button class="btn btn-outline btn-check" type="button" onclick="runPreflight()">
@@ -2222,6 +2240,8 @@ function renderTraining(container) {
   +       '<div>' + paramsHtml + '</div>'
   +     '</div>'
 
+  +     renderSlot('training.runtime_widget')
+
   +   '</div>'
   + '</div>'
 
@@ -3176,6 +3196,293 @@ function renderGuide(container) {
 }
 
 
+// ═══════════════════════════════════════════════════════
+// 插件中心
+// ═══════════════════════════════════════════════════════
+
+function renderPlugins(container) {
+  container.innerHTML = '<div class="form-container">'
+    + '<header class="section-title">'
+    + '<h2>' + _ico('package', 20) + ' 插件中心</h2>'
+    + '<p>管理后端插件运行时状态。插件系统仅支持新 UI。</p>'
+    + '</header>'
+    + '<div id="plugin-center-content" style="color:var(--text-muted);font-size:0.85rem;">'
+    + _ico('loader', 14) + ' 加载插件信息...'
+    + '</div>'
+    + '</div>';
+  _loadAndRenderPlugins();
+}
+
+async function _loadAndRenderPlugins() {
+  var el = document.getElementById('plugin-center-content');
+  if (!el) return;
+
+  await loadPluginRuntime();
+
+  if (pluginStore.error) {
+    el.innerHTML = '<section class="form-section">'
+      + '<div class="section-content" style="display:block;">'
+      + '<div class="plugin-offline-banner">'
+      + _ico('alert-tri', 16) + ' 插件服务不可用'
+      + '<p style="margin:8px 0 0;font-size:0.78rem;color:var(--text-muted);">' + escapeHtml(pluginStore.error) + '</p>'
+      + '<p style="margin:4px 0 0;font-size:0.72rem;color:var(--text-dim);">后端可能尚未启用插件系统，或接口未就绪。这不影响正常训练功能。</p>'
+      + '</div>'
+      + '</div></section>';
+    return;
+  }
+
+  var rt = pluginStore.runtime;
+  if (!rt) {
+    el.innerHTML = '<section class="form-section"><div class="section-content" style="display:block;">'
+      + '<p style="color:var(--text-muted);">未获取到插件运行时数据</p>'
+      + '</div></section>';
+    return;
+  }
+
+  var html = '';
+
+  // ── 全局状态概览 ──
+  var devMode = rt.developer_mode;
+  var totalCount = rt.total_count || 0;
+  var enabledCount = rt.enabled_count || 0;
+  var loadedCount = rt.loaded_count || 0;
+
+  html += '<section class="form-section">'
+    + '<header class="section-header"><h3>' + _ico('activity', 16) + ' 运行时概览</h3></header>'
+    + '<div class="section-content" style="display:block;">'
+    + '<div class="plugin-stats-grid">'
+    + _pluginStatCard('总插件数', totalCount, 'package')
+    + _pluginStatCard('已启用', enabledCount, 'check-circle')
+    + _pluginStatCard('已加载', loadedCount, 'zap')
+    + _pluginStatCard('执行模式', rt.execution_mode || '—', 'shield')
+    + '</div>'
+    + '<div class="plugin-controls-row">'
+    + '<label class="plugin-toggle-label">'
+    + '<input type="checkbox" id="plugin-dev-mode-toggle" ' + (devMode ? 'checked' : '') + ' onchange="pluginToggleDevMode(this.checked)">'
+    + ' 开发者模式'
+    + '</label>'
+    + '<button class="btn btn-outline btn-sm" type="button" onclick="pluginReloadAll()">' + _ico('refresh-cw', 12) + ' 重新加载全部</button>'
+    + '<button class="btn btn-outline btn-sm" type="button" onclick="pluginShowAudit()">' + _ico('file', 12) + ' 审计日志</button>'
+    + '</div>'
+    + '<div style="font-size:0.7rem;color:var(--text-dim);margin-top:6px;">'
+    + '插件根目录: ' + escapeHtml(rt.plugin_root || '—')
+    + '</div>'
+    + '</div></section>';
+
+  // ── 插件列表 ──
+  var plugins = rt.plugins || [];
+  html += '<section class="form-section">'
+    + '<header class="section-header"><h3>' + _ico('package', 16) + ' 插件列表 (' + plugins.length + ')</h3></header>'
+    + '<div class="section-content" style="display:block;">';
+
+  if (plugins.length === 0) {
+    html += '<p style="color:var(--text-muted);padding:12px 0;">暂无已安装的插件</p>';
+  } else {
+    html += '<div class="plugin-list">';
+    for (var i = 0; i < plugins.length; i++) {
+      var p = plugins[i];
+      html += _renderPluginCard(p);
+    }
+    html += '</div>';
+  }
+
+  html += '</div></section>';
+
+  // ── Slot 注册表 ──
+  var slots = getRegisteredSlots();
+  html += '<section class="form-section">'
+    + '<header class="section-header"><h3>' + _ico('layout', 16) + ' UI 扩展挂载点</h3></header>'
+    + '<div class="section-content" style="display:block;">'
+    + '<div class="plugin-slot-list">';
+  for (var s = 0; s < slots.length; s++) {
+    var sl = slots[s];
+    html += '<div class="plugin-slot-item">'
+      + '<code>' + escapeHtml(sl.id) + '</code>'
+      + '<span class="plugin-slot-label">' + escapeHtml(sl.label) + '</span>'
+      + '<span class="plugin-slot-count">' + sl.contributionCount + ' 个贡献</span>'
+      + '</div>';
+  }
+  html += '</div></div></section>';
+
+  // ── 审计日志面板（默认隐藏）──
+  html += '<div id="plugin-audit-panel" style="display:none;"></div>';
+
+  el.innerHTML = html;
+}
+
+function _pluginStatCard(label, value, icon) {
+  return '<div class="plugin-stat-card">'
+    + '<div class="plugin-stat-icon">' + _ico(icon, 16) + '</div>'
+    + '<div class="plugin-stat-info">'
+    + '<div class="plugin-stat-value">' + escapeHtml(String(value)) + '</div>'
+    + '<div class="plugin-stat-label">' + escapeHtml(label) + '</div>'
+    + '</div></div>';
+}
+
+function _renderPluginCard(p) {
+  var statusColor = p.loaded ? '#22c55e' : (p.load_error ? '#ef4444' : 'var(--text-muted)');
+  var statusText = p.loaded ? '已加载' : (p.load_error ? '加载失败' : '未加载');
+  var statusDot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + statusColor + ';"></span>';
+
+  var tierBadge = '';
+  if (p.tier != null) {
+    var tierColors = { 0: '#22c55e', 1: '#3b82f6', 2: '#f59e0b', 3: '#ef4444' };
+    tierBadge = '<span class="plugin-tier-badge" style="background:' + (tierColors[p.tier] || 'var(--text-muted)') + ';">Tier ' + p.tier + '</span>';
+  }
+
+  var html = '<div class="plugin-card">'
+    + '<div class="plugin-card-header">'
+    + '<div class="plugin-card-title">'
+    + statusDot + ' '
+    + '<strong>' + escapeHtml(p.name || p.plugin_id) + '</strong>'
+    + (p.version ? ' <span class="plugin-version">v' + escapeHtml(p.version) + '</span>' : '')
+    + tierBadge
+    + '</div>'
+    + '<div class="plugin-card-actions">';
+
+  if (p.enabled && !p.execution_allowed) {
+    html += '<button class="btn btn-sm" style="background:#22c55e;color:#fff;font-size:0.7rem;padding:2px 8px;" type="button" onclick="pluginApprove(\'' + escapeHtml(p.plugin_id) + '\')">审批</button>';
+  }
+  if (p.execution_allowed) {
+    html += '<button class="btn btn-outline btn-sm" style="font-size:0.7rem;padding:2px 8px;" type="button" onclick="pluginRevoke(\'' + escapeHtml(p.plugin_id) + '\')">撤销审批</button>';
+  }
+
+  html += '</div></div>';
+
+  // 描述
+  if (p.description) {
+    html += '<div class="plugin-card-desc">' + escapeHtml(p.description) + '</div>';
+  }
+
+  // 详情
+  html += '<div class="plugin-card-meta">';
+  html += '<span>ID: <code>' + escapeHtml(p.plugin_id) + '</code></span>';
+  html += '<span>状态: <span style="color:' + statusColor + ';font-weight:600;">' + statusText + '</span></span>';
+  if (p.enabled != null) html += '<span>' + (p.enabled ? '✓ 已启用' : '✗ 已禁用') + '</span>';
+  if (p.execution_allowed != null) html += '<span>' + (p.execution_allowed ? '✓ 已授权执行' : '✗ 未授权') + '</span>';
+  html += '</div>';
+
+  // 加载错误
+  if (p.load_error) {
+    html += '<div class="plugin-card-error">' + _ico('x-circle', 12) + ' ' + escapeHtml(p.load_error) + '</div>';
+  }
+
+  // Capabilities
+  if (p.capabilities && p.capabilities.length > 0) {
+    html += '<div class="plugin-card-tags"><span class="plugin-tag-label">能力:</span>';
+    for (var c = 0; c < p.capabilities.length; c++) {
+      html += '<span class="plugin-tag">' + escapeHtml(p.capabilities[c]) + '</span>';
+    }
+    html += '</div>';
+  }
+
+  // Hooks
+  var hooks = p.registered_hooks || p.hooks || [];
+  if (hooks.length > 0) {
+    html += '<div class="plugin-card-tags"><span class="plugin-tag-label">钩子:</span>';
+    for (var h = 0; h < hooks.length; h++) {
+      html += '<span class="plugin-tag plugin-tag-hook">' + escapeHtml(hooks[h]) + '</span>';
+    }
+    html += '</div>';
+  }
+
+  // Trust / Approval
+  if (p.trust || p.approval || p.signature) {
+    html += '<div class="plugin-card-tags"><span class="plugin-tag-label">信任:</span>';
+    if (p.signature) html += '<span class="plugin-tag">' + _ico('shield', 10) + ' 已签名</span>';
+    if (p.approval) html += '<span class="plugin-tag">' + _ico('check-circle', 10) + ' 已审批</span>';
+    if (p.trust) html += '<span class="plugin-tag">' + escapeHtml(String(p.trust)) + '</span>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ── 插件操作（全局函数）──
+
+window.pluginToggleDevMode = async function(enabled) {
+  var result = await toggleDeveloperMode(enabled);
+  if (result.ok) {
+    showToast('✓ 开发者模式已' + (enabled ? '开启' : '关闭'));
+  } else {
+    showToast('⚠ 操作失败: ' + (result.error || '未知错误'));
+  }
+  _loadAndRenderPlugins();
+};
+
+window.pluginReloadAll = async function() {
+  showToast(_ico('loader', 12) + ' 正在重新加载插件...');
+  var result = await reloadAllPlugins();
+  if (result.ok) {
+    showToast('✓ 插件已重新加载');
+  } else {
+    showToast('⚠ 重新加载失败: ' + (result.error || '未知错误'));
+  }
+  _loadAndRenderPlugins();
+};
+
+window.pluginApprove = async function(pluginId) {
+  var result = await approvePlugin(pluginId);
+  if (result.ok) {
+    showToast('✓ 插件 ' + pluginId + ' 已审批');
+  } else {
+    showToast('⚠ 审批失败: ' + (result.error || '未知错误'));
+  }
+  _loadAndRenderPlugins();
+};
+
+window.pluginRevoke = async function(pluginId) {
+  if (!confirm('确定要撤销插件 "' + pluginId + '" 的审批？')) return;
+  var result = await revokePlugin(pluginId);
+  if (result.ok) {
+    showToast('✓ 已撤销插件 ' + pluginId + ' 的审批');
+  } else {
+    showToast('⚠ 撤销失败: ' + (result.error || '未知错误'));
+  }
+  _loadAndRenderPlugins();
+};
+
+window.pluginShowAudit = async function() {
+  var panel = document.getElementById('plugin-audit-panel');
+  if (!panel) return;
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.innerHTML = '<section class="form-section"><div class="section-content" style="display:block;">'
+    + _ico('loader', 14) + ' 加载审计日志...</div></section>';
+  panel.style.display = 'block';
+
+  await loadPluginAudit(50);
+  var audit = pluginStore.audit;
+  var html = '<section class="form-section">'
+    + '<header class="section-header"><h3>' + _ico('file', 16) + ' 审计日志（最近 50 条）</h3></header>'
+    + '<div class="section-content" style="display:block;">';
+
+  var entries = (audit && audit.entries) || audit || [];
+  if (!Array.isArray(entries)) entries = [];
+
+  if (entries.length === 0) {
+    html += '<p style="color:var(--text-muted);">暂无审计记录</p>';
+  } else {
+    html += '<div class="plugin-audit-list">';
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      html += '<div class="plugin-audit-item">'
+        + '<span class="plugin-audit-time">' + escapeHtml(e.timestamp || e.time || '') + '</span>'
+        + '<span class="plugin-audit-action">' + escapeHtml(e.action || e.event || '') + '</span>'
+        + '<span class="plugin-audit-detail">' + escapeHtml(e.plugin_id || '') + (e.message ? ' — ' + escapeHtml(e.message) : '') + '</span>'
+        + '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '</div></section>';
+  panel.innerHTML = html;
+};
+
+
 function renderAbout(container) {
   container.innerHTML = `
     <div class="form-container">
@@ -3288,6 +3595,8 @@ function renderSettings(container) {
           </div>
         </div>
       </section>
+
+      ${renderSlot('settings.section')}
     </div>
   `;
 
@@ -4591,6 +4900,7 @@ function renderTools(container) {
       <div id="tool-detail">
         ${selectedTool ? renderToolDetail(selectedTool) : '<div class="empty-state" style="margin-top:12px;"><strong>请在上方下拉菜单中选择一个工具</strong></div>'}
       </div>
+      ${renderSlot('tools.entry')}
     </div>
   `;
 

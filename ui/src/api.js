@@ -313,4 +313,46 @@ export const api = {
   },
 
 
+  // ═══ 插件系统 API ═══
+
+  /** 获取插件运行时状态 */
+  getPluginRuntime() {
+    return request('/api/plugins/runtime');
+  },
+
+  /** 重新加载所有插件 */
+  reloadPlugins() {
+    return postJson('/api/plugins/reload', {});
+  },
+
+  /** 获取插件能力列表 */
+  getPluginCapabilities() {
+    return request('/api/plugins/capabilities');
+  },
+
+  /** 获取插件钩子列表 */
+  getPluginHooks() {
+    return request('/api/plugins/hooks');
+  },
+
+  /** 设置开发者模式 */
+  setPluginDeveloperMode(enabled) {
+    return postJson('/api/plugins/developer_mode', { enabled });
+  },
+
+  /** 审批插件 */
+  approvePlugin(pluginId, approvedBy) {
+    return postJson('/api/plugins/approve', { plugin_id: pluginId, approved_by: approvedBy || 'ui_user' });
+  },
+
+  /** 撤销插件审批 */
+  revokePluginApproval(pluginId) {
+    return postJson('/api/plugins/revoke_approval', { plugin_id: pluginId });
+  },
+
+  /** 获取插件审计日志 */
+  getPluginAudit(limit) {
+    return request('/api/plugins/audit' + (limit ? '?limit=' + limit : ''));
+  },
+
 };
