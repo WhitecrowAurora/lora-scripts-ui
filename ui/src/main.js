@@ -730,6 +730,7 @@ function _pfTag(label, value, type) {
 }
 
 window.dismissPreflightReport = function() {
+  state.preflight = null;
   var el = document.getElementById('preflight-report');
   if (el) el.remove();
 };
