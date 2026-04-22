@@ -490,6 +490,7 @@ function renderConfig(container) {
       </header>
       <div class="status-deck" id="status-deck">${renderStatusDeck()}</div>
       ${renderPreflightReport()}
+      ${renderSlot('training.preflight_panel')}
       ${renderSlot('config.after_status_deck')}
       <div class="section-toolbar">
         <div class="toolbar-actions toolbar-check-actions">
@@ -3319,10 +3320,138 @@ function _pluginStatCard(label, value, icon) {
     + '</div></div>';
 }
 
+function _pluginOnClickArg(value) {
+  return escapeHtml(JSON.stringify(String(value ?? '')));
+}
+
+function _pluginReasonLabel(reason) {
+  var mapping = {
+    unsigned: '未签名',
+    missing_declared_hash: '缺少声明哈希',
+    declared_hash_mismatch: '签名哈希不匹配',
+    ed25519_verifier_unavailable: '签名校验器不可用',
+    unsupported_signature_scheme: '不支持的签名方案',
+    no_approval_record: '没有审批记录',
+    capability_not_approved: '能力未审批',
+    hash_denied: '插件哈希已被拒绝',
+    signer_revoked: '签名者已撤销',
+    allowlist_match: '已通过社区核验',
+    allowlist_miss: '未通过社区核验',
+    not_required: '无需核验',
+  };
+  return mapping[String(reason || '').trim()] || String(reason || '').trim();
+}
+
+function _formatPluginHook(hook) {
+  if (typeof hook === 'string') return hook;
+  if (!hook || typeof hook !== 'object') return '';
+
+  var eventName = String(hook.event || hook.name || hook.id || '').trim();
+  var handlerName = String(hook.handler || '').trim();
+  var trainingTypes = Array.isArray(hook.training_types)
+    ? hook.training_types.map(function(item) { return String(item || '').trim(); }).filter(Boolean)
+    : [];
+  var details = [];
+
+  if (handlerName) details.push(handlerName);
+  if (trainingTypes.length > 0) details.push(trainingTypes.join('/'));
+  if (hook.mutable === true || hook.runtime_mutable === true) details.push('mutable');
+
+  if (!eventName) {
+    if (details.length > 0) return details.join(' · ');
+    try {
+      return JSON.stringify(hook);
+    } catch (err) {
+      return String(hook);
+    }
+  }
+
+  return eventName + (details.length > 0 ? ' · ' + details.join(' · ') : '');
+}
+
+function _collectPluginTrustTags(p) {
+  var policy = (p && p.policy && typeof p.policy === 'object') ? p.policy : {};
+  var signature = (p && p.signature && typeof p.signature === 'object') ? p.signature : {};
+  var approval = (p && p.approval && typeof p.approval === 'object') ? p.approval : {};
+  var trust = (p && p.trust && typeof p.trust === 'object') ? p.trust : {};
+  var tags = [];
+
+  var signatureScheme = String(signature.scheme || '').trim().toLowerCase();
+  var signatureSigner = String(signature.signer || '').trim();
+  if (signature.ok === true && signatureScheme && signatureScheme !== 'none') {
+    tags.push(_ico('shield', 10) + ' 签名通过' + (signatureSigner ? ' · ' + escapeHtml(signatureSigner) : ''));
+  } else if (signature.ok === false) {
+    tags.push(_ico('shield', 10) + ' 签名异常' + (signature.reason ? ' · ' + escapeHtml(_pluginReasonLabel(signature.reason)) : ''));
+  } else if (policy.requires_trust_verification) {
+    tags.push(_ico('shield', 10) + ' 未签名');
+  }
+
+  var approvalRecord = approval.record && typeof approval.record === 'object' ? approval.record : null;
+  var approvalGranted = approval.approved === true || policy.approved === true || approvalRecord !== null;
+  if (policy.requires_user_approval || approvalGranted || approval.reason) {
+    if (approvalGranted) {
+      tags.push(_ico('check-circle', 10) + ' 已审批');
+    } else {
+      tags.push(_ico('alert-tri', 10) + ' 待审批' + (approval.reason ? ' · ' + escapeHtml(_pluginReasonLabel(approval.reason)) : ''));
+    }
+  }
+
+  if (policy.requires_trust_verification || trust.ok === false || trust.matched_allowlist) {
+    if (trust.ok === true || policy.trust_ok === true) {
+      tags.push(_ico('shield', 10) + ' 社区核验通过');
+    } else {
+      tags.push(_ico('alert-tri', 10) + ' 社区核验未通过' + (trust.reason ? ' · ' + escapeHtml(_pluginReasonLabel(trust.reason)) : ''));
+    }
+  }
+
+  return tags;
+}
+
+function _formatPluginAuditDetail(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  var payload = entry.payload && typeof entry.payload === 'object' ? entry.payload : null;
+  var parts = [];
+  var pluginId = String(entry.plugin_id || '').trim();
+
+  if (pluginId) parts.push(pluginId);
+  if (!payload) return parts.join(' — ');
+
+  var payloadMessage = '';
+  if (typeof payload.message === 'string' && payload.message.trim()) {
+    payloadMessage = payload.message.trim();
+  } else if (typeof payload.reason === 'string' && payload.reason.trim()) {
+    payloadMessage = _pluginReasonLabel(payload.reason);
+  } else if (typeof payload.error === 'string' && payload.error.trim()) {
+    payloadMessage = payload.error.trim();
+  } else if (Array.isArray(payload.missing_capabilities) && payload.missing_capabilities.length > 0) {
+    payloadMessage = '缺少能力: ' + payload.missing_capabilities.join(', ');
+  } else if (Array.isArray(payload.capabilities) && payload.capabilities.length > 0) {
+    payloadMessage = '能力: ' + payload.capabilities.join(', ');
+  } else {
+    try {
+      var serialized = JSON.stringify(payload);
+      if (serialized && serialized !== '{}') payloadMessage = serialized;
+    } catch (err) {
+      payloadMessage = String(payload);
+    }
+  }
+
+  if (payloadMessage) parts.push(payloadMessage);
+  return parts.join(' — ');
+}
+
 function _renderPluginCard(p) {
   var statusColor = p.loaded ? '#22c55e' : (p.load_error ? '#ef4444' : 'var(--text-muted)');
   var statusText = p.loaded ? '已加载' : (p.load_error ? '加载失败' : '未加载');
   var statusDot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + statusColor + ';"></span>';
+  var policy = (p && p.policy && typeof p.policy === 'object') ? p.policy : {};
+  var approval = (p && p.approval && typeof p.approval === 'object') ? p.approval : {};
+  var requiresApproval = policy.requires_user_approval === true;
+  var approvalRecord = approval.record && typeof approval.record === 'object' ? approval.record : null;
+  var approvalGranted = approval.approved === true || policy.approved === true || approvalRecord !== null;
+  var canApprove = requiresApproval && !approvalGranted;
+  var canRevoke = approvalGranted;
+  var actionPluginId = _pluginOnClickArg(p.plugin_id);
 
   var tierBadge = '';
   if (p.tier != null) {
@@ -3340,11 +3469,11 @@ function _renderPluginCard(p) {
     + '</div>'
     + '<div class="plugin-card-actions">';
 
-  if (p.enabled && !p.execution_allowed) {
-    html += '<button class="btn btn-sm" style="background:#22c55e;color:#fff;font-size:0.7rem;padding:2px 8px;" type="button" onclick="pluginApprove(\'' + escapeHtml(p.plugin_id) + '\')">审批</button>';
+  if (canApprove) {
+    html += '<button class="btn btn-sm" style="background:#22c55e;color:#fff;font-size:0.7rem;padding:2px 8px;" type="button" onclick="pluginApprove(' + actionPluginId + ')">审批</button>';
   }
-  if (p.execution_allowed) {
-    html += '<button class="btn btn-outline btn-sm" style="font-size:0.7rem;padding:2px 8px;" type="button" onclick="pluginRevoke(\'' + escapeHtml(p.plugin_id) + '\')">撤销审批</button>';
+  if (canRevoke) {
+    html += '<button class="btn btn-outline btn-sm" style="font-size:0.7rem;padding:2px 8px;" type="button" onclick="pluginRevoke(' + actionPluginId + ')">撤销审批</button>';
   }
 
   html += '</div></div>';
@@ -3377,21 +3506,26 @@ function _renderPluginCard(p) {
   }
 
   // Hooks
-  var hooks = p.registered_hooks || p.hooks || [];
+  var hooks = Array.isArray(p.registered_hooks) && p.registered_hooks.length > 0
+    ? p.registered_hooks
+    : (Array.isArray(p.hooks) ? p.hooks : []);
   if (hooks.length > 0) {
     html += '<div class="plugin-card-tags"><span class="plugin-tag-label">钩子:</span>';
     for (var h = 0; h < hooks.length; h++) {
-      html += '<span class="plugin-tag plugin-tag-hook">' + escapeHtml(hooks[h]) + '</span>';
+      var hookLabel = _formatPluginHook(hooks[h]);
+      if (!hookLabel) continue;
+      html += '<span class="plugin-tag plugin-tag-hook">' + escapeHtml(hookLabel) + '</span>';
     }
     html += '</div>';
   }
 
   // Trust / Approval
-  if (p.trust || p.approval || p.signature) {
+  var trustTags = _collectPluginTrustTags(p);
+  if (trustTags.length > 0) {
     html += '<div class="plugin-card-tags"><span class="plugin-tag-label">信任:</span>';
-    if (p.signature) html += '<span class="plugin-tag">' + _ico('shield', 10) + ' 已签名</span>';
-    if (p.approval) html += '<span class="plugin-tag">' + _ico('check-circle', 10) + ' 已审批</span>';
-    if (p.trust) html += '<span class="plugin-tag">' + escapeHtml(String(p.trust)) + '</span>';
+    for (var tIndex = 0; tIndex < trustTags.length; tIndex++) {
+      html += '<span class="plugin-tag">' + trustTags[tIndex] + '</span>';
+    }
     html += '</div>';
   }
 
@@ -3461,6 +3595,7 @@ window.pluginShowAudit = async function() {
     + '<div class="section-content" style="display:block;">';
 
   var entries = (audit && audit.entries) || audit || [];
+  if (audit && Array.isArray(audit.events)) entries = audit.events;
   if (!Array.isArray(entries)) entries = [];
 
   if (entries.length === 0) {
@@ -3469,10 +3604,16 @@ window.pluginShowAudit = async function() {
     html += '<div class="plugin-audit-list">';
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i];
+      var auditTime = String(e.ts || e.timestamp || e.time || '').trim();
+      var auditAction = String(e.event_type || e.action || e.event || '').trim();
+      if (e.level && e.level !== 'info') {
+        auditAction += auditAction ? ' · ' + String(e.level) : String(e.level);
+      }
+      var auditDetail = _formatPluginAuditDetail(e);
       html += '<div class="plugin-audit-item">'
-        + '<span class="plugin-audit-time">' + escapeHtml(e.timestamp || e.time || '') + '</span>'
-        + '<span class="plugin-audit-action">' + escapeHtml(e.action || e.event || '') + '</span>'
-        + '<span class="plugin-audit-detail">' + escapeHtml(e.plugin_id || '') + (e.message ? ' — ' + escapeHtml(e.message) : '') + '</span>'
+        + '<span class="plugin-audit-time">' + escapeHtml(auditTime) + '</span>'
+        + '<span class="plugin-audit-action">' + escapeHtml(auditAction) + '</span>'
+        + '<span class="plugin-audit-detail">' + escapeHtml(auditDetail) + '</span>'
         + '</div>';
     }
     html += '</div>';
