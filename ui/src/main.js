@@ -71,6 +71,8 @@ const CONDITIONAL_KEYS = new Set([
   'peak_vram_startup_guard_enabled',
   'peak_vram_micro_batch_enabled',
   'peak_vram_diagnostics_enabled',
+  'peak_vram_auto_protection_enabled',
+  'experimental_attention_profile_enabled',
   'flow_model',
   'flow_timestep_distribution',
   'flow_uniform_shift',
@@ -3803,9 +3805,9 @@ function renderSettings(container) {
     button.textContent = '切换中...';
     try {
       await api.activateUiProfile(BUILTIN_LEGACY_UI_PROFILE_ID);
-      showToast('已切换到经典 UI，正在返回...');
+      showToast('已切换到经典 UI，正在刷新...');
       setTimeout(() => {
-        window.location.assign('/');
+        window.location.reload();
       }, 250);
     } catch (error) {
       button.disabled = false;
