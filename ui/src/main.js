@@ -108,6 +108,7 @@ const state = {
   lang: 'zh',
   theme: localStorage.getItem('theme') || 'dark',
   roundedUI: localStorage.getItem('roundedUI') === 'true',
+  verticalTabs: localStorage.getItem('verticalTabs') === 'true',
   activeModule: 'config',
   activeTab: localStorage.getItem('sdxl_ui_tab') || 'model',
   navigatorCollapsed: false,
@@ -1144,6 +1145,7 @@ function applyTheme() {
   if (state.theme === 'light') root.classList.add('light-theme');
   else if (state.theme === 'clay') root.classList.add('clay-theme');
   root.classList.toggle('rounded-ui', state.roundedUI);
+  root.classList.toggle('vertical-tabs', state.verticalTabs);
   const moonIcon = $('.moon-icon');
   const sunIcon = $('.sun-icon');
   const clayIcon = $('.clay-icon');
@@ -3687,6 +3689,16 @@ function renderSettings(container) {
               <span class="slider round"></span>
             </label>
           </div>
+          <div class="settings-row">
+            <div>
+              <label>标签栏竖排</label>
+              <p class="field-desc">将顶部配置标签栏改为左侧竖向排列，适合宽屏或标签较多时使用。</p>
+            </div>
+            <label class="switch switch-compact">
+              <input type="checkbox" id="vertical-tabs-toggle" ${state.verticalTabs ? 'checked' : ''}>
+              <span class="slider round"></span>
+            </label>
+          </div>
           <div class="settings-row settings-slider-row">
             <label>左侧资源管理器宽度</label>
             <div class="settings-slider-control">
@@ -3762,6 +3774,9 @@ function renderSettings(container) {
   $('#theme-select')?.addEventListener('change', (e) => { state.theme = e.target.value; localStorage.setItem('theme', state.theme); applyTheme(); });
   $('#rounded-ui-toggle')?.addEventListener('change', (e) => {
     state.roundedUI = e.target.checked; localStorage.setItem('roundedUI', state.roundedUI); applyTheme();
+  });
+  $('#vertical-tabs-toggle')?.addEventListener('change', (e) => {
+    state.verticalTabs = e.target.checked; localStorage.setItem('verticalTabs', state.verticalTabs); applyTheme();
   });
   $('#navigator-width-slider')?.addEventListener('input', (e) => updateLayoutWidth('navigator', e.target.value, false));
   $('#navigator-width-slider')?.addEventListener('change', (e) => updateLayoutWidth('navigator', e.target.value, true));

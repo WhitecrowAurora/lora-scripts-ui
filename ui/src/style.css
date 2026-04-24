@@ -3478,10 +3478,6 @@ body.compact-layout .config-group.row {
   background: #e8e4f0;
   border: 1px solid #d8d4ea;
 }
-
-.clay-theme .switch .slider:before {
-}
-
 .clay-theme .switch input:checked + .slider {
   background: rgba(139, 124, 246, 0.15);
   border-color: #8b7cf6;
@@ -3772,3 +3768,100 @@ body.compact-layout .config-group.row {
 .rounded-ui .json-panel .panel-header { border-radius: 0; }
 
 .rounded-ui input[type="range"]::-webkit-slider-thumb { border-radius: 50%; }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Vertical Tabs Mode — 标签栏竖向排列
+   当 <html> 带有 .vertical-tabs 时，topbar 变为左侧竖向面板
+   ═══════════════════════════════════════════════════════════════ */
+
+.vertical-tabs .workspace {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+}
+
+.vertical-tabs .topbar {
+  flex-direction: column;
+  width: 110px;
+  height: auto;
+  padding: 16px 0;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+  align-items: stretch;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  grid-row: 1 / -1;
+  grid-column: 1;
+}
+
+.vertical-tabs .topbar::-webkit-scrollbar {
+  display: none;
+}
+
+.vertical-tabs .top-nav {
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.vertical-tabs .top-nav-item {
+  padding: 10px 16px;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.vertical-tabs .top-nav-item:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.05));
+}
+
+.vertical-tabs .top-nav-item.active {
+  border-left-color: var(--accent);
+  background: var(--bg-hover, rgba(255,255,255,0.05));
+}
+
+.vertical-tabs .top-nav-item.active::after {
+  display: none;
+}
+
+.vertical-tabs .topbar-search {
+  width: 100%;
+  margin: 8px 0 0 0;
+  padding: 0 10px;
+}
+
+.vertical-tabs .topbar-search-input-wrap {
+  width: 100%;
+}
+
+.vertical-tabs .topbar-search-input-wrap input {
+  width: 100%;
+}
+
+.vertical-tabs .topbar-search-input-wrap input:focus {
+  width: 100%;
+}
+
+.vertical-tabs .topbar-search-dropdown {
+  left: 0;
+  right: auto;
+  width: 300px;
+}
+
+/* 内容区 + 底栏包裹为纵向 flex 填满剩余空间 */
+.vertical-tabs .content-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vertical-tabs .bottom-bar {
+  flex-shrink: 0;
+}
