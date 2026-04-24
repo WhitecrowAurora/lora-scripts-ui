@@ -293,15 +293,6 @@ export const api = {
     return request('/api/system_monitor');
   },
 
-  /** TensorBoard 日志管理 */
-  getTbRuns() {
-    return request('/api/tb_runs');
-  },
-
-  deleteTbRuns(names) {
-    return postJson('/api/tb_runs/delete', { names });
-  },
-
   /** 切换当前启用的 UI */
   activateUiProfile(profileId) {
     return postJson('/api/ui_profiles/activate', { profile_id: profileId });

@@ -107,6 +107,7 @@ const state = {
   jsonPanelCollapsed: false,
   lang: 'zh',
   theme: localStorage.getItem('theme') || 'dark',
+  roundedUI: localStorage.getItem('roundedUI') === 'true',
   activeModule: 'config',
   activeTab: localStorage.getItem('sdxl_ui_tab') || 'model',
   navigatorCollapsed: false,
@@ -1138,17 +1139,23 @@ function setLanguage(lang) {
 }
 
 function applyTheme() {
-  document.documentElement.classList.toggle('light-theme', state.theme === 'light');
+  const root = document.documentElement;
+  root.classList.remove('light-theme', 'clay-theme');
+  if (state.theme === 'light') root.classList.add('light-theme');
+  else if (state.theme === 'clay') root.classList.add('clay-theme');
+  root.classList.toggle('rounded-ui', state.roundedUI);
   const moonIcon = $('.moon-icon');
   const sunIcon = $('.sun-icon');
-  if (moonIcon && sunIcon) {
-    moonIcon.style.display = state.theme === 'dark' ? 'block' : 'none';
-    sunIcon.style.display = state.theme === 'light' ? 'block' : 'none';
-  }
+  const clayIcon = $('.clay-icon');
+  if (moonIcon) moonIcon.style.display = state.theme === 'dark' ? 'block' : 'none';
+  if (sunIcon) sunIcon.style.display = state.theme === 'light' ? 'block' : 'none';
+  if (clayIcon) clayIcon.style.display = state.theme === 'clay' ? 'block' : 'none';
 }
 
 function toggleTheme() {
-  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  const order = ['dark', 'light', 'clay'];
+  const idx = order.indexOf(state.theme);
+  state.theme = order[(idx + 1) % order.length];
   localStorage.setItem('theme', state.theme);
   applyTheme();
 }
@@ -3667,7 +3674,18 @@ function renderSettings(container) {
             <select id="theme-select">
               <option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${t('settings.dark', state.lang)}</option>
               <option value="light" ${state.theme === 'light' ? 'selected' : ''}>${t('settings.light', state.lang)}</option>
+              <option value="clay" ${state.theme === 'clay' ? 'selected' : ''}>${state.lang === 'zh' ? '薰衣草' : '💜 Lavender'}</option>
             </select>
+          </div>
+          <div class="settings-row">
+            <div>
+              <label>圆角模式</label>
+              <p class="field-desc">开启后所有组件使用大圆角风格，关闭则使用默认方角。</p>
+            </div>
+            <label class="switch switch-compact">
+              <input type="checkbox" id="rounded-ui-toggle" ${state.roundedUI ? 'checked' : ''}>
+              <span class="slider round"></span>
+            </label>
           </div>
           <div class="settings-row settings-slider-row">
             <label>左侧资源管理器宽度</label>
@@ -3742,6 +3760,9 @@ function renderSettings(container) {
   `;
 
   $('#theme-select')?.addEventListener('change', (e) => { state.theme = e.target.value; localStorage.setItem('theme', state.theme); applyTheme(); });
+  $('#rounded-ui-toggle')?.addEventListener('change', (e) => {
+    state.roundedUI = e.target.checked; localStorage.setItem('roundedUI', state.roundedUI); applyTheme();
+  });
   $('#navigator-width-slider')?.addEventListener('input', (e) => updateLayoutWidth('navigator', e.target.value, false));
   $('#navigator-width-slider')?.addEventListener('change', (e) => updateLayoutWidth('navigator', e.target.value, true));
   $('#json-width-slider')?.addEventListener('input', (e) => updateLayoutWidth('json', e.target.value, false));
@@ -4749,86 +4770,10 @@ function renderLogs(container) {
         <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('tb-iframe').src='${tbUrl}'">刷新</button>
       </div>
 
-      <section class="form-section" style="margin-top:24px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="margin:0;font-size:1rem;">📁 日志管理</h3>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-outline btn-sm" type="button" onclick="loadTbRuns()">刷新列表</button>
-            <button class="btn btn-sm" type="button" style="background:#ef4444;color:#fff;" onclick="deleteSelectedTbRuns()">删除选中</button>
-          </div>
-        </div>
-        <div id="tb-runs-container" style="color:var(--text-muted);font-size:0.8rem;">加载中...</div>
-      </section>
     </div>
   `;
-  loadTbRuns();
+
 }
-
-// ── TensorBoard Log Management ─────────────────────────
-window.loadTbRuns = async function() {
-  var el = document.getElementById('tb-runs-container');
-  if (!el) return;
-  el.innerHTML = '<span style="color:var(--text-muted);">' + _ico('loader', 14) + ' 加载中...</span>';
-  try {
-    var resp = await api.getTbRuns();
-    var runs = (resp && resp.data && resp.data.runs) || [];
-    var root = (resp && resp.data && resp.data.root) || './logs';
-    if (runs.length === 0) {
-      el.innerHTML = '<div style="padding:12px;color:var(--text-muted);">暂无日志目录</div>';
-      return;
-    }
-    var totalSize = runs.reduce(function(s, r) { return s + (r.size_mb || 0); }, 0);
-    var html = '<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">'
-      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.75rem;color:var(--text-muted);">'
-      + '<input type="checkbox" id="tb-select-all" onchange="toggleAllTbRuns(this.checked)" style="width:14px;height:14px;"> 全选'
-      + '</label>'
-      + '<span style="font-size:0.72rem;color:var(--text-dim);">共 ' + runs.length + ' 个日志，合计 ' + totalSize.toFixed(1) + ' MB · ' + escapeHtml(root) + '</span>'
-      + '</div>';
-    html += '<div class="tb-runs-list">';
-    runs.forEach(function(r) {
-      // Parse name: model__runNNN__timestamp
-      var parts = r.name.match(/^(.+?)__run(\d+)__(.+)$/);
-      var label = parts ? parts[1] : r.name;
-      var runNum = parts ? '#' + parseInt(parts[2], 10) : '';
-      var timeStr = r.modified || '';
-      html += '<label class="tb-run-item">'
-        + '<input type="checkbox" value="' + escapeHtml(r.name) + '" class="tb-run-check" style="width:14px;height:14px;">'
-        + '<div class="tb-run-info">'
-        +   '<span class="tb-run-name">' + escapeHtml(label) + (runNum ? ' <span class="tb-run-num">' + runNum + '</span>' : '') + '</span>'
-        +   '<span class="tb-run-meta">' + r.size_mb + ' MB · ' + r.file_count + ' 个文件 · ' + escapeHtml(timeStr) + '</span>'
-        + '</div>'
-        + '</label>';
-    });
-    html += '</div>';
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div style="color:#ef4444;">加载失败：' + escapeHtml(e.message || '未知错误') + '</div>';
-  }
-};
-
-window.toggleAllTbRuns = function(checked) {
-  document.querySelectorAll('.tb-run-check').forEach(function(cb) { cb.checked = checked; });
-};
-
-window.deleteSelectedTbRuns = async function() {
-  var checks = document.querySelectorAll('.tb-run-check:checked');
-  var names = Array.from(checks).map(function(cb) { return cb.value; });
-  if (names.length === 0) {
-    showToast('请先勾选要删除的日志目录');
-    return;
-  }
-  if (!confirm('确定要永久删除 ' + names.length + ' 个日志目录？此操作不可撤销。')) return;
-  try {
-    var resp = await api.deleteTbRuns(names);
-    var deleted = (resp && resp.data && resp.data.deleted) || [];
-    var errors = (resp && resp.data && resp.data.errors) || [];
-    if (deleted.length > 0) showToast('✓ 已删除 ' + deleted.length + ' 个日志目录');
-    if (errors.length > 0) showToast('⚠ 部分删除失败：' + errors.join('; '));
-    loadTbRuns();
-  } catch (e) {
-    showToast('删除失败：' + (e.message || '未知错误'));
-  }
-};
 
 
 function renderTools(container) {

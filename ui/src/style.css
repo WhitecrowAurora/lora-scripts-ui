@@ -2958,49 +2958,6 @@ body.compact-layout .config-group.row {
 }
 
 
-/* ── TensorBoard Log Manager ──────────────────────── */
-.tb-runs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 420px;
-  overflow-y: auto;
-}
-.tb-run-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.tb-run-item:hover {
-  background: var(--bg-hover);
-}
-.tb-run-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.tb-run-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tb-run-num {
-  font-weight: 400;
-  color: var(--accent);
-  font-size: 0.75rem;
-}
-.tb-run-meta {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
 
 
 /* ── Plugin Center ─────────────────────────────────── */
@@ -3239,3 +3196,579 @@ body.compact-layout .config-group.row {
   color: #ef4444;
 }
 
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Lavender Theme — 薰衣草主题 · Soft Pastel / Macaron
+   ═══════════════════════════════════════════════════════════════ */
+
+:root.clay-theme {
+  --bg-darker: #f0eef5;
+  --bg-dark: #f5f3fa;
+  --bg-panel: #ffffff;
+  --bg-input: #f5f3fa;
+  --accent: #8b7cf6;
+  --accent-glow: rgba(139, 124, 246, 0.25);
+  --tertiary: #c4bef0;
+  --secondary: #7a7694;
+  --text-main: #3d3a50;
+  --text-dim: #7a7694;
+  --text-muted: #a8a4bc;
+  --border: #e4e0f0;
+  --border-focus: #8b7cf6;
+  --bg-hover: rgba(139, 124, 246, 0.06);
+  --danger: #ef8080;
+}
+
+/* ── Sidebar ── */
+.clay-theme .sidebar {
+  background: #e8e4f0;
+  border-right: 1px solid #d8d4ea;
+}
+
+.clay-theme .nav-item {
+  color: #7a7694;
+  transition: all 0.25s ease;
+}
+
+.clay-theme .nav-item:hover {
+  color: #3d3a50;
+}
+
+.clay-theme .nav-item.active {
+  color: #8b7cf6;
+}
+
+.clay-theme .nav-item.active::before {
+  background: #8b7cf6;
+  box-shadow: 0 0 8px rgba(139, 124, 246, 0.4);
+}
+
+.clay-theme .sidebar-footer {
+  border-top: 1px solid #d8d4ea;
+}
+
+/* ── Logo ── */
+.clay-theme .logo-text {
+  color: #8b7cf6;
+  text-shadow: 0 0 15px rgba(139, 124, 246, 0.3), 0 0 30px rgba(139, 124, 246, 0.12);
+}
+
+.clay-theme .logo-text span {
+  color: #7a7694;
+  text-shadow: none;
+}
+
+.clay-theme .logo-version {
+  color: #c4bef0;
+  text-shadow: none;
+}
+
+/* ── Navigator ── */
+.clay-theme .navigator {
+  background: #f5f3fa;
+  border-right: 1px solid #e4e0f0;
+}
+
+.clay-theme .navigator-header {
+  border-bottom: 1px solid #e4e0f0;
+}
+
+.clay-theme .navigator-header h3 {
+  color: #a8a4bc;
+}
+
+.clay-theme .section-header h4 {
+  color: #8b7cf6;
+}
+
+.clay-theme .section-header.collapsible:hover {
+  background: rgba(139, 124, 246, 0.05);
+}
+
+/* ── Group list ── */
+.clay-theme .group-header {
+  color: #a8a4bc;
+}
+
+.clay-theme .group-header:hover {
+  color: #7a7694;
+}
+
+.clay-theme .group-list li:hover {
+  color: #3d3a50;
+  background: rgba(139, 124, 246, 0.06);
+}
+
+.clay-theme .group-list li.active {
+  color: #8b7cf6;
+  background: rgba(139, 124, 246, 0.08);
+  border-left: 2px solid #8b7cf6;
+}
+
+/* ── Workspace item ── */
+.clay-theme .workspace-item {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 2px 10px rgba(139, 124, 246, 0.06);
+  transition: all 0.25s ease;
+}
+
+.clay-theme .workspace-item:hover {
+  box-shadow: 0 4px 16px rgba(139, 124, 246, 0.12);
+}
+
+.clay-theme .workspace-item.active {
+  border-color: #8b7cf6;
+  background: rgba(139, 124, 246, 0.04);
+  box-shadow: 0 4px 16px rgba(139, 124, 246, 0.15);
+}
+
+/* ── Collapse button ── */
+.clay-theme .collapse-btn:hover {
+  background: rgba(139, 124, 246, 0.10);
+  color: #8b7cf6;
+}
+
+/* ── Topbar ── */
+.clay-theme .topbar {
+  background: #f5f3fa;
+  border-bottom: 1px solid #e4e0f0;
+}
+
+.clay-theme .top-nav-item.active::after {
+  background: #8b7cf6;
+  box-shadow: 0 0 6px rgba(139, 124, 246, 0.3);
+}
+
+/* ── Topbar search ── */
+.clay-theme .topbar-search-input-wrap {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+}
+
+.clay-theme .topbar-search-input-wrap:focus-within {
+  border-color: #8b7cf6;
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, 0.12);
+}
+
+.clay-theme .topbar-search-dropdown {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 8px 32px rgba(139, 124, 246, 0.12), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.clay-theme .topbar-search-item:hover {
+  background: rgba(139, 124, 246, 0.06);
+}
+
+.clay-theme .topbar-search-item-label mark {
+  background: #c4bef0;
+  color: #3d3a50;
+}
+
+/* ── Content area ── */
+.clay-theme .workspace {
+  background: #f0eef5;
+}
+
+/* ── Buttons — global ── */
+.clay-theme .btn {
+  transition: all 0.25s ease;
+}
+
+.clay-theme .btn-primary {
+  background: #8b7cf6;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 3px 12px rgba(139, 124, 246, 0.25);
+}
+
+.clay-theme .btn-primary:hover {
+  background: #9d90f8;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 18px rgba(139, 124, 246, 0.35);
+}
+
+.clay-theme .btn-primary:active {
+  background: #7568e0;
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(139, 124, 246, 0.20);
+}
+
+.clay-theme .btn-outline {
+  border: 1px solid #d8d4ea;
+  color: #3d3a50;
+  background: transparent;
+}
+
+.clay-theme .btn-outline:hover {
+  background: rgba(139, 124, 246, 0.08);
+  border-color: #c4bef0;
+}
+
+/* ── Execute / Launch button — capsule ── */
+.clay-theme .btn-execute {
+  background: #8b7cf6;
+  color: #ffffff;
+  box-shadow: 0 4px 18px rgba(139, 124, 246, 0.30);
+}
+
+.clay-theme .btn-execute:hover {
+  background: #9d90f8;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(139, 124, 246, 0.40);
+  filter: none;
+}
+
+.clay-theme .btn-execute:active {
+  background: #7568e0;
+  transform: translateY(0);
+}
+
+.clay-theme .btn-training-active {
+  background: linear-gradient(135deg, #f0c55b, #e0a830) !important;
+  box-shadow: 0 4px 20px rgba(240, 197, 91, 0.30) !important;
+}
+
+.clay-theme .btn-training-failed {
+  background: linear-gradient(135deg, #ef8080, #e06060) !important;
+  box-shadow: 0 4px 20px rgba(239, 128, 128, 0.30) !important;
+}
+
+.clay-theme .btn-terminate {
+  box-shadow: 0 3px 12px rgba(239, 128, 128, 0.20);
+}
+
+/* ── Bottom bar ── */
+.clay-theme .bottom-bar {
+  background: #f0eef5;
+  border-top: 1px solid #e4e0f0;
+}
+
+/* ── Inputs — global ── */
+.clay-theme select,
+.clay-theme .text-input,
+.clay-theme .text-area {
+  background: #f5f3fa;
+  border: 1px solid #d8d4ea;
+  color: #3d3a50;
+  transition: all 0.25s ease;
+}
+
+.clay-theme select:focus,
+.clay-theme .text-input:focus,
+.clay-theme .text-area:focus {
+  border-color: #8b7cf6;
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, 0.15);
+}
+
+.clay-theme .input-picker {
+  border: 1px solid #d8d4ea;
+  background: #f5f3fa;
+}
+
+.clay-theme .input-picker:focus-within {
+  border-color: #8b7cf6;
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, 0.12);
+}
+
+/* ── Switch ── */
+.clay-theme .switch .slider {
+  background: #e8e4f0;
+  border: 1px solid #d8d4ea;
+}
+
+.clay-theme .switch .slider:before {
+}
+
+.clay-theme .switch input:checked + .slider {
+  background: rgba(139, 124, 246, 0.15);
+  border-color: #8b7cf6;
+}
+
+.clay-theme .switch input:checked + .slider:before {
+  background: #8b7cf6;
+  box-shadow: 0 2px 6px rgba(139, 124, 246, 0.30);
+}
+
+/* ── Slider / Range ── */
+.clay-theme input[type="range"] {
+  background: #e4e0f0;
+}
+
+.clay-theme input[type="range"]::-webkit-slider-thumb {
+  background: #8b7cf6;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(139, 124, 246, 0.30);
+}
+
+.clay-theme input[type="range"]::-moz-range-thumb {
+  background: #8b7cf6;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(139, 124, 246, 0.30);
+}
+
+/* ── Form sections — clay cards ── */
+.clay-theme .form-section {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 2px 10px rgba(139, 124, 246, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.clay-theme .config-group.row {
+  background: rgba(139, 124, 246, 0.03);
+}
+
+.clay-theme .config-group.field-modified {
+  border-left: 3px solid #8b7cf6;
+  background: rgba(139, 124, 246, 0.05);
+}
+
+/* ── Status deck ── */
+.clay-theme .status-card {
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 4px 16px rgba(139, 124, 246, 0.10), 0 1.5px 4px rgba(0, 0, 0, 0.04);
+}
+
+.clay-theme .status-indicator {
+  box-shadow: 0 0 6px rgba(139, 124, 246, 0.3);
+}
+
+/* ── Section toolbar ── */
+.clay-theme .section-toolbar {
+  background: rgba(139, 124, 246, 0.04);
+  border: 1px solid #e4e0f0;
+}
+
+/* ── JSON Panel ── */
+.clay-theme .json-panel {
+  background: #f5f3fa;
+  border-left: 1px solid #e4e0f0;
+}
+
+.clay-theme .panel-header {
+  border-bottom: 1px solid #e4e0f0;
+}
+
+.clay-theme .code-viewer {
+  background: #f5f3fa;
+}
+
+/* ── Theme toggle ── */
+.clay-theme .theme-toggle {
+  background: rgba(139, 124, 246, 0.08);
+}
+
+.clay-theme .theme-toggle:hover {
+  background: rgba(139, 124, 246, 0.15);
+  color: #8b7cf6;
+}
+
+/* ── Scrollbar ── */
+.clay-theme ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.clay-theme ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.clay-theme ::-webkit-scrollbar-thumb {
+  background: #d8d4ea;
+}
+
+.clay-theme ::-webkit-scrollbar-thumb:hover {
+  background: #c4bef0;
+}
+
+/* ── Preflight report ── */
+.clay-theme .preflight-report {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 2px 10px rgba(139, 124, 246, 0.06);
+}
+
+/* ── Training log ── */
+.clay-theme .log-area,
+.clay-theme .training-log-wrap {
+  background: #f5f3fa;
+  border: 1px solid #d8d4ea;
+}
+/* ── Plugin cards ── */
+.clay-theme .plugin-card {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 4px 16px rgba(139, 124, 246, 0.10), 0 1.5px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+}
+
+.clay-theme .plugin-card:hover {
+  box-shadow: 0 6px 24px rgba(139, 124, 246, 0.15), 0 2px 6px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.clay-theme .plugin-stats-grid {
+}
+
+/* ── System monitor ── */
+.clay-theme .sysmon-panel {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+}
+
+.clay-theme .sysmon-bar-wrap {
+  background: #e8e4f0;
+}
+
+.clay-theme .sysmon-bar {
+  background: linear-gradient(90deg, #8b7cf6, #9d90f8);
+}
+
+/* ── Quick training wizard ── */
+.clay-theme .wizard-card,
+.clay-theme .quick-flow-card {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 2px 10px rgba(139, 124, 246, 0.06);
+}
+
+/* ── Guide module ── */
+.clay-theme .guide-card,
+.clay-theme .guide-chapter {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+}
+
+/* ── About page ── */
+.clay-theme .about-card {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 4px 16px rgba(139, 124, 246, 0.10), 0 1.5px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Modal / Dropdown ── */
+.clay-theme .modal-overlay {
+  background: rgba(61, 58, 80, 0.3);
+  backdrop-filter: blur(4px);
+}
+
+.clay-theme .modal-content {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 12px 48px rgba(139, 124, 246, 0.15), 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.clay-theme .topbar-search-dropdown,
+.clay-theme .dropdown-menu {
+  background: #ffffff;
+  border: 1px solid #d8d4ea;
+  box-shadow: 0 8px 32px rgba(139, 124, 246, 0.12), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Field description ── */
+.clay-theme .field-desc {
+  color: #a8a4bc;
+}
+
+/* ── Nav resizer ── */
+.clay-theme .nav-resizer:hover,
+.clay-theme .nav-resizer.active {
+  background: #8b7cf6;
+  box-shadow: 0 0 8px rgba(139, 124, 246, 0.3);
+}
+
+/* ── Preset list ── */
+.clay-theme .preset-item {
+  transition: all 0.25s ease;
+}
+
+.clay-theme .preset-item:hover {
+  background: rgba(139, 124, 246, 0.06);
+}
+
+.clay-theme .preset-item.active {
+  background: rgba(139, 124, 246, 0.10);
+  border-color: #8b7cf6;
+}
+
+/* ── Semantic color badges ── */
+.clay-theme .badge-success { background: #e0f5e8; color: #3a8a5c; }
+.clay-theme .badge-warning { background: #fdf3da; color: #8a6d2a; }
+.clay-theme .badge-error   { background: #fde0e0; color: #a04040; }
+.clay-theme .badge-info    { background: rgba(139, 124, 246, 0.12); color: #7568e0; }
+
+/* ── Global transition softening ── */
+.clay-theme,
+.clay-theme *,
+.clay-theme *::before,
+.clay-theme *::after {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Preserve instant animations */
+.clay-theme .spinner,
+.clay-theme [class*="spin"] {
+  transition-duration: 0s !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Rounded UI Mode — 通用大圆角风格
+   当 <html> 带有 .rounded-ui 时，所有主题的组件使用大圆角
+   ═══════════════════════════════════════════════════════════════ */
+
+.rounded-ui .btn { border-radius: 12px; }
+.rounded-ui .btn-sm { border-radius: 10px; }
+.rounded-ui .btn-execute { border-radius: 27px; }
+.rounded-ui .btn-training-active { border-radius: 27px; }
+.rounded-ui .btn-training-failed { border-radius: 27px; }
+.rounded-ui .btn-terminate { border-radius: 14px; }
+
+.rounded-ui select,
+.rounded-ui .text-input,
+.rounded-ui .text-area { border-radius: 12px; }
+.rounded-ui .input-picker { border-radius: 12px; }
+
+.rounded-ui .form-section { border-radius: 18px; }
+.rounded-ui .status-card { border-radius: 18px; }
+.rounded-ui .section-toolbar { border-radius: 14px; }
+.rounded-ui .workspace-item { border-radius: 16px; }
+
+.rounded-ui .config-group.row { border-radius: 14px; }
+
+.rounded-ui .topbar-search-input-wrap { border-radius: 12px; }
+.rounded-ui .topbar-search-dropdown { border-radius: 14px; }
+
+.rounded-ui .switch .slider { border-radius: 27px; }
+
+.rounded-ui .theme-toggle { border-radius: 12px; }
+
+.rounded-ui .preflight-report { border-radius: 18px; }
+.rounded-ui .log-area,
+.rounded-ui .training-log-wrap { border-radius: 14px; }
+
+.rounded-ui .plugin-card { border-radius: 18px; }
+.rounded-ui .plugin-stats-grid { border-radius: 14px; }
+
+.rounded-ui .sysmon-panel { border-radius: 14px; }
+.rounded-ui .sysmon-bar-wrap { border-radius: 10px; }
+.rounded-ui .sysmon-bar { border-radius: 10px; }
+
+.rounded-ui .wizard-card,
+.rounded-ui .quick-flow-card { border-radius: 18px; }
+
+.rounded-ui .guide-card,
+.rounded-ui .guide-chapter { border-radius: 18px; }
+
+.rounded-ui .about-card { border-radius: 18px; }
+
+.rounded-ui .modal-content { border-radius: 22px; }
+.rounded-ui .dropdown-menu { border-radius: 14px; }
+
+.rounded-ui .preset-item { border-radius: 10px; }
+.rounded-ui .code-viewer { border-radius: 14px; }
+.rounded-ui .json-panel .panel-header { border-radius: 0; }
+
+.rounded-ui input[type="range"]::-webkit-slider-thumb { border-radius: 50%; }
