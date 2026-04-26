@@ -1,214 +1,229 @@
 # LoRA ReScripts UI V2.0.0
 
-秋叶 LoRA 训练包的独立前端界面，提供中文本地化的 SDXL LoRA 训练参数配置、数据集处理、日志查看和实用工具。大部分功能主要适配重置版后端，请在这里下载https://github.com/WhitecrowAurora/lora-rescripts
+这是 SD-reScripts 的**新前端**，对应目录为 `plugin/lora-scripts-ui-main/ui/`。
+仅适配重置版秋叶丹炉：https://github.com/WhitecrowAurora/lora-rescripts 请自行下载
+本文档中的“新前端”专指 `plugin/lora-scripts-ui-main/ui/`；除此之外，项目当前默认自带的界面可视为“旧前端 / 经典 UI”。
+
+推荐使用方式：**通过重置版秋叶丹炉的启动器启动**。
+
+---
+
+
+### 相关配置
+
+新前端的启用状态由后端配置控制，配置项位于：
+
+- `assets/config.json`
+
+关键字段：
+
+```json
+{
+  "active_ui_profile": "community:lora-scripts-ui-main"
+}
+```
+
+---
 
 ## 目录结构
 
-```
-ui/
-├── src/
-│   ├── main.js          # 主逻辑（渲染、事件、状态管理）
-│   ├── api.js           # 所有后端 API 调用封装
-│   ├── sdxlSchema.js    # SDXL LoRA 参数定义（字段、默认值、可见性规则）
-│   ├── i18n.js          # 中文本地化
-│   └── style.css        # 全部样式
-├── saved_params/        # 用户保存的参数文件（.json）
-├── dist/                # 构建产物（部署用）
-├── index.html           # 入口页面
-├── vite.config.js       # Vite 配置 + 开发服务器 API
-├── package.json
-└── README.md
-```
-
-## 部署方式
-
-### 推荐：放入训练包内部
-
-将整个 `ui/` 文件夹放到训练包根目录下：
-
-```
-lora-scripts-v1.12.0/
-├── train/
-├── sd-models/
-├── output/
-├── logs/
-├── config/
-├── python/
-├── ui/               ← 放在这里
-│   ├── src/
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-├── app.py
-└── ...
-```
-
-UI 会自动检测到上级目录就是训练包根目录（通过检查 `train/` 和 `sd-models/` 是否存在）。
-
-### 备选：与训练包同级
-
-```
-Ai paint/
-├── lora-scripts-v1.12.0/
+```text
+plugin/lora-scripts-ui-main/
 └── ui/
+    ├── src/
+    │   ├── main.js
+    │   ├── api.js
+    │   ├── sdxlSchema.js
+    │   ├── i18n.js
+    │   └── style.css
+    ├── saved_params/        # 历史开发模式下保存的参数文件
+    ├── dist/                # 可选构建产物；若存在会优先于 ui/ 源码目录被后端识别
+    ├── index.html
+    ├── vite.config.js
+    ├── package.json
+    └── README.md
 ```
 
-UI 会自动扫描同级的 `lora-scripts*` 目录。
+### 说明
 
-### 备选：环境变量
+- `ui/`：新前端源码目录
+- `ui/dist/`：如果执行过 Vite build，后端在扫描候选入口时通常会优先使用这里
+- `ui/saved_params/`：这是早期 / 开发模式下可能使用到的本地参数目录
 
-```bash
-set LORA_SCRIPTS_ROOT=D:\path\to\lora-scripts-v1.12.0
-cd ui
-npm run dev
+在**当前后端直连模式**下，参数保存的实际目录通常是：
+
+```text
+assets/ui_state/saved_configs/
 ```
+
+如果你以前在 Vite 开发模式中保存过参数，而现在在 28000 端口读取不到，通常就是因为参数还在 `ui/saved_params/`，没有同步到 `assets/ui_state/saved_configs/`。
+
+---
+
+## 与旧前端的关系
+
+- **新前端**：`plugin/lora-scripts-ui-main/ui/`
+- **旧前端 / 经典 UI**：项目原本内置的默认前端
+
+当前新前端内部已经提供：
+
+- 切换回经典 UI 的按钮
+- 通过后端 API 切换 `active_ui_profile`
+- 同端口刷新切换（通常仍然是 `28000`）
+
+因此日常使用时，不需要再单独开一个新的前端服务端口。
+
+---
 
 ## 快速开始
 
-### 方式一：一键启动（推荐）
+### 日常使用
 
-双击训练包根目录下的 **`启动前端UI.bat`**，脚本会自动：
+直接使用项目根目录的启动器即可，无需单独运行本目录下的 bat。
 
-1. 启动后端服务（`gui.py`，端口 28000），包括 TensorBoard 和 TagEditor
-2. 检查 Node.js（没有则尝试 winget 自动安装）
-3. 首次运行时自动 `npm install`（使用淘宝镜像加速）
-4. 启动前端开发服务器（端口 3006），自动打开浏览器
+典型流程：
 
-> 前置要求：Node.js 18+（脚本会尝试自动安装）
+1. 启动根目录 launcher / 启动器
+2. 启动后端
+3. 打开 `http://127.0.0.1:28000`
+4. 切换到新前端，或直接由后端默认进入新前端
 
-### 方式二：手动启动
+### 如果切不到新前端，请检查
 
-先启动后端：
+1. `assets/config.json` 中是否为：
 
-```bash
-cd lora-scripts-v1.12.0
-python gui.py --port 28000
+```json
+"active_ui_profile": "community:lora-scripts-ui-main"
 ```
 
-再启动前端：
+2. 后端是否还能识别 `plugin/lora-scripts-ui-main/ui/index.html`
+3. `mikazuki/utils/frontend_profiles.py` 是否保留了对以下目录的识别：
+   - `plugin_dir / "ui" / "dist"`
+   - `plugin_dir / "ui"`
+   - `plugin_dir / "dist"`
+   - `plugin_dir / "frontend" / "dist"`
+   - `plugin_dir / "frontend"`
+4. 如果存在旧的 `ui/dist/` 构建产物，它可能会优先于 `ui/` 源码目录被使用
+
+---
+
+## 开发说明（仅开发时需要）
+
+虽然日常使用已经不再依赖 Vite，但本目录依然保留了 Vite 相关文件，方便开发和调试。
+
+### 启动开发模式
 
 ```bash
-cd lora-scripts-v1.12.0/ui
+cd plugin/lora-scripts-ui-main/ui
 npm install
 npm run dev
 ```
 
-开发模式下，Vite 自带的中间件会模拟以下 API（直接读写本地文件）：
+开发模式主要用于：
 
-| 端点 | 说明 |
-|---|---|
-| `/api/builtin_picker` | 浏览 train / sd-models / output 目录 |
-| `/api/saved_configs/*` | 保存/读取/删除参数预设 |
-| `/api/log_dirs` | 列出训练日志目录 |
-| `/api/log_detail` | 查看日志目录详情 |
-| `/api/dataset_tags` | 读取数据集标签 |
-| `/api/dataset_tags/save` | 保存单张图片标签 |
-| `/api/image_resize` | 调用图像预处理 Python 脚本 |
+- 前端页面调试
+- HMR 热更新
+- 样式 / 交互开发
 
-其余 API（训练、预检、显卡检测、标注等）会通过 `proxy` 转发到后端 `http://127.0.0.1:28000`。
+### 开发模式注意事项
 
-### 3. 构建
+1. `vite.config.js` 会尝试自动检测项目根目录
+2. 部分接口在历史上由 Vite 本地中间件处理
+3. 当前主使用路径已经改为**由后端直接托管前端页面**
+4. 如果你只想正常使用新前端，**不需要安装 Node.js，也不需要运行 Vite**
+
+---
+
+## 构建说明
+
+如需生成构建产物：
 
 ```bash
 npm run build
 ```
 
-产物输出到 `ui/dist/`。可以直接替换训练包的 `frontend/dist/` 目录。
+输出目录：
 
-### 4. 配合后端使用
-
-启动训练包后端：
-
-```bash
-cd lora-scripts-v1.12.0
-python app.py
+```text
+plugin/lora-scripts-ui-main/ui/dist/
 ```
 
-后端默认监听 `127.0.0.1:28000`，前端开发服务器会自动代理所有 `/api` 请求过去。
+### 注意
 
-## 功能模块
+如果 `ui/dist/` 存在，后端通常会优先把它当成新前端入口。
 
-### 配置（Config）
+这意味着：
 
-- SDXL LoRA 全参数表单，按 模型/数据集/网络/优化器/训练/预览/加速/高级 分 Tab
-- 每个字段有三点菜单（撤销更改 / 恢复默认）
-- 路径字段支持内置文件选择器（浏览 train / sd-models / output 目录）
-- 状态卡片显示 GPU 信息、xFormers、训练预检、任务状态
-- 参数预览面板（右侧 JSON）
+- 如果你修改了 `ui/src/` 但没有重新 build
+- 或者 `dist/` 是旧版本产物
 
-### 参数管理（Navigator）
+那么后端仍可能继续显示旧的构建版页面，而不是最新源码版页面。
 
-- 重置所有参数
-- 保存参数（写入 `saved_params/*.json`）
-- 读取参数（列表 + 预览 + 载入 + 删除）
-- 下载配置文件（时间戳文件名）
-- 导入配置文件
+如果你希望后端直接使用 `ui/` 下的源码页面，可以删除旧的 `ui/dist/`。
 
-### 数据集处理（Dataset）
+---
 
-三个子 Tab：
+## 功能概览
 
-1. **标签器** — WD14 / CL Tagger 自动标注（12 个模型可选）
-2. **标签编辑器** — 占位，推荐使用外部 BooruDatasetTagManager
-3. **图像预处理** — 批量缩放/裁剪/转格式/重命名（调用训练包内的 Python 脚本）
+### 配置
 
-### 日志（Logs）
+- SDXL LoRA 等训练参数表单
+- 中文参数标签
+- 右侧 JSON 参数预览
+- 参数恢复默认 / 撤销修改
+- 路径字段内置选择器
 
-- 列出 `logs/` 下所有 TensorBoard 日志目录
-- 查看目录内文件详情
+### 参数管理
 
-### 工具（Tools）
+- 保存参数
+- 读取参数
+- 删除参数
+- 导入 / 导出配置
+- 重置当前参数
 
-- 从模型提取 LoRA
-- 从 DyLoRA 提取 LoRA
-- 合并 LoRA
-- 合并模型
+### 数据集处理
 
-### 设置（Settings）
+- 自动标注
+- 标签编辑相关入口
+- 图像预处理
 
-- 主题切换（深色/浅色）
-- 左侧导航栏宽度调节
-- 右侧预览面板宽度调节
+### 日志与工具
+
+- 日志目录查看
+- LoRA 提取
+- LoRA 合并
+- 模型合并
+
+### 设置
+
+- 主题切换
+- 面板宽度调整
 - 布局重置
+- UI 切换
 
-## API 接口对照表
+---
 
-前端所有 API 调用均通过 `/api` 前缀，与 lora-scripts 后端（Mikazuki）完全兼容。
+## API 说明
 
-| 前端方法 | 后端路由 | 来源 |
-|---|---|---|
-| `getGraphicCards()` | `GET /api/graphic_cards` | Mikazuki |
-| `getPresets()` | `GET /api/presets` | Mikazuki |
-| `getSavedParams()` | `GET /api/config/saved_params` | Mikazuki |
-| `getTasks()` | `GET /api/tasks` | Mikazuki |
-| `terminateTask(id)` | `GET /api/tasks/terminate/:id` | Mikazuki |
-| `pickFile(type)` | `GET /api/pick_file` | Mikazuki |
-| `runPreflight(config)` | `POST /api/train/preflight` | Vite 中间件（本地路径验证） |
-| `runTraining(config)` | `POST /api/run` | Mikazuki |
-| `runScript(params)` | `POST /api/run_script` | Mikazuki |
-| `runInterrogate(params)` | `POST /api/interrogate` | Mikazuki |
-| `getBuiltinPicker(type)` | `GET /api/builtin_picker` | Vite 中间件 |
-| `saveConfig(name, config)` | `POST /api/saved_configs/save` | Vite 中间件 |
-| `listSavedConfigs()` | `GET /api/saved_configs/list` | Vite 中间件 |
-| `loadSavedConfig(name)` | `GET /api/saved_configs/load` | Vite 中间件 |
-| `deleteSavedConfig(name)` | `GET /api/saved_configs/delete` | Vite 中间件 |
-| `getLogDirs()` | `GET /api/log_dirs` | Vite 中间件 |
-| `getLogDetail(dir)` | `GET /api/log_detail` | Vite 中间件 |
-| `getDatasetTags(dir)` | `GET /api/dataset_tags` | Vite 中间件 |
-| `saveDatasetTag(params)` | `POST /api/dataset_tags/save` | Vite 中间件 |
-| `runImageResize(params)` | `POST /api/image_resize` | Vite 中间件 |
+新前端所有接口均走 `/api/*`，主要由后端 `mikazuki/app/api.py` 提供。
 
-> "Vite 中间件" 标注的接口仅在开发模式 (`npm run dev`) 下可用。
-> 生产部署时需要由后端（Python FastAPI）实现这些端点，或将 `dist/` 替换到训练包 `frontend/dist/` 后由 Mikazuki 统一代理。
+常见接口包括：
 
-## 路径自动检测逻辑
+- `/api/ui_profiles`
+- `/api/ui_profiles/activate`
+- `/api/saved_configs/list`
+- `/api/saved_configs/load`
+- `/api/saved_configs/save`
+- `/api/local/sample_images`
+- `/api/local/open_folder`
+- `/api/local/task_history`
+- `/api/graphic_cards`
+- `/api/train/preflight`
+- `/api/run`
 
-`vite.config.js` 中的 `detectLoraScriptsRoot()` 按以下优先级检测训练包位置：
+> 说明：随着后端持续更新，接口来源已不再以“Vite 中间件”为主，当前以后端直连模式为准。
 
-1. **环境变量** `LORA_SCRIPTS_ROOT` — 最高优先级，适合自定义部署
-2. **上级目录** — 如果 `ui/` 的上级目录包含 `train/` 和 `sd-models/`，认为它就是训练包根目录
-3. **同级目录** — 扫描 `ui/` 同级的 `lora-scripts*` 目录
-4. **兜底** — 使用上级目录
+---
 
 ## 浏览器兼容性
 
@@ -216,5 +231,3 @@ python app.py
 - Edge 90+
 - Firefox 90+
 - Safari 15+
-
-
