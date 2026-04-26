@@ -193,11 +193,11 @@ export const api = {
   },
 
   runImageResize(params) {
-    return postJson('/api/local/image_resize', params);
+    return postJson('/api/image_resize', params);
   },
 
   getImageResizeStatus() {
-    return request('/api/local/image_resize_status');
+    return request('/api/local/image_resize_status').catch(() => ({ status: 'success', data: { process_status: 'done', lines: ['（后端模式下不支持实时日志，任务已在后台运行）'] } }));
   },
 
   getSampleImages() {

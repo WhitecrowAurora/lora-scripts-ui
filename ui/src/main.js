@@ -498,13 +498,9 @@ function renderConfig(container) {
       ${renderSlot('config.after_status_deck')}
       <div class="section-toolbar">
         <div class="toolbar-actions toolbar-check-actions">
-          <button class="btn btn-outline btn-check" type="button" onclick="runPreflight()">
+          <button class="btn btn-outline btn-check" type="button" onclick="runPreflight()" style="width:100%;">
             <span class="btn-check-label">训练预检</span>
-            <span class="btn-check-desc">检查数据集路径、底模路径等参数是否可用</span>
-          </button>
-          <button class="btn btn-outline btn-check" type="button" onclick="runSelfCheck()">
-            <span class="btn-check-label">环境自检</span>
-            <span class="btn-check-desc">检测 GPU、Torch、依赖库等运行环境</span>
+            <span class="btn-check-desc">检测运行环境 + 检查数据集路径、底模路径等参数</span>
           </button>
         </div>
       </div>
@@ -3862,7 +3858,7 @@ function renderTagger() {
   if (!content) return;
 
   const allInterrogators = state.interrogators?.interrogators || [];
-  const defaultModel = state.interrogators?.default || 'wd14-convnextv2-v2';
+  const defaultModel = 'wd-eva02-large-tagger-v3';
   const wdModels = allInterrogators.filter((m) => m.kind === 'wd' || m.kind === 'cl');
   const llmModels = allInterrogators.filter((m) => m.kind === 'llm');
   const fallbackModels = [
@@ -3922,7 +3918,7 @@ function renderTagger() {
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>递归扫描子目录</label></div>
-          <label class="switch switch-compact"><input type="checkbox" id="tagger-recursive"><span class="slider round"></span></label>
+          <label class="switch switch-compact"><input type="checkbox" id="tagger-recursive" checked><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>替换下划线为空格</label></div>
@@ -4260,14 +4256,14 @@ function renderImageResize() {
           <label>输出格式</label>
           <select id="resize-format">
             <option value="ORIGINAL">原格式</option>
-            <option value="JPEG">JPEG (.jpg)</option>
+            <option value="JPEG" selected>JPEG (.jpg)</option>
             <option value="WEBP">WEBP (.webp)</option>
             <option value="PNG">PNG (.png)</option>
           </select>
         </div>
         <div class="config-group">
-          <label>质量 (JPG/WEBP)：<span id="resize-quality-val">95</span>%</label>
-          <input type="range" id="resize-quality" value="95" min="1" max="100" step="1" oninput="document.getElementById('resize-quality-val').textContent=this.value">
+          <label>质量 (JPG/WEBP)：<span id="resize-quality-val">100</span>%</label>
+          <input type="range" id="resize-quality" value="100" min="1" max="100" step="1" oninput="document.getElementById('resize-quality-val').textContent=this.value">
         </div>
         <div class="config-group" style="grid-column:1/-1;">
           <label>目标分辨率列表</label>
@@ -4280,19 +4276,19 @@ function renderImageResize() {
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>精确裁剪到目标尺寸</label><p class="field-desc">缩放后居中裁剪，输出精确等于目标尺寸。</p></div>
-          <label class="switch switch-compact"><input type="checkbox" id="resize-exact"><span class="slider round"></span></label>
+          <label class="switch switch-compact"><input type="checkbox" id="resize-exact" checked><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>递归处理子目录</label><p class="field-desc">扫描并处理所有子文件夹中的图片。</p></div>
-          <label class="switch switch-compact"><input type="checkbox" id="resize-recursive"><span class="slider round"></span></label>
+          <label class="switch switch-compact"><input type="checkbox" id="resize-recursive" checked><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>自动重命名 (文件夹名_序号)</label><p class="field-desc">输出文件命名为 父文件夹名_1、父文件夹名_2 ...</p></div>
-          <label class="switch switch-compact"><input type="checkbox" id="resize-rename"><span class="slider round"></span></label>
+          <label class="switch switch-compact"><input type="checkbox" id="resize-rename" checked><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>处理后删除原图</label><p class="field-desc">处理成功后删除源文件，建议配合输出目录使用。</p></div>
-          <label class="switch switch-compact"><input type="checkbox" id="resize-delete"><span class="slider round"></span></label>
+          <label class="switch switch-compact"><input type="checkbox" id="resize-delete" checked><span class="slider round"></span></label>
         </div>
         <div class="config-group row boolean-card">
           <div class="label-col"><label>同步处理描述文件</label><p class="field-desc">自动同步 .txt / .npz / .caption 文件。</p></div>
@@ -5299,39 +5295,8 @@ window.pickPath = async (key, pickerType) => {
 window.runPreflight = async () => {
   state.loading.preflight = true;
   updateJSONPreview();
+  showToast('正在执行训练预检...');
 
-  try {
-    const response = await api.runPreflight(buildRunConfig(state.config, state.activeTrainingType));
-    if (response.status !== 'success') {
-      state.preflight = {
-        can_start: false,
-        errors: [response.message || '训练预检失败。'],
-        warnings: [],
-      };
-    } else {
-      state.preflight = response.data;
-    }
-  } catch (error) {
-    state.preflight = {
-      can_start: false,
-      errors: [error.message || '训练预检失败。'],
-      warnings: [],
-    };
-  } finally {
-    state.loading.preflight = false;
-    if (state.activeModule === 'config') {
-      renderView('config');
-    } else if (state.activeModule === 'training') {
-      state.trainSubTab = 'preflight';
-      renderView('training');
-    } else {
-      updateJSONPreview();
-    }
-  }
-};
-
-window.runSelfCheck = async () => {
-  showToast('正在执行环境自检...');
   try {
     const [runtimeRes, preflightRes] = await Promise.allSettled([
       api.getGraphicCards(),
@@ -5343,15 +5308,32 @@ window.runSelfCheck = async () => {
     } else {
       state.runtimeError = runtimeRes.reason?.message || '运行环境不可用';
     }
-    if (preflightRes.status === 'fulfilled') {
-      state.preflight = preflightRes.value.data || null;
+    if (preflightRes.status === 'fulfilled' && preflightRes.value.status === 'success') {
+      state.preflight = preflightRes.value.data;
+    } else {
+      state.preflight = {
+        can_start: false,
+        errors: [preflightRes.reason?.message || preflightRes.value?.message || '训练预检失败。'],
+        warnings: [],
+      };
     }
-    showToast('环境自检完成');
+    showToast('训练预检完成');
   } catch (error) {
-    showToast(error.message || '环境自检失败');
+    state.preflight = {
+      can_start: false,
+      errors: [error.message || '训练预检失败。'],
+      warnings: [],
+    };
+    showToast(error.message || '训练预检失败');
   } finally {
+    state.loading.preflight = false;
     if (state.activeModule === 'config') {
       renderView('config');
+    } else if (state.activeModule === 'training') {
+      state.trainSubTab = 'preflight';
+      renderView('training');
+    } else {
+      updateJSONPreview();
     }
   }
 };

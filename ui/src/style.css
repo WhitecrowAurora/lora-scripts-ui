@@ -1352,7 +1352,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 .toolbar-check-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
   width: 100%;
 }
