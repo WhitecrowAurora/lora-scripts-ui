@@ -26,6 +26,11 @@ import {
   isFieldVisible,
   normalizeDraftValue,
 } from './sdxlSchema.js';
+import {
+  ALL_OPTIMIZERS,
+  ALL_SCHEDULERS,
+  SCHEDULER_TYPE_TO_VALUE,
+} from './features/settingsOptions.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
@@ -570,6 +575,13 @@ function renderField(field) {
 
   if (field.type === 'select') {
     let filteredOptions = field.options;
+    const ensureCurrentOption = (options) => {
+      const current = value === undefined || value === null ? '' : String(value);
+      if (!current || options.includes(current)) {
+        return options;
+      }
+      return [current, ...options];
+    };
     if (field.key === 'optimizer_type') {
       const vis = JSON.parse(localStorage.getItem('sd-rescripts:visible-optimizers') || '[]');
       if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
@@ -578,6 +590,7 @@ function renderField(field) {
       const vis = JSON.parse(localStorage.getItem('sd-rescripts:visible-schedulers') || '[]');
       if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
     }
+    filteredOptions = ensureCurrentOption(filteredOptions);
     return `
       <div class="config-group${modCls}" data-field-key="${field.key}">
         ${renderHeader()}
@@ -3653,8 +3666,8 @@ function renderAbout(container) {
 
 
 function renderSettings(container) {
-  const allOptimizers = ['AdamW','AdamW8bit','PagedAdamW8bit','Lion','Lion8bit','SGDNesterov','SGDNesterov8bit','DAdaptation','DAdaptAdam','DAdaptAdaGrad','DAdaptAdan','DAdaptLion','DAdaptSGD','Adafactor','AdaFactor','Prodigy','pytorch_optimizer.CAME','pytorch_optimizer.Adan','pytorch_optimizer.AdaPNM','pytorch_optimizer.ADOPT','pytorch_optimizer.Lamb','pytorch_optimizer.MADGRAD','pytorch_optimizer.Ranger','pytorch_optimizer.Ranger21','pytorch_optimizer.Tiger'];
-  const allSchedulers = ['linear','cosine','cosine_with_restarts','polynomial','constant','constant_with_warmup','adafactor','cosine_annealing','cosine_annealing_with_warmup','cosine_annealing_warm_restarts','rex','inverse_sqrt','warmup_stable_decay'];
+  const allOptimizers = ALL_OPTIMIZERS;
+  const allSchedulers = ALL_SCHEDULERS;
   const savedTbUrl = localStorage.getItem('sd-rescripts:tensorboard-url') || '';
   const savedOptimizers = JSON.parse(localStorage.getItem('sd-rescripts:visible-optimizers') || '[]');
   const savedSchedulers = JSON.parse(localStorage.getItem('sd-rescripts:visible-schedulers') || '[]');
@@ -5421,6 +5434,15 @@ function setupImportConfig() {
       if (Array.isArray(parsed.lr_scheduler_args)) {
         parsed.lr_scheduler_args = parsed.lr_scheduler_args.join('\n');
       }
+      // 自定义调度器类路径 → UI 下拉显示值
+      if (typeof parsed.lr_scheduler_type === 'string') {
+        const schedulerType = parsed.lr_scheduler_type.trim();
+        const bridgedScheduler = SCHEDULER_TYPE_TO_VALUE[schedulerType];
+        if (bridgedScheduler) {
+          parsed.lr_scheduler = bridgedScheduler;
+          delete parsed.lr_scheduler_type;
+        }
+      }
       // 导入文件时先重置为默认配置，防止旧参数残留
       const importType = parsed.model_train_type || state.activeTrainingType;
       if (importType && importType !== state.activeTrainingType) {
@@ -5848,6 +5870,15 @@ window.loadNamedConfig = async (name) => {
     // 旧格式：lr_scheduler_args 数组 → string
     if (Array.isArray(data.lr_scheduler_args)) {
       data.lr_scheduler_args = data.lr_scheduler_args.join('\n');
+    }
+    // 自定义调度器类路径 → UI 下拉显示值
+    if (typeof data.lr_scheduler_type === 'string') {
+      const schedulerType = data.lr_scheduler_type.trim();
+      const bridgedScheduler = SCHEDULER_TYPE_TO_VALUE[schedulerType];
+      if (bridgedScheduler) {
+        data.lr_scheduler = bridgedScheduler;
+        delete data.lr_scheduler_type;
+      }
     }
     // 旧格式：base_weights 数组 → string
     if (Array.isArray(data.base_weights)) {

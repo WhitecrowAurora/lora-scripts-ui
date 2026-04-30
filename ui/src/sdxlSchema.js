@@ -3,6 +3,12 @@
 // 支持: LoRA / Finetune / ControlNet / Textual Inversion 全系列
 // ================================================================
 
+import {
+  ALL_OPTIMIZERS,
+  ALL_SCHEDULERS,
+  SCHEDULER_VALUE_TO_TYPE,
+} from './features/settingsOptions.js';
+
 export const UI_TABS = [
   { key: 'model', label: '模型' },
   { key: 'dataset', label: '数据集' },
@@ -16,6 +22,22 @@ export const UI_TABS = [
 
 function when(key, expected) { return (c) => c[key] === expected; }
 function all(...fns) { return (c) => fns.every((f) => f(c)); }
+
+const STANDARD_SCHEDULERS = [
+  'linear',
+  'cosine',
+  'cosine_with_restarts',
+  'polynomial',
+  'constant',
+  'constant_with_warmup',
+  'adafactor',
+  'inverse_sqrt',
+  'reduce_lr_on_plateau',
+  'cosine_with_min_lr',
+  'cosine_warmup_with_min_lr',
+  'warmup_stable_decay',
+  'piecewise_constant',
+];
 
 // ================================================================
 // 训练类型注册表
@@ -93,10 +115,10 @@ const S_LR = [
   { key: 'unet_lr', type: 'string', label: 'U-Net 学习率（unet_lr）', desc: 'U-Net 学习率', defaultValue: '1e-4' },
   { key: 'text_encoder_lr', type: 'string', label: '文本编码器学习率（text_encoder_lr）', desc: '文本编码器学习率', defaultValue: '1e-5' },
   { key: 'weight_decay', type: 'number', label: '权重衰减（weight_decay）', desc: '权重衰减（等价于自动注入 optimizer_args: weight_decay=...）', defaultValue: '', step: 0.0001 },
-  { key: 'lr_scheduler', type: 'select', label: '学习率调度器（lr_scheduler）', desc: '学习率调度器设置', defaultValue: 'cosine_with_restarts', options: ['linear', 'cosine', 'cosine_with_restarts', 'polynomial', 'constant', 'constant_with_warmup'] },
+  { key: 'lr_scheduler', type: 'select', label: '学习率调度器（lr_scheduler）', desc: '学习率调度器设置；选择 torch.optim.* / pytorch_optimizer.* 等自定义项时会自动写入 lr_scheduler_type', defaultValue: 'cosine_with_restarts', options: ALL_SCHEDULERS },
   { key: 'lr_warmup_steps', type: 'number', label: '预热步数（lr_warmup_steps）', desc: '学习率预热步数', defaultValue: 0, min: 0 },
   { key: 'lr_scheduler_num_cycles', type: 'number', label: '重启次数（lr_scheduler_num_cycles）', desc: '重启次数', defaultValue: 1, min: 1, visibleWhen: when('lr_scheduler', 'cosine_with_restarts') },
-  { key: 'optimizer_type', type: 'select', label: '优化器（optimizer_type）', desc: '优化器设置', defaultValue: 'AdamW8bit', options: ['AdamW', 'AdamW8bit', 'PagedAdamW8bit', 'RAdamScheduleFree', 'Lion', 'Lion8bit', 'PagedLion8bit', 'SGDNesterov', 'SGDNesterov8bit', 'DAdaptation', 'DAdaptAdam', 'DAdaptAdaGrad', 'DAdaptAdanIP', 'DAdaptLion', 'DAdaptSGD', 'AdaFactor', 'Prodigy', 'prodigyplus.ProdigyPlusScheduleFree', 'pytorch_optimizer.CAME', 'bitsandbytes.optim.AdEMAMix8bit', 'bitsandbytes.optim.PagedAdEMAMix8bit'] },
+  { key: 'optimizer_type', type: 'select', label: '优化器（optimizer_type）', desc: '优化器设置。pytorch_optimizer.* / bitsandbytes.optim.* 会按完整类路径传给后端', defaultValue: 'AdamW8bit', options: ALL_OPTIMIZERS },
   { key: 'min_snr_gamma', type: 'number', label: 'Min-SNR Gamma', desc: '最小信噪比伽马值, 如果启用推荐为 5', defaultValue: '', min: 0, step: 0.1 },
   { key: 'prodigy_d0', type: 'string', label: 'Prodigy d0', desc: 'Prodigy 初始步长估计。留空使用默认值', defaultValue: '', visibleWhen: when('optimizer_type', 'Prodigy') },
   { key: 'prodigy_d_coef', type: 'string', label: 'Prodigy d_coef', desc: 'Prodigy d 系数，影响自适应学习率大小', defaultValue: '2.0', visibleWhen: when('optimizer_type', 'Prodigy') },
@@ -902,9 +924,9 @@ const cnTrainFields = [
 const cnLR = [
   { key: 'learning_rate', type: 'string', label: '学习率（learning_rate）', desc: '学习率', defaultValue: '1e-4' },
   { key: 'control_net_lr', type: 'string', label: 'ControlNet 学习率（control_net_lr）', desc: 'ControlNet 学习率', defaultValue: '1e-4' },
-  { key: 'lr_scheduler', type: 'select', label: '学习率调度器（lr_scheduler）', desc: '学习率调度器', defaultValue: 'cosine_with_restarts', options: ['linear', 'cosine', 'cosine_with_restarts', 'polynomial', 'constant', 'constant_with_warmup'] },
+  { key: 'lr_scheduler', type: 'select', label: '学习率调度器（lr_scheduler）', desc: '学习率调度器；选择 torch.optim.* / pytorch_optimizer.* 等自定义项时会自动写入 lr_scheduler_type', defaultValue: 'cosine_with_restarts', options: ALL_SCHEDULERS },
   { key: 'lr_warmup_steps', type: 'number', label: '预热步数（lr_warmup_steps）', desc: '预热步数', defaultValue: 0, min: 0 },
-  { key: 'optimizer_type', type: 'select', label: '优化器（optimizer_type）', desc: '优化器', defaultValue: 'AdamW8bit', options: ['AdamW', 'AdamW8bit', 'PagedAdamW8bit', 'Lion', 'DAdaptation', 'AdaFactor', 'Prodigy'] },
+  { key: 'optimizer_type', type: 'select', label: '优化器（optimizer_type）', desc: '优化器。pytorch_optimizer.* / bitsandbytes.optim.* 会按完整类路径传给后端', defaultValue: 'AdamW8bit', options: ALL_OPTIMIZERS },
 ];
 const SD_CN_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SD1.5 ControlNet。', cnModel('sd-controlnet', 'SD1.5', [{ key: 'v2', type: 'boolean', label: 'SD 2.x', desc: 'SD 2.x', defaultValue: false }])),
@@ -1121,10 +1143,10 @@ const NEWBIE_LORA_SECTIONS = [
     { key: 'seed', type: 'number', label: '随机种子（seed）', desc: '随机种子', defaultValue: 42 },
   ]),
   sec('optimizer-settings', 'training', '优化器与学习率', '', [
-    { key: 'optimizer_type', type: 'select', label: '优化器（optimizer_type）', desc: '优化器', defaultValue: 'AdamW8bit', options: ['AdamW8bit', 'AdamW'] },
+    { key: 'optimizer_type', type: 'select', label: '优化器（optimizer_type）', desc: 'Newbie 当前后端仅正式支持 AdamW8bit / AdamW', defaultValue: 'AdamW8bit', options: ['AdamW8bit', 'AdamW'] },
     { key: 'learning_rate', type: 'string', label: '学习率（learning_rate）', desc: '学习率', defaultValue: '0.0001' },
     { key: 'weight_decay', type: 'number', label: '权重衰减（weight_decay）', desc: '权重衰减', defaultValue: 0.01, min: 0, step: 0.0001 },
-    { key: 'lr_scheduler', type: 'select', label: '学习率调度器（lr_scheduler）', desc: '学习率调度器', defaultValue: 'cosine', options: ['cosine', 'cosine_with_restarts', 'linear', 'constant'] },
+    { key: 'lr_scheduler', type: 'select', label: '学习率调度器（lr_scheduler）', desc: 'Newbie 使用 diffusers 调度器', defaultValue: 'cosine', options: ['linear', 'cosine', 'cosine_with_restarts', 'polynomial', 'constant', 'constant_with_warmup', 'piecewise_constant'] },
     { key: 'lr_warmup_steps', type: 'number', label: 'Warmup 步数（lr_warmup_steps）', desc: 'warmup 步数', defaultValue: 100, min: 0 },
     { key: 'max_grad_norm', type: 'number', label: '梯度裁剪（max_grad_norm）', desc: '梯度裁剪', defaultValue: 1.0, min: 0, step: 0.01 },
   ]),
@@ -1291,6 +1313,17 @@ export function buildRunConfig(config, typeId) {
     }
   }
   payload.model_train_type = tid;
+
+  // ── 扩展调度器显示项 → 后端自定义 lr_scheduler_type ──
+  // UI 的 lr_scheduler 下拉可显示 torch.optim / pytorch_optimizer 调度器。
+  // 后端 train_util 仍要求这类调度器通过 lr_scheduler_type 传入。
+  if (payload.lr_scheduler && SCHEDULER_VALUE_TO_TYPE[payload.lr_scheduler]) {
+    payload.lr_scheduler_type = SCHEDULER_VALUE_TO_TYPE[payload.lr_scheduler];
+    payload.lr_scheduler = 'constant';
+  } else if (payload.lr_scheduler && !STANDARD_SCHEDULERS.includes(payload.lr_scheduler)) {
+    payload.lr_scheduler_type = payload.lr_scheduler;
+    payload.lr_scheduler = 'constant';
+  }
 
   // ── Prodigy / 自适应优化器 optimizer_args 自动组装 ──
   // 旧前端会自动生成 optimizer_args = ["decouple=True", "weight_decay=0.01", ...]
