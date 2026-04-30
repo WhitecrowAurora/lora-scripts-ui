@@ -1,5 +1,6 @@
 import { $, $$ } from '../utils/dom.js';
 import { configToToml, parseSimpleToml } from '../utils/toml.js';
+import { SCHEDULER_TYPE_TO_VALUE } from './settingsOptions.js';
 
 export function createConfigActionsController({
   state,
@@ -301,5 +302,14 @@ function normalizeImportedConfig(parsed) {
 
   if (Array.isArray(parsed.lr_scheduler_args)) {
     parsed.lr_scheduler_args = parsed.lr_scheduler_args.join('\n');
+  }
+
+  if (typeof parsed.lr_scheduler_type === 'string') {
+    const schedulerType = parsed.lr_scheduler_type.trim();
+    const bridgedScheduler = SCHEDULER_TYPE_TO_VALUE[schedulerType];
+    if (bridgedScheduler) {
+      parsed.lr_scheduler = bridgedScheduler;
+      delete parsed.lr_scheduler_type;
+    }
   }
 }

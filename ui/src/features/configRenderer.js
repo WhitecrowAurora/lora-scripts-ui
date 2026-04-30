@@ -104,6 +104,13 @@ export function createConfigRenderer({
 
     if (field.type === 'select') {
       let filteredOptions = field.options;
+      const ensureCurrentOption = (options) => {
+        const current = value === undefined || value === null ? '' : String(value);
+        if (!current || options.includes(current)) {
+          return options;
+        }
+        return [current, ...options];
+      };
       if (field.key === 'optimizer_type') {
         const vis = JSON.parse(localStorage.getItem('sd-rescripts:visible-optimizers') || '[]');
         if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
@@ -112,6 +119,7 @@ export function createConfigRenderer({
         const vis = JSON.parse(localStorage.getItem('sd-rescripts:visible-schedulers') || '[]');
         if (vis.length > 0) filteredOptions = field.options.filter((o) => vis.includes(o));
       }
+      filteredOptions = ensureCurrentOption(filteredOptions);
       return `
         <div class="config-group${modCls}" data-field-key="${field.key}">
           ${renderHeader()}
