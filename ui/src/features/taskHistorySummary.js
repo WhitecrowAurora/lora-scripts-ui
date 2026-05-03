@@ -97,7 +97,6 @@ export function createTaskHistorySummaryController({ api, state, renderView }) {
 
   async function saveLocalTaskHistory() {
     const completed = state.tasks.filter((task) => task.status !== 'CREATED');
-    if (completed.length === 0) return;
     try {
       await fetch('/api/local/task_history', {
         method: 'POST',
