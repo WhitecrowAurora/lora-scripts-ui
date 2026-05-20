@@ -232,6 +232,50 @@ export const api = {
     return postJson('/api/dataset/analyze', params);
   },
 
+  getJobs() {
+    return request('/api/jobs');
+  },
+
+  getJob(jobId) {
+    return request(`/api/jobs/${encodeURIComponent(jobId)}`);
+  },
+
+  cancelJob(jobId) {
+    return postJson(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {});
+  },
+
+  startTagAnalysis(params) {
+    return postJson('/api/tageditor/analysis/start', params);
+  },
+
+  previewTagAnalysis(params) {
+    return postJson('/api/tageditor/analysis/preview', params);
+  },
+
+  getTagAnalysisResult(params) {
+    return postJson('/api/tageditor/analysis/result', params);
+  },
+
+  getTagSuggestions(params) {
+    return postJson('/api/tageditor/suggestions', params);
+  },
+
+  refineTagSuggestions(params) {
+    return postJson('/api/tageditor/suggestions/llm_refine', params);
+  },
+
+  refreshTagSuggestions(params) {
+    return postJson('/api/tageditor/suggestions/refresh', params);
+  },
+
+  startTagBatchAction(params) {
+    return postJson('/api/tageditor/batch_action/start', params);
+  },
+
+  startInterrogateBatch(params) {
+    return postJson('/api/tageditor/interrogate_batch/start', params);
+  },
+
   /** Masked-loss 数据集审查 */
   maskedLossAudit(params) {
     return postJson('/api/dataset/masked_loss_audit', params);
@@ -245,6 +289,10 @@ export const api = {
   /** Caption 清洗 - 应用 */
   captionCleanupApply(params) {
     return postJson('/api/captions/cleanup/apply', params);
+  },
+
+  captionCleanupStart(params) {
+    return postJson('/api/captions/cleanup/start', params);
   },
 
   /** Caption 备份 - 创建 */

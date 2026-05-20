@@ -1,0 +1,23 @@
+{
+  "id": "community:offline-runtime-pack",
+  "name": "Offline Runtime Pack",
+  "version": "0.1.0",
+  "description": "Local wheel and lock resources for launcher runtime installation.",
+  "capabilities": [],
+  "hooks": [],
+  "enabled_by_default": true,
+  "offline_runtime_pack": {
+    "schema_version": 1,
+    "runtime_ids": [
+      "standard",
+      "sageattention",
+      "sageattention2",
+      "flash2",
+      "spargeattn2",
+      "blackwell",
+      "sageattention-blackwell"
+    ],
+    "locks_root": "locks",
+    "resources_root": "resources"
+  }
+}

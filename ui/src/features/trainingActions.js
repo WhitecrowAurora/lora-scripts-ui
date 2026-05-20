@@ -116,6 +116,12 @@ export function createTrainingActionsController({
     const networkModule = String(c.network_module || '').trim().toLowerCase();
     const loraType = String(c.lora_type || '').trim().toLowerCase();
     const optimizerText = `${c.optimizer_type || ''} ${c.optimizer || ''}`.toLowerCase();
+    const swapGranularity = String(c.swap_granularity || 'off').trim().toLowerCase().replace('-', '_');
+    const validSwapGranularities = new Set(['off', 'auto', 'block', 'merged_block', 'layer']);
+    const swapRatio = toNum(c.swap_ratio);
+    const swapCount = toNum(c.swap_count);
+    const legacyBlocksToSwap = toNum(c.blocks_to_swap);
+    const memorySwapEnabled = (swapGranularity !== 'off' && (swapRatio > 0 || swapCount > 0 || swapGranularity === 'auto')) || legacyBlocksToSwap > 0;
     const isAnimaRoute = String(tt || '').startsWith('anima-') || String(c.model_train_type || '').toLowerCase().startsWith('anima-');
     const supportedVramSwapModules = new Set([
       'networks.lora',
@@ -221,24 +227,41 @@ export function createTrainingActionsController({
       warnings.push('「缓存 Latent 到磁盘」已开启但「缓存 Latent」未开启。建议一并开启。');
     }
 
-    if (toNum(c.blocks_to_swap) > 0 && toBool(c.cpu_offload_checkpointing)) {
-      warnings.push('blocks_to_swap 与 cpu_offload_checkpointing 通常不建议同时使用。');
+    if (!validSwapGranularities.has(swapGranularity)) {
+      errors.push(`显存交换模式无效：${swapGranularity}。`);
+    }
+    if (swapRatio < 0 || swapRatio > 1) {
+      errors.push('显存交换比例必须在 0 到 1 之间。');
+    }
+    if (memorySwapEnabled && toBool(c.torch_compile)) {
+      errors.push('显存交换不能与 torch.compile 同时使用。请关闭其中一个。');
+    }
+    if (memorySwapEnabled && toBool(c.vram_swap_to_ram)) {
+      errors.push('显存交换不能与 VRAM Swap to RAM 同时使用。请只保留一种显存搬运策略。');
+    }
+    if (memorySwapEnabled && (toBool(c.safe_fallback) || toBool(c.newbie_safe_fallback))) {
+      errors.push('显存交换不能与 OOM 安全回退同时使用。请关闭其中一个。');
+    }
+    if (swapGranularity === 'layer' && toBool(c.gradient_checkpointing)) {
+      errors.push('Layer Swap 不能与梯度检查点同时使用。请改用 block/merged_block 或关闭梯度检查点。');
+    }
+    if (memorySwapEnabled && toBool(c.cpu_offload_checkpointing)) {
+      warnings.push('显存交换与 cpu_offload_checkpointing 通常不建议同时使用。');
     }
 
-    if (toBool(c.flow_model) && toBool(c.v_parameterization)) {
-      errors.push('Rectified Flow 不能与「V 参数化」同时开启。请二选一。');
+    const flowModel = String(c.flow_model || '').trim();
+    const flowEnabled = flowModel === 'rectified_flow' || flowModel === 'cfm' || toBool(c.flow_model);
+    const timestepSampling = String(c.timestep_sampling || c.flow_timestep_distribution || 'uniform');
+    if (flowEnabled && toBool(c.v_parameterization)) {
+      errors.push('Flow Matching 不能与「V 参数化」同时开启。请二选一。');
     }
 
-    if (toBool(c.contrastive_flow_matching) && !toBool(c.flow_model)) {
-      errors.push('启用「对比 Flow Matching」前，必须先开启「Rectified Flow」。');
-    }
-
-    if (toBool(c.flow_model) && String(c.flow_timestep_distribution || 'logit_normal') === 'logit_normal' && toNum(c.flow_logit_std) <= 0) {
+    if (flowEnabled && timestepSampling === 'logit_normal' && toNum(c.flow_logit_std) <= 0) {
       errors.push('RF Logit Std 必须大于 0。');
     }
 
-    if (toBool(c.flow_model) && c.flow_uniform_static_ratio !== '' && c.flow_uniform_static_ratio != null && toNum(c.flow_uniform_static_ratio) <= 0) {
-      errors.push('RF 固定偏移比率必须大于 0。');
+    if (flowEnabled && c.flow_uniform_static_ratio !== '' && c.flow_uniform_static_ratio != null && toNum(c.flow_uniform_static_ratio) < 0) {
+      errors.push('RF 固定偏移比率不能小于 0。');
     }
 
     if (isSageEnv) {

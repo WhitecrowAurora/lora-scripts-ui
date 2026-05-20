@@ -22,6 +22,8 @@ export const UI_TABS = [
 
 function when(key, expected) { return (c) => c[key] === expected; }
 function all(...fns) { return (c) => fns.every((f) => f(c)); }
+function oneOf(key, values) { return (c) => values.includes(c[key]); }
+function swapEnabled(c) { return c.swap_granularity && c.swap_granularity !== 'off'; }
 
 const STANDARD_SCHEDULERS = [
   'linear',
@@ -186,6 +188,10 @@ const S_SPEED_SDXL = [
   { key: 'vae_batch_size', type: 'number', label: 'VAE 编码批量（vae_batch_size）', desc: 'VAE 编码批量大小', defaultValue: '', min: 1 },
   { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile（torch_compile）', desc: '实验性：启用 PyTorch torch.compile，部分环境可提升训练吞吐。首次编译会更慢，后续迭代加速明显。⚠️ 默认 inductor 后端依赖 Triton，若报错可改用 eager 后端或关闭此项', defaultValue: false },
   { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端（dynamo_backend）', desc: 'torch.compile 后端。inductor 为默认推荐；cudagraphs 适合固定形状输入；eager/aot_eager 用于调试', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
+  { key: 'swap_granularity', type: 'select', label: '显存交换模式（swap_granularity）', desc: 'off 关闭；auto 自动选择；block 按 block 搬运；merged_block 合并 block 降低 PCIe 传输次数；layer 为高级子层交换。', defaultValue: 'off', options: ['off', 'auto', 'block', 'merged_block', 'layer'] },
+  { key: 'swap_ratio', type: 'slider', label: '显存交换比例（swap_ratio）', desc: '按原始 block/layer 总数计算交换比例。0 表示只在 auto 或 swap_count 下生效。', defaultValue: 0, min: 0, max: 1, step: 0.05, visibleWhen: swapEnabled },
+  { key: 'swap_count', type: 'number', label: '显存交换数量（swap_count）', desc: '高级：绝对交换数量。大于 0 时优先于比例。', defaultValue: 0, min: 0, visibleWhen: swapEnabled },
+  { key: 'block_merge_size', type: 'number', label: '合并 Block 大小（block_merge_size）', desc: 'merged_block 模式下每组包含的 block 数，不跨 down/mid/up 阶段边界。', defaultValue: 2, min: 2, visibleWhen: when('swap_granularity', 'merged_block') },
   { key: 'vram_swap_to_ram', type: 'boolean', label: 'VRAM Swap to RAM（vram_swap_to_ram）', desc: '实验性：让原生 LoRA / LoRA-FA / T-LoRA / VeRA 适配器权重常驻 CPU RAM，前向时再按需拉回训练设备。更省显存，但通常更慢；暂不支持 LyCORIS、DeepSpeed、多进程、full_fp16/full_bf16 以及部分 8bit/paged 优化器', defaultValue: false },
   { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点（cpu_offload_checkpointing）', desc: '梯度检查点时将部分张量卸载到 CPU，节省显存', defaultValue: false },
   { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化（pytorch_cuda_expandable_segments）', desc: '训练前自动设置 PYTORCH_ALLOC_CONF=expandable_segments:True，缓解显存碎片导致的 OOM。一般对速度影响很小', defaultValue: true },
@@ -208,7 +214,11 @@ const S_SPEED_FLOW = [
   { key: 'cache_text_encoder_outputs_to_disk', type: 'boolean', label: '缓存文本编码器输出到磁盘（cache_text_encoder_outputs_to_disk）', desc: '缓存文本编码器的输出到磁盘', defaultValue: true },
   { key: 'text_encoder_outputs_cache_disk_format', type: 'select', label: '文本缓存格式（text_encoder_outputs_cache_disk_format）', desc: '文本编码器输出磁盘缓存格式。默认 safetensors；若已有旧缓存会自动兼容读取 npz', defaultValue: 'safetensors', options: ['safetensors', 'npz'], visibleWhen: when('cache_text_encoder_outputs_to_disk', true) },
   { key: 'text_encoder_outputs_cache_dtype', type: 'select', label: '文本缓存精度（text_encoder_outputs_cache_dtype）', desc: '文本编码器输出磁盘缓存保存精度。auto 会尽量保留运行时 dtype；fp16 / bf16 更省空间，fp32 兼容性更高', defaultValue: 'auto', options: ['auto', 'fp16', 'bf16', 'fp32'], visibleWhen: when('cache_text_encoder_outputs_to_disk', true) },
-  { key: 'blocks_to_swap', type: 'number', label: 'Block 交换数（blocks_to_swap）', desc: '在 CPU/GPU 间交换的 block 数量，省显存。', defaultValue: '', min: 1 },
+  { key: 'swap_granularity', type: 'select', label: '显存交换模式（swap_granularity）', desc: 'off 关闭；auto 自动选择；block 按 block 搬运；merged_block 合并 block 降低 PCIe 传输次数；layer 为高级子层交换。', defaultValue: 'off', options: ['off', 'auto', 'block', 'merged_block', 'layer'] },
+  { key: 'swap_ratio', type: 'slider', label: '显存交换比例（swap_ratio）', desc: '按原始 block/layer 总数计算交换比例。0 表示只在 auto 或 swap_count 下生效。', defaultValue: 0, min: 0, max: 1, step: 0.05, visibleWhen: swapEnabled },
+  { key: 'swap_count', type: 'number', label: '显存交换数量（swap_count）', desc: '高级：绝对交换数量。大于 0 时优先于比例。', defaultValue: 0, min: 0, visibleWhen: swapEnabled },
+  { key: 'block_merge_size', type: 'number', label: '合并 Block 大小（block_merge_size）', desc: 'merged_block 模式下每组包含的 block 数，不跨 down/mid/up 阶段边界。', defaultValue: 2, min: 2, visibleWhen: when('swap_granularity', 'merged_block') },
+  { key: 'blocks_to_swap', type: 'number', label: '旧版 Block 交换数（blocks_to_swap）', desc: '兼容旧配置。新配置建议使用上方显存交换模式、比例和数量。', defaultValue: '', min: 1 },
   { key: 'fp8_base_unet', type: 'boolean', label: '仅 U-Net FP8（fp8_base_unet）', desc: '仅对 U-Net / DiT 使用 FP8 精度', defaultValue: false },
   { key: 'text_encoder_batch_size', type: 'number', label: '文本编码器缓存批量（text_encoder_batch_size）', desc: '文本编码器缓存批量大小', defaultValue: '', min: 1 },
   { key: 'disable_mmap_load_safetensors', type: 'boolean', label: '禁用 mmap 加载（disable_mmap_load_safetensors）', desc: '禁用 mmap 方式加载 safetensors，减少共享内存占用', defaultValue: false },
@@ -289,6 +299,10 @@ const S_SPEED_SD15 = [
   { key: 'vae_batch_size', type: 'number', label: 'VAE 编码批量（vae_batch_size）', desc: 'VAE 编码批量大小', defaultValue: '', min: 1 },
   { key: 'torch_compile', type: 'boolean', label: '启用 torch.compile（torch_compile）', desc: '实验性：启用 PyTorch torch.compile，部分环境可提升训练吞吐。首次编译会更慢，后续迭代加速明显。⚠️ 默认 inductor 后端依赖 Triton，若报错可改用 eager 后端或关闭此项', defaultValue: false },
   { key: 'dynamo_backend', type: 'select', label: 'torch.compile 后端（dynamo_backend）', desc: 'torch.compile 后端。inductor 为默认推荐；cudagraphs 适合固定形状输入；eager/aot_eager 用于调试', defaultValue: 'inductor', options: ['eager', 'aot_eager', 'inductor', 'cudagraphs'], visibleWhen: when('torch_compile', true) },
+  { key: 'swap_granularity', type: 'select', label: '显存交换模式（swap_granularity）', desc: 'off 关闭；auto 自动选择；block 按 block 搬运；merged_block 合并 block 降低 PCIe 传输次数；layer 为高级子层交换。', defaultValue: 'off', options: ['off', 'auto', 'block', 'merged_block', 'layer'] },
+  { key: 'swap_ratio', type: 'slider', label: '显存交换比例（swap_ratio）', desc: '按原始 block/layer 总数计算交换比例。0 表示只在 auto 或 swap_count 下生效。', defaultValue: 0, min: 0, max: 1, step: 0.05, visibleWhen: swapEnabled },
+  { key: 'swap_count', type: 'number', label: '显存交换数量（swap_count）', desc: '高级：绝对交换数量。大于 0 时优先于比例。', defaultValue: 0, min: 0, visibleWhen: swapEnabled },
+  { key: 'block_merge_size', type: 'number', label: '合并 Block 大小（block_merge_size）', desc: 'merged_block 模式下每组包含的 block 数，不跨 down/mid/up 阶段边界。', defaultValue: 2, min: 2, visibleWhen: when('swap_granularity', 'merged_block') },
   { key: 'vram_swap_to_ram', type: 'boolean', label: 'VRAM Swap to RAM（vram_swap_to_ram）', desc: '实验性：让原生 LoRA / LoRA-FA / T-LoRA / VeRA 适配器权重常驻 CPU RAM，前向时再按需拉回训练设备。更省显存，但通常更慢；暂不支持 LyCORIS、DeepSpeed、多进程、full_fp16/full_bf16 以及部分 8bit/paged 优化器', defaultValue: false },
   { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点（cpu_offload_checkpointing）', desc: '梯度检查点时将部分张量卸载到 CPU，节省显存', defaultValue: false },
   { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化（pytorch_cuda_expandable_segments）', desc: '训练前自动设置 PYTORCH_ALLOC_CONF=expandable_segments:True，缓解显存碎片导致的 OOM。一般对速度影响很小', defaultValue: true },
@@ -446,17 +460,22 @@ const flowParams = (defaults = {}) => [
   { key: 'loss_type', type: 'select', label: '损失函数类型（loss_type）', desc: '损失函数类型', defaultValue: defaults.lt || 'l2', options: ['l1', 'l2', 'huber', 'smooth_l1'] },
 ];
 
+const flowEnabled = oneOf('flow_model', ['rectified_flow', 'cfm']);
+
 const rectifiedFlowParams = () => [
-  { key: 'flow_model', type: 'boolean', label: '启用 Rectified Flow（flow_model）', desc: '启用 RF / Flow Matching 训练目标。不能与 V 参数化同时开启', defaultValue: false },
-  { key: 'flow_use_ot', type: 'boolean', label: 'RF 最优传输配对（flow_use_ot）', desc: '按 cosine OT 重新配对 latent 与噪声。batch 大于 1 时才有实际收益', defaultValue: false, visibleWhen: when('flow_model', true) },
-  { key: 'flow_timestep_distribution', type: 'select', label: 'RF 时间步分布（flow_timestep_distribution）', desc: 'RF 时间步采样分布', defaultValue: 'logit_normal', options: ['logit_normal', 'uniform'], visibleWhen: when('flow_model', true) },
-  { key: 'flow_logit_mean', type: 'number', label: 'RF Logit Mean', desc: 'logit-normal 时间步采样均值', defaultValue: 0.0, step: 0.01, visibleWhen: all(when('flow_model', true), when('flow_timestep_distribution', 'logit_normal')) },
-  { key: 'flow_logit_std', type: 'number', label: 'RF Logit Std', desc: 'logit-normal 时间步采样标准差，必须大于 0', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: all(when('flow_model', true), when('flow_timestep_distribution', 'logit_normal')) },
-  { key: 'flow_uniform_shift', type: 'boolean', label: 'RF 分辨率偏移（flow_uniform_shift）', desc: '按图像像素数动态偏移 RF 时间步', defaultValue: false, visibleWhen: when('flow_model', true) },
-  { key: 'flow_uniform_base_pixels', type: 'number', label: 'RF 基准像素数（flow_uniform_base_pixels）', desc: '分辨率偏移的基准像素数。1024x1024 = 1048576', defaultValue: 1048576, min: 1, step: 1, visibleWhen: all(when('flow_model', true), when('flow_uniform_shift', true)) },
-  { key: 'flow_uniform_static_ratio', type: 'number', label: 'RF 固定偏移比率（flow_uniform_static_ratio）', desc: '填写后覆盖分辨率动态偏移。留空则不使用固定比率', defaultValue: '', min: 0.001, step: 0.001, visibleWhen: when('flow_model', true) },
-  { key: 'contrastive_flow_matching', type: 'boolean', label: '对比 Flow Matching（contrastive_flow_matching）', desc: '启用 CFM 辅助项。需要同时开启 Rectified Flow', defaultValue: false, visibleWhen: when('flow_model', true) },
-  { key: 'cfm_lambda', type: 'number', label: 'CFM 权重（cfm_lambda）', desc: '对比 Flow Matching 权重', defaultValue: 0.05, min: 0, step: 0.001, visibleWhen: all(when('flow_model', true), when('contrastive_flow_matching', true)) },
+  { key: 'flow_model', type: 'select', label: 'Flow Matching 模式（flow_model）', desc: '关闭或选择 SDXL/SD1.5 Flow Matching 训练目标。不能与 V 参数化同时开启', defaultValue: '', options: ['', 'rectified_flow', 'cfm'] },
+  { key: 'timestep_sampling', type: 'select', label: 'Flow 时间步采样（timestep_sampling）', desc: '后端实际使用的 Flow 时间步采样策略。', defaultValue: 'uniform', options: ['uniform', 'sigma', 'sigmoid', 'shift', 'logit_normal'], visibleWhen: flowEnabled },
+  { key: 'sdxl_model_prediction_type', type: 'select', label: 'Flow 预测目标（sdxl_model_prediction_type）', desc: 'SDXL/SD1.5 Flow 路径的模型预测目标。', defaultValue: 'epsilon', options: ['epsilon', 'velocity', 'sample'], visibleWhen: flowEnabled },
+  { key: 'sdxl_flow_weighting_scheme', type: 'select', label: 'Flow Loss 权重（sdxl_flow_weighting_scheme）', desc: 'Flow loss 的 sigma 权重策略。', defaultValue: 'none', options: ['none', 'sigma_sqrt', 'cosmap', 'logit_normal'], visibleWhen: flowEnabled },
+  { key: 'sdxl_flow_shift', type: 'number', label: 'Flow 离散偏移（sdxl_flow_shift）', desc: '离散 flow shift，1.0 表示不偏移。', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: flowEnabled },
+  { key: 'sdxl_sigmoid_scale', type: 'number', label: 'Flow Sigmoid Scale（sdxl_sigmoid_scale）', desc: 'sigmoid 时间步采样缩放。', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: all(flowEnabled, when('timestep_sampling', 'sigmoid')) },
+  { key: 'flow_logit_mean', type: 'number', label: 'RF Logit Mean', desc: 'logit-normal 时间步采样均值', defaultValue: 0.0, step: 0.01, visibleWhen: all(flowEnabled, when('timestep_sampling', 'logit_normal')) },
+  { key: 'flow_logit_std', type: 'number', label: 'RF Logit Std', desc: 'logit-normal 时间步采样标准差，必须大于 0', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: all(flowEnabled, when('timestep_sampling', 'logit_normal')) },
+  { key: 'flow_use_ot', type: 'boolean', label: 'RF 最优传输配对（flow_use_ot）', desc: '配置保留字段；当前 SDXL Flow 训练路径暂未消费。', defaultValue: false, visibleWhen: flowEnabled },
+  { key: 'flow_uniform_shift', type: 'boolean', label: 'RF 分辨率偏移（flow_uniform_shift）', desc: '配置保留字段；当前 SDXL Flow 训练路径暂未消费。', defaultValue: false, visibleWhen: flowEnabled },
+  { key: 'flow_uniform_base_pixels', type: 'number', label: 'RF 基准像素数（flow_uniform_base_pixels）', desc: '后端默认 256；当前 SDXL Flow 训练路径暂未消费。', defaultValue: 256, min: 1, step: 1, visibleWhen: all(flowEnabled, when('flow_uniform_shift', true)) },
+  { key: 'flow_uniform_static_ratio', type: 'number', label: 'RF 固定偏移比率（flow_uniform_static_ratio）', desc: '配置保留字段；当前 SDXL Flow 训练路径暂未消费。', defaultValue: 0.0, min: 0, step: 0.001, visibleWhen: flowEnabled },
+  { key: 'cfm_lambda', type: 'number', label: 'CFM 权重（cfm_lambda）', desc: 'CFM 模式权重；后端默认 1.0。', defaultValue: 1.0, min: 0, step: 0.001, visibleWhen: when('flow_model', 'cfm') },
 ];
 
 // helper: section factory
@@ -1451,7 +1470,11 @@ const NEWBIE_LORA_SECTIONS = [
     { key: 'newbie_gemma_max_token_length', type: 'number', label: 'Gemma 最大 Token（newbie_gemma_max_token_length）', desc: 'Gemma 最大 token 长度', defaultValue: 512, min: 32 },
     { key: 'newbie_clip_max_token_length', type: 'number', label: 'CLIP 最大 Token（newbie_clip_max_token_length）', desc: 'CLIP 最大 token 长度', defaultValue: 2048, min: 32 },
     { key: 'newbie_caption_length_bucket_size', type: 'number', label: 'Caption Bucket 大小（newbie_caption_length_bucket_size）', desc: 'caption 长度 bucket 大小。0 表示关闭，仅按分辨率 bucket，更贴近官方', defaultValue: 0, min: 0 },
-    { key: 'blocks_to_swap', type: 'number', label: 'CPU 交换 Block 数（blocks_to_swap）', desc: '交换到 CPU 的 block 数量。0 表示关闭', defaultValue: 0, min: 0 },
+    { key: 'swap_granularity', type: 'select', label: '显存交换模式（swap_granularity）', desc: 'off 关闭；auto 自动选择；block 按 block 搬运；merged_block 合并 block 降低 PCIe 传输次数；layer 为高级子层交换。', defaultValue: 'off', options: ['off', 'auto', 'block', 'merged_block', 'layer'] },
+    { key: 'swap_ratio', type: 'slider', label: '显存交换比例（swap_ratio）', desc: '按原始 block/layer 总数计算交换比例。0 表示只在 auto 或 swap_count 下生效。', defaultValue: 0, min: 0, max: 1, step: 0.05, visibleWhen: swapEnabled },
+    { key: 'swap_count', type: 'number', label: '显存交换数量（swap_count）', desc: '高级：绝对交换数量。大于 0 时优先于比例。', defaultValue: 0, min: 0, visibleWhen: swapEnabled },
+    { key: 'block_merge_size', type: 'number', label: '合并 Block 大小（block_merge_size）', desc: 'merged_block 模式下每组包含的 block 数。', defaultValue: 2, min: 2, visibleWhen: when('swap_granularity', 'merged_block') },
+    { key: 'blocks_to_swap', type: 'number', label: '旧版 CPU 交换 Block 数（blocks_to_swap）', desc: '兼容旧配置。新配置建议使用上方显存交换模式、比例和数量。', defaultValue: 0, min: 0 },
     { key: 'newbie_auto_swap_release', type: 'boolean', label: '自动 Swap 释放（newbie_auto_swap_release）', desc: '开启后会在显存占用持续偏低时逐步减少 blocks_to_swap，以回收一部分训练速度', defaultValue: false },
     { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点（cpu_offload_checkpointing）', desc: '实验性：checkpointing 时把部分张量卸载到 CPU', defaultValue: false },
     { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化（pytorch_cuda_expandable_segments）', desc: '启用 PyTorch CUDA expandable_segments 以降低碎片化 OOM', defaultValue: true },

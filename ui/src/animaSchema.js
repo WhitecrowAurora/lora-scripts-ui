@@ -1,6 +1,6 @@
 // Anima LoRA schema - based on mikazuki/schema/anima-lora.ts
 
-import { when, all } from './schemaRegistry.js';
+import { when, all, oneOf } from './schemaRegistry.js';
 
 const ANIMA_TABS = [
   { key: 'model', label: '\u6a21\u578b' },
@@ -14,6 +14,7 @@ const ANIMA_TABS = [
 ];
 
 const ANIMA_BLOCK_WEIGHTS_28 = Array(28).fill('1').join(',');
+const swapEnabled = oneOf('swap_granularity', ['auto', 'block', 'merged_block', 'layer']);
 
 const ANIMA_SECTIONS = [
   {
@@ -29,6 +30,7 @@ const ANIMA_SECTIONS = [
       { key: 'llm_adapter_path', type: 'file', pickerType: 'model-file', label: 'LLM Adapter \u8def\u5f84', desc: '\uff08\u53ef\u9009\uff09\u8986\u76d6 Anima \u5185\u7f6e Adapter\u3002', defaultValue: '' },
       { key: 't5_tokenizer_path', type: 'folder', pickerType: 'folder', label: 'T5 Tokenizer \u76ee\u5f55', desc: '\uff08\u53ef\u9009\uff09\u7559\u7a7a\u56de\u9000\u5230 configs/t5_old\u3002', defaultValue: '' },
       { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '\u7ee7\u7eed\u8bad\u7ec3 LoRA', desc: '\u4ece\u5df2\u6709\u7684 LoRA \u6a21\u578b\u4e0a\u7ee7\u7eed\u8bad\u7ec3\uff0c\u586b\u5199\u8def\u5f84', defaultValue: '' },
+      { key: 'dit_adapter_path', type: 'file', pickerType: 'output-model-file', label: 'Anima DiT Adapter', desc: '加载已有 Anima DiT adapter 权重，仅作为 adapter 权重恢复/初始化使用。', defaultValue: '' },
       { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '\u7ee7\u7eed\u8bad\u7ec3\u8def\u5f84', desc: '\u4ece save_state \u4fdd\u5b58\u7684\u4e2d\u65ad\u72b6\u6001\u7ee7\u7eed\u8bad\u7ec3\u3002', defaultValue: '' },
     ],
   },
@@ -122,21 +124,44 @@ const ANIMA_SECTIONS = [
     title: '\u7f51\u7edc\u8bbe\u7f6e',
     description: 'LoRA / T-LoRA / LoKr \u9002\u914d\u5668\u53c2\u6570\u3002',
     fields: [
-      { key: 'lora_type', type: 'select', label: '\u9002\u914d\u5668\u7c7b\u578b', desc: 'LoRA \u662f\u57fa\u7840\u8def\u7ebf\uff1bLoRA-FA \u51bb\u7ed3 lora_down\uff1bVeRA \u4f7f\u7528\u5171\u4eab\u968f\u673a\u6295\u5f71\uff1bT-LoRA \u52a8\u6001 rank\uff1bLoKr \u4e3a\u5b9e\u9a8c\u8def\u7ebf\u3002', defaultValue: 'lora', options: ['lora', 'lora_fa', 'vera', 'tlora', 'lokr'] },
+      { key: 'lora_type', type: 'select', label: '\u9002\u914d\u5668\u7c7b\u578b', desc: 'LoRA \u662f\u57fa\u7840\u8def\u7ebf\uff1bLoRA-FA \u51bb\u7ed3 lora_down\uff1bVeRA \u4f7f\u7528\u5171\u4eab\u968f\u673a\u6295\u5f71\uff1bT-LoRA \u52a8\u6001 rank\uff1bLoKr \u4e3a\u5b9e\u9a8c\u8def\u7ebf\u3002', defaultValue: 'lora', options: ['lora', 'dora', 'lora_fa', 'vera', 'tlora', 'hydralora', 'fera', 'loha', 'locon', 'lokr'] },
       { key: 'network_dim', type: 'slider', label: '\u7f51\u7edc\u7ef4\u5ea6', defaultValue: 16, min: 1, max: 512, step: 1 },
       { key: 'network_alpha', type: 'slider', label: '\u7f51\u7edc Alpha', defaultValue: 16, min: 1, max: 512, step: 1 },
       { key: 'dim_from_weights', type: 'boolean', label: '\u4ece\u6743\u91cd\u63a8\u65ad Dim', defaultValue: false },
       { key: 'scale_weight_norms', type: 'number', label: '\u6700\u5927\u8303\u6570\u6b63\u5219\u5316', defaultValue: '', min: 0, step: 0.01 },
       { key: 'train_norm', type: 'boolean', label: '\u8bad\u7ec3 Norm \u5c42', desc: '额外训练带可学习参数的归一化层（如 RMSNorm/LayerNorm 的 weight/bias），用于微调特征尺度和风格/域适配；会小幅增加显存占用和 LoRA 文件大小，并增加过拟合风险，普通训练建议先关闭。', defaultValue: false },
-      { key: 'network_dropout', type: 'number', label: 'Dropout', defaultValue: 0, min: 0, step: 0.01, visibleWhen: (c) => c.lora_type === 'lora' || c.lora_type === 'lora_fa' || c.lora_type === 'vera' || c.lora_type === 'tlora' },
+      { key: 'network_dropout', type: 'number', label: 'Dropout', defaultValue: 0, min: 0, step: 0.01, visibleWhen: (c) => c.lora_type === 'lora' || c.lora_type === 'lora_fa' || c.lora_type === 'vera' || c.lora_type === 'tlora' || c.lora_type === 'lokr' },
       { key: 'tlora_min_rank', type: 'number', label: 'T-LoRA \u6700\u5c0f Rank', defaultValue: 1, min: 1, visibleWhen: when('lora_type', 'tlora') },
-      { key: 'tlora_rank_schedule', type: 'select', label: 'T-LoRA Rank \u8c03\u5ea6', defaultValue: 'cosine', options: ['cosine', 'linear'], visibleWhen: when('lora_type', 'tlora') },
+      { key: 'tlora_rank_schedule', type: 'select', label: 'T-LoRA Rank \u8c03\u5ea6', defaultValue: 'linear', options: ['constant', 'linear', 'geometric'], visibleWhen: when('lora_type', 'tlora') },
       { key: 'pissa_init', type: 'boolean', label: '\u542f\u7528 PiSSA \u521d\u59cb\u5316', defaultValue: false, visibleWhen: when('lora_type', 'lora') },
-      { key: 'lokr_factor', type: 'number', label: 'LoKr \u5206\u89e3\u56e0\u5b50', defaultValue: 8, min: -1, visibleWhen: when('lora_type', 'lokr') },
+      { key: 'lokr_factor', type: 'number', label: 'LoKr \u5206\u89e3\u56e0\u5b50', defaultValue: -1, min: -1, visibleWhen: when('lora_type', 'lokr') },
+      { key: 'lokr_rank_dropout', type: 'number', label: 'LoKr Rank Dropout', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: when('lora_type', 'lokr') },
+      { key: 'lokr_module_dropout', type: 'number', label: 'LoKr Module Dropout', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: when('lora_type', 'lokr') },
+      { key: 'lokr_train_norm', type: 'boolean', label: 'LoKr 训练 Norm', desc: '启用后 LoKr 会额外注入 LayerNorm/RMSNorm 适配参数。', defaultValue: false, visibleWhen: when('lora_type', 'lokr') },
       { key: 'lokr_export_mode', type: 'select', label: 'LoKr \u4fdd\u5b58\u683c\u5f0f', desc: 'native \u4fdd\u7559\u539f\u751f LoKr \u6743\u91cd\uff1blora_compatible \u4f1a\u5c55\u5f00\u4e3a\u6807\u51c6 LoRA \u517c\u5bb9\u6743\u91cd\u3002', defaultValue: 'native', options: ['native', 'lora_compatible'], visibleWhen: when('lora_type', 'lokr') },
       { key: 'full_matrix', type: 'boolean', label: 'LoKr Full Matrix', desc: '\u5f3a\u5236\u4f7f\u7528 direct lokr_w1/lokr_w2 \u5206\u652f\u3002', defaultValue: false, visibleWhen: when('lora_type', 'lokr') },
       { key: 'decompose_both', type: 'boolean', label: 'LoKr \u53cc\u4fa7\u5206\u89e3', desc: '\u542f\u7528 lokr_w1_a/b \u548c lokr_w2_a/b \u4f4e\u79e9\u5206\u652f\u3002', defaultValue: false, visibleWhen: when('lora_type', 'lokr') },
       { key: 'unbalanced_factorization', type: 'boolean', label: 'LoKr \u975e\u5747\u8861\u5206\u89e3', desc: '\u4ea4\u6362\u8f93\u51fa\u5206\u89e3\u7ef4\u5ea6\uff0c\u7528\u4e8e\u5bf9\u9f50 LyCORIS \u5b9e\u9a8c\u8bed\u4e49\u3002', defaultValue: false, visibleWhen: when('lora_type', 'lokr') },
+      { key: 'hydralora_num_experts', type: 'number', label: 'HydraLoRA 专家数', defaultValue: 4, min: 1, visibleWhen: when('lora_type', 'hydralora') },
+      { key: 'hydralora_routing', type: 'select', label: 'HydraLoRA 路由', defaultValue: 'top_k', options: ['top_k', 'dense'], visibleWhen: when('lora_type', 'hydralora') },
+      { key: 'hydralora_top_k', type: 'number', label: 'HydraLoRA Top-K', defaultValue: 2, min: 1, visibleWhen: when('lora_type', 'hydralora') },
+      { key: 'hydralora_balance_loss_weight', type: 'number', label: 'HydraLoRA 均衡 Loss 权重', defaultValue: 0, min: 0, step: 0.001, visibleWhen: when('lora_type', 'hydralora') },
+      { key: 'fera_gate_init', type: 'number', label: 'FeRA Gate 初始值', defaultValue: 0, step: 0.001, visibleWhen: when('lora_type', 'fera') },
+      { key: 'easy_control_enabled', type: 'boolean', label: '启用 EasyControl', desc: '接收 batch 中的 control_images 并在 noisy latent 前加入轻量 residual；完整 sidecar 数据集接线仍需后续闭环。', defaultValue: false },
+      { key: 'control_image_dir', type: 'directory', label: 'Control 图片目录', defaultValue: '', visibleWhen: when('easy_control_enabled', true) },
+      { key: 'control_suffix', type: 'string', label: 'Control 文件后缀', defaultValue: '', visibleWhen: when('easy_control_enabled', true) },
+      { key: 'easy_control_scale', type: 'number', label: 'EasyControl Scale', defaultValue: 1, min: 0, step: 0.01, visibleWhen: when('easy_control_enabled', true) },
+      { key: 'easy_control_channels', type: 'number', label: 'EasyControl 通道数', defaultValue: 3, min: 1, visibleWhen: when('easy_control_enabled', true) },
+      { key: 'ip_adapter_enabled', type: 'boolean', label: '启用 IP-Adapter', desc: '训练 projector 并支持 batch 中的 ip_adapter_image_features；真实图像编码器接线仍需后续闭环。', defaultValue: false },
+      { key: 'ip_adapter_encoder_dim', type: 'number', label: 'IP-Adapter Encoder Dim', defaultValue: 1024, min: 1, visibleWhen: when('ip_adapter_enabled', true) },
+      { key: 'ip_adapter_cond_dim', type: 'number', label: 'IP-Adapter Cond Dim', defaultValue: 1152, min: 1, visibleWhen: when('ip_adapter_enabled', true) },
+      { key: 'ip_adapter_num_image_tokens', type: 'number', label: 'IP-Adapter Image Tokens', defaultValue: 16, min: 1, visibleWhen: when('ip_adapter_enabled', true) },
+      { key: 'ip_adapter_scale', type: 'number', label: 'IP-Adapter Scale', defaultValue: 1, min: 0, step: 0.01, visibleWhen: when('ip_adapter_enabled', true) },
+      { key: 'ip_adapter_cond_mode', type: 'select', label: 'IP-Adapter Cond 模式', defaultValue: 'concat', options: ['concat', 'replace'], visibleWhen: when('ip_adapter_enabled', true) },
+      { key: 'reft_enabled', type: 'boolean', label: '启用 ReFT', desc: '在指定 DiT 模块 hidden state 上训练低秩 residual intervention。', defaultValue: false },
+      { key: 'reft_target_modules', type: 'textarea', label: 'ReFT 目标模块', desc: '逗号/换行分隔的模块路径，例如 net.blocks.0 或 blocks.0。', defaultValue: '', visibleWhen: when('reft_enabled', true) },
+      { key: 'reft_rank', type: 'number', label: 'ReFT Rank', defaultValue: 8, min: 1, visibleWhen: when('reft_enabled', true) },
+      { key: 'reft_init_scale', type: 'number', label: 'ReFT 初始尺度', defaultValue: 0, min: 0, step: 0.001, visibleWhen: when('reft_enabled', true) },
       { key: 'enable_base_weight', type: 'boolean', label: '\u542f\u7528\u57fa\u7840\u6743\u91cd', defaultValue: false },
     ],
   },
@@ -227,7 +252,11 @@ const ANIMA_SECTIONS = [
       { key: 'text_encoder_outputs_cache_disk_format', type: 'select', label: '\u6587\u672c\u7f13\u5b58\u683c\u5f0f', desc: '\u6587\u672c\u7f16\u7801\u5668\u8f93\u51fa\u78c1\u76d8\u7f13\u5b58\u683c\u5f0f\u3002\u9ed8\u8ba4 safetensors\uff1b\u82e5\u5df2\u6709\u65e7\u7684 npz \u7f13\u5b58\u4e5f\u4f1a\u81ea\u52a8\u517c\u5bb9\u8bfb\u53d6', defaultValue: 'safetensors', options: ['safetensors', 'npz'], visibleWhen: v => v.cache_text_encoder_outputs_to_disk === true },
       { key: 'text_encoder_outputs_cache_dtype', type: 'select', label: '\u6587\u672c\u7f13\u5b58\u7cbe\u5ea6', desc: '\u6587\u672c\u7f16\u7801\u5668\u8f93\u51fa\u78c1\u76d8\u7f13\u5b58\u7684\u4fdd\u5b58\u7cbe\u5ea6\u3002auto \u4f1a\u5c3d\u91cf\u4fdd\u7559\u8fd0\u884c\u65f6 dtype\uff1bfp16 / bf16 \u66f4\u7701\u7a7a\u95f4\uff0cfp32 \u517c\u5bb9\u6027\u66f4\u9ad8', defaultValue: 'auto', options: ['auto', 'fp16', 'bf16', 'fp32'], visibleWhen: v => v.cache_text_encoder_outputs_to_disk === true },
       { key: 'text_encoder_batch_size', type: 'number', label: '\u6587\u672c\u7f16\u7801\u5668\u6279\u91cf\u5927\u5c0f', defaultValue: '', min: 1 },
-      { key: 'blocks_to_swap', type: 'number', label: 'Block \u4ea4\u6362\u6570\u91cf', desc: 'CPU/GPU \u95f4\u4ea4\u6362\u7684 Transformer block \u6570\u3002', defaultValue: '', min: 1 },
+      { key: 'swap_granularity', type: 'select', label: '显存交换模式', desc: 'off 关闭；auto 自动选择；block 按 block 搬运；merged_block 合并 block 降低 PCIe 传输次数；layer 为高级子层交换。', defaultValue: 'off', options: ['off', 'auto', 'block', 'merged_block', 'layer'] },
+      { key: 'swap_ratio', type: 'slider', label: '显存交换比例', desc: '按原始 block/layer 总数计算交换比例。0 表示只在 auto 或 swap_count 下生效。', defaultValue: 0, min: 0, max: 1, step: 0.05, visibleWhen: swapEnabled },
+      { key: 'swap_count', type: 'number', label: '显存交换数量', desc: '高级：绝对交换数量。大于 0 时优先于比例。', defaultValue: 0, min: 0, visibleWhen: swapEnabled },
+      { key: 'block_merge_size', type: 'number', label: '合并 Block 大小', desc: 'merged_block 模式下每组包含的 block 数。', defaultValue: 2, min: 2, visibleWhen: when('swap_granularity', 'merged_block') },
+      { key: 'blocks_to_swap', type: 'number', label: '旧版 Block 交换数量', desc: '兼容旧配置。新配置建议使用上方显存交换模式、比例和数量。', defaultValue: '', min: 1 },
       { key: 'experimental_attention_profile_enabled', type: 'boolean', label: '步骤耗时统计', desc: '步骤耗时窗口统计开关。默认关闭，仅在诊断训练速度/瓶颈时建议开启', defaultValue: false },
       { key: 'experimental_attention_profile_window', type: 'number', label: '统计窗口 (步)', desc: '每 N 个优化步输出一次聚合耗时摘要', defaultValue: 50, min: 1, visibleWhen: v => v.experimental_attention_profile_enabled === true },
       { key: 'vram_swap_to_ram', type: 'boolean', label: 'VRAM Swap to RAM', desc: '\u5b9e\u9a8c\u6027\uff1a\u8ba9\u539f\u751f Anima LoRA / LoRA-FA / VeRA / T-LoRA \u9002\u914d\u5668\u6743\u91cd\u5e38\u9a7b CPU RAM\uff0c\u524d\u5411\u65f6\u518d\u6309\u9700\u62c9\u56de\u8bad\u7ec3\u8bbe\u5907\u3002\u66f4\u7701\u663e\u5b58\uff0c\u4f46\u901a\u5e38\u66f4\u6162\uff1b\u6682\u4e0d\u652f\u6301 LoKr\u3001\u591a\u8fdb\u7a0b\u3001full_fp16/full_bf16 \u4ee5\u53ca\u90e8\u5206 8bit/paged \u4f18\u5316\u5668', defaultValue: false },
@@ -325,3 +354,4 @@ export const ANIMA_LORA_SCHEMA = {
   sections: ANIMA_SECTIONS,
   conditionalKeys: ANIMA_CONDITIONAL_KEYS,
 };
+
