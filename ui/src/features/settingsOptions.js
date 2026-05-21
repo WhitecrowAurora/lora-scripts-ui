@@ -6,7 +6,6 @@
 export const BASE_OPTIMIZERS = [
   'AdamW',
   'AdamW8bit',
-  'AdamW8bitKahan',
   'PagedAdamW8bit',
   'PagedAdamW',
   'PagedAdamW32bit',

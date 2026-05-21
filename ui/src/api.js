@@ -37,6 +37,32 @@ function postJson(path, data) {
   });
 }
 
+/**
+ * 仅同步本地历史文件 (./task_history.json)。
+ * 用于在调用后端真删除接口成功后，把本地缓存里同 ID 的条目一并清掉，
+ * 避免下次启动时本地历史文件把已删任务又拉回来。
+ * 失败不抛异常（本地缓存是兜底，后端才是权威）。
+ */
+async function syncLocalTaskHistoryRemoval(taskId) {
+  const normalizedId = String(taskId || '');
+  if (!normalizedId) return;
+  try {
+    const history = await request('/api/local/task_history');
+    const tasks = Array.isArray(history?.data?.tasks) ? history.data.tasks : [];
+    const filtered = tasks.filter((task) => String(task?.id || task?.task_id || '') !== normalizedId);
+    if (filtered.length !== tasks.length) {
+      await postJson('/api/local/task_history', { tasks: filtered });
+    }
+  } catch (_e) { /* 本地缓存同步失败不影响主流程 */ }
+}
+
+/** 清空本地任务历史文件（与 DELETE /api/tasks 配合使用）。失败静默。 */
+async function clearLocalTaskHistoryFile() {
+  try {
+    await request('/api/local/task_history', { method: 'DELETE' });
+  } catch (_e) { /* ignore */ }
+}
+
 export const api = {
   getGraphicCards() {
     return request('/api/graphic_cards');
@@ -58,16 +84,35 @@ export const api = {
     return request(`/api/tasks/terminate/${taskId}`);
   },
 
-  deleteTask(taskId) {
-    return request(`/api/tasks/${taskId}`, { method: 'DELETE' });
+  /**
+   * 删除单个任务记录。优先走后端 DELETE /api/tasks/{taskId}，
+   * 同时同步清理本地 task_history.json 缓存。
+   */
+  async deleteTask(taskId) {
+    const normalizedId = String(taskId || '');
+    if (!normalizedId) {
+      return { status: 'success', data: { deleted: 0 } };
+    }
+    const resp = await request(`/api/tasks/${encodeURIComponent(normalizedId)}`, { method: 'DELETE' });
+    // 后端真删除成功后，再同步清掉本地历史中的同 ID 记录
+    syncLocalTaskHistoryRemoval(normalizedId);
+    return resp;
   },
 
-  deleteAllTasks() {
-    return request('/api/tasks', { method: 'DELETE' });
+  /**
+   * 清空所有已完成任务记录。优先走后端 DELETE /api/tasks，
+   * 同时清空本地 task_history.json 文件。
+   */
+  async deleteAllTasks() {
+    const resp = await request('/api/tasks', { method: 'DELETE' });
+    // 后端真清空后，本地缓存文件也一并清空
+    clearLocalTaskHistoryFile();
+    return resp;
   },
 
+  /** 仅清空本地 task_history.json 缓存（不动后端）。 */
   deleteLocalTaskHistory(taskId) {
-    return request(`/api/local/task_history/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+    return syncLocalTaskHistoryRemoval(taskId);
   },
 
   pickFile(type) {
@@ -201,7 +246,13 @@ export const api = {
   },
 
   getImageResizeStatus() {
-    return request('/api/local/image_resize_status').catch(() => ({ status: 'success', data: { process_status: 'done', lines: ['（后端模式下不支持实时日志，任务已在后台运行）'] } }));
+    return request('/api/local/image_resize_status').catch(() => ({
+      status: 'success',
+      data: {
+        process_status: 'unavailable',
+        lines: ['后端已接收图像预处理任务（后台运行），不提供实时日志状态，请稍后查看输出目录。'],
+      },
+    }));
   },
 
   getSampleImages() {
@@ -232,58 +283,72 @@ export const api = {
     return postJson('/api/dataset/analyze', params);
   },
 
+  /** 分布式/异步任务列表 */
   getJobs() {
     return request('/api/jobs');
   },
 
+  /** 异步任务详情 */
   getJob(jobId) {
     return request(`/api/jobs/${encodeURIComponent(jobId)}`);
   },
 
+  /** 取消异步任务 */
   cancelJob(jobId) {
     return postJson(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {});
   },
 
+  /** 标签分析 - 提交异步任务 */
   startTagAnalysis(params) {
     return postJson('/api/tageditor/analysis/start', params);
   },
 
+  /** 标签分析 - 快速预览 */
   previewTagAnalysis(params) {
     return postJson('/api/tageditor/analysis/preview', params);
   },
 
+  /** 标签分析 - 读取缓存结果 */
   getTagAnalysisResult(params) {
     return postJson('/api/tageditor/analysis/result', params);
   },
 
+  /** 标签建议 - 获取建议 */
   getTagSuggestions(params) {
     return postJson('/api/tageditor/suggestions', params);
   },
 
+  /** 标签建议 - LLM 精修 */
   refineTagSuggestions(params) {
     return postJson('/api/tageditor/suggestions/llm_refine', params);
   },
 
+  /** 标签建议 - 刷新索引 */
   refreshTagSuggestions(params) {
     return postJson('/api/tageditor/suggestions/refresh', params);
   },
 
+  /** 标签批量操作 - 预览 */
   previewTagBatchAction(params) {
     return postJson('/api/tageditor/batch_action/preview', params);
   },
 
+  /** 标签批量操作 - 开始 */
   startTagBatchAction(params) {
     return postJson('/api/tageditor/batch_action/start', params);
   },
 
+  /** 标签批量标注 - 开始 */
   startInterrogateBatch(params) {
     return postJson('/api/tageditor/interrogate_batch/start', params);
   },
 
+  /** 标签结果列表 */
   listTagResults(params) {
     return postJson('/api/tageditor/results/list', params);
   },
 
+  /** 标签任务结果 */
   getTagJobResult(params) {
     return postJson('/api/tageditor/job_result', params);
   },
@@ -303,6 +368,7 @@ export const api = {
     return postJson('/api/captions/cleanup/apply', params);
   },
 
+  /** Caption 清洗 - 提交异步任务 */
   captionCleanupStart(params) {
     return postJson('/api/captions/cleanup/start', params);
   },
