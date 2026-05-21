@@ -268,12 +268,24 @@ export const api = {
     return postJson('/api/tageditor/suggestions/refresh', params);
   },
 
+  previewTagBatchAction(params) {
+    return postJson('/api/tageditor/batch_action/preview', params);
+  },
+
   startTagBatchAction(params) {
     return postJson('/api/tageditor/batch_action/start', params);
   },
 
   startInterrogateBatch(params) {
     return postJson('/api/tageditor/interrogate_batch/start', params);
+  },
+
+  listTagResults(params) {
+    return postJson('/api/tageditor/results/list', params);
+  },
+
+  getTagJobResult(params) {
+    return postJson('/api/tageditor/job_result', params);
   },
 
   /** Masked-loss 数据集审查 */

@@ -102,6 +102,19 @@ const state = {
   datasetSubTab: 'tagger',
   trainSubTab: 'monitor',
   selectedTool: '',
+  activeTagJobId: '',
+  tagJobs: [],
+  tagJobPollTimer: null,
+  tagAnalysisReport: null,
+  tagSuggestionReport: null,
+  selectedFindingFilter: '',
+  selectedReviewQueue: '',
+  selectedDatasetImagePaths: [],
+  lastBatchPreview: null,
+  lastRecoveredJobResult: null,
+  tagToolDatasetPath: '',
+  tagToolRouteFamily: '',
+  tagToolCaptionExtension: '.txt',
   builtinPicker: {
     open: false,
     fieldKey: '',
@@ -4024,10 +4037,13 @@ function renderDataset(container) {
           <button class="dataset-tab ${activeTab === 'resize' ? 'active' : ''}" type="button" onclick="switchDatasetTab('resize')">图像预处理</button>
           <button class="dataset-tab ${activeTab === 'analysis' ? 'active' : ''}" type="button" onclick="switchDatasetTab('analysis')">数据集分析</button>
           <button class="dataset-tab ${activeTab === 'suggestions' ? 'active' : ''}" type="button" onclick="switchDatasetTab('suggestions')">智能建议</button>
+          <button class="dataset-tab ${activeTab === 'batch' ? 'active' : ''}" type="button" onclick="switchDatasetTab('batch')">批量改标</button>
+          <button class="dataset-tab ${activeTab === 'retag' ? 'active' : ''}" type="button" onclick="switchDatasetTab('retag')">批量重打标</button>
           <button class="dataset-tab ${activeTab === 'cleanup' ? 'active' : ''}" type="button" onclick="switchDatasetTab('cleanup')">Caption 清洗</button>
         <button class="dataset-tab ${activeTab === 'backups' ? 'active' : ''}" type="button" onclick="switchDatasetTab('backups')">Caption 备份</button>
         <button class="dataset-tab ${activeTab === 'maskedloss' ? 'active' : ''}" type="button" onclick="switchDatasetTab('maskedloss')">蒙版损失审查</button>
       </div>
+      <div id="dataset-jobs-strip" style="margin:12px 0 16px;"></div>
       <div id="dataset-content"></div>
     </div>
   `;
@@ -4037,11 +4053,16 @@ function renderDataset(container) {
       resize: renderImageResize,
       analysis: renderDatasetAnalysis,
       suggestions: renderTagSuggestions,
+      batch: renderBatchTagActions,
+      retag: renderBatchRetag,
       cleanup: renderCaptionCleanup,
     backups: renderCaptionBackups,
     maskedloss: renderMaskedLossAudit,
   };
   (renderers[activeTab] || renderTagger)();
+  renderTagJobsStrip();
+  refreshTagJobs().catch(() => {});
+  ensureTagJobPolling();
 }
 
 window.switchDatasetTab = (tab) => {
@@ -4565,6 +4586,491 @@ window.runImageResize = async () => {
 
 
 
+const TAG_TOOL_JOB_TYPES = new Set(['tag_analysis', 'tag_batch_edit', 'tag_retag', 'tag_suggestions_refresh']);
+const TAG_TOOL_RESULT_KIND_BY_JOB_TYPE = {
+  tag_analysis: 'analysis',
+  tag_batch_edit: 'batch_action',
+  tag_retag: 'retag',
+  tag_suggestions_refresh: 'suggestions',
+};
+const TAG_TOOL_JOB_LABELS = {
+  tag_analysis: '分析',
+  tag_batch_edit: '批量改标',
+  tag_retag: '批量重打标',
+  tag_suggestions_refresh: '建议刷新',
+};
+const FINDING_FILTER_PRESETS = [
+  'missing_caption',
+  'empty_caption',
+  'over_token',
+  'route_drift',
+  'suspicious_rare_tag',
+];
+
+function splitLoosePaths(raw) {
+  return String(raw || '')
+    .split(/\r?\n|[,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function dedupeStrings(values) {
+  return Array.from(new Set((values || []).map((item) => String(item || '').trim()).filter(Boolean)));
+}
+
+function syncTagToolContext(overrides = {}) {
+  const datasetPath = String(
+    overrides.path
+      ?? $('#analysis-path')?.value?.trim()
+      ?? $('#suggest-path')?.value?.trim()
+      ?? $('#batch-path')?.value?.trim()
+      ?? $('#retag-path')?.value?.trim()
+      ?? $('#cleanup-path')?.value?.trim()
+      ?? state.tagToolDatasetPath
+      ?? ''
+  ).trim();
+  const routeFamily = String(
+    overrides.route_family
+      ?? $('#analysis-route')?.value
+      ?? $('#suggest-route')?.value
+      ?? $('#batch-route')?.value
+      ?? $('#retag-route')?.value
+      ?? state.tagToolRouteFamily
+      ?? ''
+  ).trim();
+  const captionExtension = String(
+    overrides.caption_extension
+      ?? $('#analysis-ext')?.value
+      ?? $('#batch-ext')?.value
+      ?? $('#retag-ext')?.value
+      ?? $('#cleanup-ext')?.value
+      ?? state.tagToolCaptionExtension
+      ?? '.txt'
+  ).trim() || '.txt';
+  state.tagToolDatasetPath = datasetPath;
+  state.tagToolRouteFamily = routeFamily;
+  state.tagToolCaptionExtension = captionExtension;
+  return {
+    path: datasetPath,
+    route_family: routeFamily,
+    caption_extension: captionExtension,
+  };
+}
+
+function setTagToolInputsFromContext(context = {}) {
+  const path = String(context.path || context.dataset_path || state.tagToolDatasetPath || '').trim();
+  const routeFamily = String(context.route_family || state.tagToolRouteFamily || '').trim();
+  const captionExtension = String(context.caption_extension || state.tagToolCaptionExtension || '.txt').trim() || '.txt';
+  [
+    'analysis-path',
+    'suggest-path',
+    'batch-path',
+    'retag-path',
+    'cleanup-path',
+  ].forEach((id) => {
+    const input = $('#' + id);
+    if (input && path) input.value = path;
+  });
+  [
+    'analysis-route',
+    'suggest-route',
+    'batch-route',
+    'retag-route',
+  ].forEach((id) => {
+    const select = $('#' + id);
+    if (select) select.value = routeFamily;
+  });
+  [
+    'analysis-ext',
+    'batch-ext',
+    'retag-ext',
+    'cleanup-ext',
+  ].forEach((id) => {
+    const input = $('#' + id);
+    if (input) input.value = captionExtension;
+  });
+  syncTagToolContext({ path, route_family: routeFamily, caption_extension: captionExtension });
+}
+
+function setSelectedDatasetImagePaths(paths, { append = false } = {}) {
+  const next = dedupeStrings(append ? [...(state.selectedDatasetImagePaths || []), ...(paths || [])] : (paths || []));
+  state.selectedDatasetImagePaths = next;
+  const suggestImage = $('#suggest-image');
+  if (suggestImage) suggestImage.value = next.join('\n');
+  const summary = $('#selected-dataset-images-summary');
+  if (summary) {
+    summary.textContent = next.length ? `当前已选择 ${next.length} 张图片` : '当前未选择图片，将按整个数据集运行。';
+  }
+  return next;
+}
+
+function getSelectedSuggestionImagePaths() {
+  const manual = splitLoosePaths($('#suggest-image')?.value);
+  return manual.length ? manual : dedupeStrings(state.selectedDatasetImagePaths || []);
+}
+
+function getKnownAnalysisImageEntries(report = state.tagAnalysisReport || {}) {
+  const findingMap = new Map();
+  (report.findings || []).forEach((finding) => {
+    const imagePath = String(finding.image_path || '').trim();
+    if (!imagePath) return;
+    if (!findingMap.has(imagePath)) {
+      findingMap.set(imagePath, { path: imagePath, findings: [], findingCodes: new Set(), reviewQueues: new Set() });
+    }
+    const entry = findingMap.get(imagePath);
+    entry.findings.push(finding);
+    if (finding.code) entry.findingCodes.add(finding.code);
+  });
+  Object.entries(report.review_queues || {}).forEach(([queueCode, paths]) => {
+    (paths || []).forEach((rawPath) => {
+      const imagePath = String(rawPath || '').trim();
+      if (!imagePath) return;
+      if (!findingMap.has(imagePath)) {
+        findingMap.set(imagePath, { path: imagePath, findings: [], findingCodes: new Set(), reviewQueues: new Set() });
+      }
+      findingMap.get(imagePath).reviewQueues.add(queueCode);
+    });
+  });
+  return Array.from(findingMap.values()).map((entry) => ({
+    path: entry.path,
+    findings: entry.findings,
+    findingCodes: Array.from(entry.findingCodes),
+    reviewQueues: Array.from(entry.reviewQueues),
+  }));
+}
+
+function renderAnalysisWorkbench(targetId = 'analysis-workbench') {
+  const report = state.tagAnalysisReport || {};
+  const container = $('#' + targetId);
+  if (!container) return;
+  const allEntries = getKnownAnalysisImageEntries(report);
+  const filtered = allEntries.filter((entry) => {
+    const queueOk = !state.selectedReviewQueue || entry.reviewQueues.includes(state.selectedReviewQueue);
+    const findingOk = !state.selectedFindingFilter || entry.findingCodes.includes(state.selectedFindingFilter);
+    return queueOk && findingOk;
+  });
+  const selectedPaths = new Set(state.selectedDatasetImagePaths || []);
+  const queueOptions = Object.keys(report.review_queues || {});
+  const findingOptions = dedupeStrings([
+    ...FINDING_FILTER_PRESETS,
+    ...(report.findings || []).map((finding) => finding.code),
+  ]);
+  container.innerHTML = `
+    <div class="module-list-item module-list-item-static" style="margin-bottom:10px;">
+      <div class="module-list-main">
+        <strong>Findings 工作台</strong>
+        <span class="module-list-meta">可按 review queue / finding code 过滤，并把当前图片送到建议或批量改标流程。</span>
+      </div>
+    </div>
+    <div class="tool-fields" style="margin-bottom:10px;">
+      <div class="config-group">
+        <label>Review Queue</label>
+        <select id="analysis-review-queue-filter" onchange="setAnalysisReviewQueueFilter(this.value)">
+          <option value="">全部</option>
+          ${queueOptions.map((code) => `<option value="${escapeHtml(code)}" ${state.selectedReviewQueue === code ? 'selected' : ''}>${escapeHtml(code)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="config-group">
+        <label>Finding Code</label>
+        <select id="analysis-finding-filter" onchange="setAnalysisFindingFilter(this.value)">
+          <option value="">全部</option>
+          ${findingOptions.map((code) => `<option value="${escapeHtml(code)}" ${state.selectedFindingFilter === code ? 'selected' : ''}>${escapeHtml(code)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="config-group" style="grid-column:1/-1;">
+        <label>当前选择</label>
+        <div id="selected-dataset-images-summary" class="field-desc">${selectedPaths.size ? `当前已选择 ${selectedPaths.size} 张图片` : '当前未选择图片，将按整个数据集运行。'}</div>
+      </div>
+    </div>
+    <div class="tool-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <button class="btn btn-outline btn-sm" type="button" onclick="applyAnalysisSelectionToSuggestions()">把当前选择送到建议面板</button>
+      <button class="btn btn-outline btn-sm" type="button" onclick="openBatchTabFromSelection()">把当前选择送到批量改标</button>
+      <button class="btn btn-outline btn-sm" type="button" onclick="clearSelectedDatasetImages()">清空当前选择</button>
+    </div>
+    <div class="module-list">
+      ${filtered.slice(0, 32).map((entry) => {
+        const filename = (entry.path || '').split(/[\\\\/]/).pop() || entry.path;
+        return `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main">
+              <strong>${escapeHtml(filename)}</strong>
+              <span class="module-list-meta">${entry.findings.length} 条 findings</span>
+              ${entry.reviewQueues.length ? `<span class="module-list-meta">Queue: ${escapeHtml(entry.reviewQueues.join(', '))}</span>` : ''}
+              ${entry.findingCodes.length ? `<span class="module-list-meta">Codes: ${escapeHtml(entry.findingCodes.join(', '))}</span>` : ''}
+            </div>
+            <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="toggleDatasetImageSelection('${encodeURIComponent(entry.path)}')">${selectedPaths.has(entry.path) ? '取消选择' : '选择'}</button>
+            <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="sendFindingToSuggestions('${encodeURIComponent(entry.path)}')">建议</button>
+          </div>
+        `;
+      }).join('') || '<div class="module-list-item module-list-item-static"><div class="module-list-main"><strong>当前过滤条件下没有图片</strong></div></div>'}
+    </div>
+  `;
+}
+
+function renderTagJobsStrip() {
+  const container = $('#dataset-jobs-strip');
+  if (!container) return;
+  const jobs = (state.tagJobs || []).filter((job) => TAG_TOOL_JOB_TYPES.has(String(job.type || '')));
+  const recovered = state.lastRecoveredJobResult;
+  if (!jobs.length && !recovered) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = `
+    <section class="form-section" style="margin:0;">
+      <header class="section-header">
+        <h3>Tag Jobs</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" type="button" onclick="refreshTagJobsManual()">刷新</button>
+        </div>
+      </header>
+      <div class="section-summary">这里汇总 analysis / suggestions refresh / batch action / interrogate batch 的异步任务，可直接取消或恢复结果。</div>
+      <div class="module-list">
+        ${jobs.map((job) => `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main">
+              <strong>${escapeHtml(TAG_TOOL_JOB_LABELS[job.type] || job.type || 'job')}</strong>
+              <span class="module-list-meta">${escapeHtml(job.status || 'pending')} · ${(Math.round((job.progress || 0) * 100))}% · ${escapeHtml(job.metadata?.dataset_path || '-')}</span>
+              <span class="module-list-meta">${escapeHtml(job.id || '')}</span>
+            </div>
+            ${job.status === 'running' || job.status === 'pending'
+              ? `<button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="cancelTagJob('${escapeHtml(job.id)}')">取消</button>`
+              : ''}
+            ${job.status === 'completed'
+              ? `<button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="reopenTagJobResult('${escapeHtml(job.id)}')">打开结果</button>`
+              : ''}
+          </div>
+        `).join('')}
+        ${recovered ? `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main">
+              <strong>最近恢复结果</strong>
+              <span class="module-list-meta">${escapeHtml(recovered.kind || '-')} · ${escapeHtml(recovered.job_id || '-')} · ${escapeHtml(recovered.dataset_path || '-')}</span>
+            </div>
+            <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="reopenTagJobResult('${escapeHtml(recovered.job_id || '')}')">重新打开</button>
+          </div>
+        ` : ''}
+      </div>
+    </section>
+  `;
+}
+
+async function refreshTagJobs() {
+  const response = await api.getJobs();
+  state.tagJobs = (response?.jobs || response?.data?.jobs || []).filter((job) => TAG_TOOL_JOB_TYPES.has(String(job.type || '')));
+  renderTagJobsStrip();
+  return state.tagJobs;
+}
+
+function ensureTagJobPolling() {
+  if (state.tagJobPollTimer) return;
+  state.tagJobPollTimer = setInterval(() => {
+    if (state.activeModule !== 'dataset') return;
+    refreshTagJobs().catch(() => {});
+  }, 4000);
+}
+
+function renderBatchActionResult(data, targetId = 'batch-result') {
+  const result = $('#' + targetId);
+  if (!result) return;
+  const samples = data?.samples || [];
+  result.innerHTML = `
+    <div class="module-list">
+      <div class="module-list-item module-list-item-static">
+        <div class="module-list-main">
+          <strong>命中 ${data?.target_count ?? 0} 张</strong>
+          <span class="module-list-meta">将改动 ${data?.modified_count ?? 0} 张 | 无变化 ${data?.unchanged_count ?? 0} 张</span>
+          ${data?.backup_name ? `<span class="module-list-meta">备份: ${escapeHtml(data.backup_name)}</span>` : ''}
+        </div>
+      </div>
+      ${samples.map((sample) => `
+        <div class="module-list-item module-list-item-static">
+          <div class="module-list-main">
+            <strong>${escapeHtml((sample.image_path || '').split(/[\\\\/]/).pop() || sample.image_path || '-')}</strong>
+            <span class="module-list-meta">前: ${escapeHtml(sample.before || '')}</span>
+            <span class="module-list-meta" style="color:var(--accent);">后: ${escapeHtml(sample.after || '')}</span>
+          </div>
+        </div>
+      `).join('') || '<div class="module-list-item module-list-item-static"><div class="module-list-main"><strong>没有 sample</strong></div></div>'}
+    </div>
+  `;
+}
+
+function renderRetagResult(data, targetId = 'retag-result') {
+  const result = $('#' + targetId);
+  if (!result) return;
+  const samples = data?.samples || [];
+  result.innerHTML = `
+    <div class="module-list">
+      <div class="module-list-item module-list-item-static">
+        <div class="module-list-main">
+          <strong>已更新 ${data?.updated_count ?? 0} 张图片</strong>
+        </div>
+      </div>
+      ${samples.map((sample) => `
+        <div class="module-list-item module-list-item-static">
+          <div class="module-list-main">
+            <strong>${escapeHtml((sample.image_path || '').split(/[\\\\/]/).pop() || sample.image_path || '-')}</strong>
+            <span class="module-list-meta">${escapeHtml(sample.caption || '')}</span>
+          </div>
+        </div>
+      `).join('') || '<div class="module-list-item module-list-item-static"><div class="module-list-main"><strong>没有 sample</strong></div></div>'}
+    </div>
+  `;
+}
+
+async function reopenTagJobResultInternal(jobId) {
+  const response = await api.getTagJobResult({ job_id: jobId });
+  const envelope = response?.data || {};
+  state.lastRecoveredJobResult = envelope;
+  const context = {
+    path: envelope.dataset_path || '',
+    route_family: envelope.route_family || '',
+    caption_extension: envelope.submitted_config?.caption_extension || state.tagToolCaptionExtension || '.txt',
+  };
+  syncTagToolContext(context);
+  if (envelope.kind === 'analysis') {
+    state.datasetSubTab = 'analysis';
+    renderView('dataset');
+    setTimeout(() => {
+      setTagToolInputsFromContext(context);
+      _renderAnalysisReport(envelope.payload || {});
+      const jobEl = $('#analysis-job');
+      if (jobEl) jobEl.innerHTML = `已恢复历史分析结果：${escapeHtml(jobId)}`;
+    }, 0);
+  } else if (envelope.kind === 'suggestions') {
+    state.datasetSubTab = 'suggestions';
+    renderView('dataset');
+    setTimeout(() => {
+      setTagToolInputsFromContext(context);
+      _renderSuggestionReport(envelope.payload || {});
+      const jobEl = $('#suggest-job');
+      if (jobEl) jobEl.innerHTML = `已恢复历史建议结果：${escapeHtml(jobId)}`;
+    }, 0);
+  } else if (envelope.kind === 'batch_action') {
+    state.datasetSubTab = 'batch';
+    renderView('dataset');
+    setTimeout(() => {
+      setTagToolInputsFromContext(context);
+      renderBatchActionResult(envelope.payload || {});
+      const jobEl = $('#batch-job');
+      if (jobEl) jobEl.innerHTML = `已恢复历史批量结果：${escapeHtml(jobId)}`;
+    }, 0);
+  } else if (envelope.kind === 'retag') {
+    state.datasetSubTab = 'retag';
+    renderView('dataset');
+    setTimeout(() => {
+      setTagToolInputsFromContext(context);
+      renderRetagResult(envelope.payload || {});
+      const jobEl = $('#retag-job');
+      if (jobEl) jobEl.innerHTML = `已恢复历史重打标结果：${escapeHtml(jobId)}`;
+    }, 0);
+  }
+  renderTagJobsStrip();
+  return envelope;
+}
+
+async function renderTagResultHistory(kind, targetId) {
+  const target = $('#' + targetId);
+  const context = syncTagToolContext();
+  if (!target) return;
+  if (!context.path) {
+    target.innerHTML = '<div class="builtin-picker-empty"><span>请先填写数据集路径。</span></div>';
+    return;
+  }
+  target.innerHTML = '<div class="builtin-picker-empty"><span>读取历史结果中...</span></div>';
+  try {
+    const response = await api.listTagResults({ path: context.path, kind });
+    const results = response?.data?.results || [];
+    target.innerHTML = `
+      <div class="module-list">
+        ${results.map((entry) => `
+          <div class="module-list-item module-list-item-static">
+            <div class="module-list-main">
+              <strong>${escapeHtml(entry.kind || kind || '-')}</strong>
+              <span class="module-list-meta">${escapeHtml(entry.route_family || 'generic')} · ${escapeHtml(entry.dataset_path || '-')}</span>
+              <span class="module-list-meta">${escapeHtml(entry.finished_at || '-')}</span>
+              <span class="module-list-meta">${escapeHtml(entry.job_id || '-')}</span>
+            </div>
+            <button class="btn btn-outline btn-sm btn-picker-action" type="button" onclick="reopenTagJobResult('${escapeHtml(entry.job_id || '')}')">打开</button>
+          </div>
+        `).join('') || '<div class="module-list-item module-list-item-static"><div class="module-list-main"><strong>暂无历史结果</strong></div></div>'}
+      </div>
+    `;
+  } catch (error) {
+    target.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '读取历史结果失败')}</span></div>`;
+  }
+}
+
+window.refreshTagJobsManual = async () => {
+  try {
+    await refreshTagJobs();
+    showToast('Tag jobs 已刷新。');
+  } catch (error) {
+    showToast(error.message || '刷新 jobs 失败。');
+  }
+};
+
+window.cancelTagJob = async (jobId) => {
+  try {
+    await api.cancelJob(jobId);
+    await refreshTagJobs();
+    showToast('已请求取消任务。');
+  } catch (error) {
+    showToast(error.message || '取消任务失败。');
+  }
+};
+
+window.reopenTagJobResult = async (jobId) => {
+  try {
+    await reopenTagJobResultInternal(jobId);
+    showToast('已恢复历史结果。');
+  } catch (error) {
+    showToast(error.message || '恢复历史结果失败。');
+  }
+};
+
+window.setAnalysisReviewQueueFilter = (value) => {
+  state.selectedReviewQueue = String(value || '');
+  renderAnalysisWorkbench();
+};
+
+window.setAnalysisFindingFilter = (value) => {
+  state.selectedFindingFilter = String(value || '');
+  renderAnalysisWorkbench();
+};
+
+window.toggleDatasetImageSelection = (encodedPath) => {
+  const imagePath = decodeURIComponent(encodedPath || '');
+  const current = new Set(state.selectedDatasetImagePaths || []);
+  if (current.has(imagePath)) current.delete(imagePath);
+  else current.add(imagePath);
+  setSelectedDatasetImagePaths(Array.from(current));
+  renderAnalysisWorkbench();
+};
+
+window.clearSelectedDatasetImages = () => {
+  setSelectedDatasetImagePaths([]);
+  renderAnalysisWorkbench();
+};
+
+window.applyAnalysisSelectionToSuggestions = () => {
+  state.datasetSubTab = 'suggestions';
+  renderView('dataset');
+  setTimeout(() => {
+    setTagToolInputsFromContext();
+    setSelectedDatasetImagePaths(state.selectedDatasetImagePaths || []);
+  }, 0);
+};
+
+window.openBatchTabFromSelection = () => {
+  state.datasetSubTab = 'batch';
+  renderView('dataset');
+  setTimeout(() => {
+    setTagToolInputsFromContext();
+  }, 0);
+};
+
 // ========== 数据集分析 ==========
 function renderDatasetAnalysis() {
   const content = $('#dataset-content');
@@ -4606,16 +5112,20 @@ function renderDatasetAnalysis() {
         <button class="btn btn-outline btn-sm" type="button" onclick="previewDatasetAnalysis()">快速预览</button>
         <button class="btn btn-primary btn-sm" type="button" onclick="startDatasetAnalysis()">提交分析任务</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="loadCachedDatasetAnalysis()">打开缓存结果</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="openAnalysisHistory()">历史结果</button>
       </div>
       <div id="analysis-job" style="margin-top:12px;font-size:0.9rem;color:var(--text-dim);"></div>
       <div id="analysis-result" style="margin-top:16px;"></div>
+      <div id="analysis-history" style="margin-top:16px;"></div>
     </section>
   `;
+  setTagToolInputsFromContext();
 }
 
 function renderTagSuggestions() {
   const content = $('#dataset-content');
   if (!content) return;
+  const selectedCount = (state.selectedDatasetImagePaths || []).length;
   content.innerHTML = `
     <section class="form-section">
       <header class="section-header"><h3>智能建议</h3></header>
@@ -4630,8 +5140,8 @@ function renderTagSuggestions() {
           </div>
         </div>
         <div class="config-group">
-          <label>图片路径（可选，单张）</label>
-          <input class="text-input" type="text" id="suggest-image" placeholder="H:/dataset/img.png">
+          <label>图片路径（可选，支持多行）</label>
+          <textarea class="text-input" id="suggest-image" placeholder="H:/dataset/img1.png&#10;H:/dataset/img2.png" style="min-height:96px;"></textarea>
         </div>
         <div class="config-group">
           <label>Route Family</label>
@@ -4646,15 +5156,25 @@ function renderTagSuggestions() {
           <label>LLM API Key（可选）</label>
           <input class="text-input" type="password" id="suggest-api-key" placeholder="sk-...">
         </div>
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>当前选中</label>
+          <div id="selected-dataset-images-summary" class="field-desc">${selectedCount ? `当前已选择 ${selectedCount} 张图片` : '当前未选择图片，将按整个数据集运行。'}</div>
+        </div>
       </div>
       <div class="tool-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-primary btn-sm" type="button" onclick="loadTagSuggestions()">获取规则建议</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="refreshTagSuggestionsIndex()">刷新建议缓存</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="refineTagSuggestionsWithLlm()">LLM Refine</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="openSuggestionsHistory()">历史结果</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="useCurrentSelectionForSuggestions()">使用当前选择</button>
       </div>
+      <div id="suggest-job" style="margin-top:12px;font-size:0.9rem;color:var(--text-dim);"></div>
       <div id="suggest-result" style="margin-top:16px;"></div>
+      <div id="suggest-history" style="margin-top:16px;"></div>
     </section>
   `;
+  setTagToolInputsFromContext();
+  setSelectedDatasetImagePaths(state.selectedDatasetImagePaths || []);
 }
 
 function _renderAnalysisReport(data, targetId = 'analysis-result') {
@@ -4724,6 +5244,10 @@ function _renderAnalysisReport(data, targetId = 'analysis-result') {
     </div>
     <div id="analysis-image-view" style="margin-top:14px;"></div>
     <div style="margin-top:14px;">
+      <strong>列表工作流</strong>
+      <div id="analysis-workbench" style="margin-top:8px;"></div>
+    </div>
+    <div style="margin-top:14px;">
       <strong>Top Findings</strong>
       <div class="module-list" style="margin-top:8px;">
         ${findings.slice(0, 8).map((finding) => `
@@ -4738,6 +5262,7 @@ function _renderAnalysisReport(data, targetId = 'analysis-result') {
       </div>
     </div>
   `;
+  renderAnalysisWorkbench();
 }
 
 window.viewReviewQueue = (code) => {
@@ -4787,14 +5312,17 @@ window.inspectFindingImage = (encodedPath) => {
 
 window.sendFindingToSuggestions = (encodedPath) => {
   const imagePath = decodeURIComponent(encodedPath || '');
+  const report = state.tagAnalysisReport || {};
+  syncTagToolContext({
+    path: report.dataset_path || $('#analysis-path')?.value?.trim() || state.tagToolDatasetPath || '',
+    route_family: report.route_family || $('#analysis-route')?.value || state.tagToolRouteFamily || '',
+  });
+  setSelectedDatasetImagePaths([imagePath]);
   state.datasetSubTab = 'suggestions';
   renderView('dataset');
   setTimeout(() => {
-    const suggestPath = $('#suggest-path');
-    const suggestImage = $('#suggest-image');
-    const analysisPath = $('#analysis-path')?.value?.trim();
-    if (suggestPath && analysisPath) suggestPath.value = analysisPath;
-    if (suggestImage) suggestImage.value = imagePath;
+    setTagToolInputsFromContext();
+    setSelectedDatasetImagePaths([imagePath]);
   }, 0);
 };
 
@@ -4844,6 +5372,11 @@ window.useSuggestionPreview = (index) => {
 window.previewDatasetAnalysis = async () => {
   const pathVal = $('#analysis-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  syncTagToolContext({
+    path: pathVal,
+    route_family: $('#analysis-route')?.value || '',
+    caption_extension: $('#analysis-ext')?.value || '.txt',
+  });
   const result = $('#analysis-result');
   if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>预览中...</span></div>';
   try {
@@ -4863,6 +5396,11 @@ window.previewDatasetAnalysis = async () => {
 window.startDatasetAnalysis = async () => {
   const pathVal = $('#analysis-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  syncTagToolContext({
+    path: pathVal,
+    route_family: $('#analysis-route')?.value || '',
+    caption_extension: $('#analysis-ext')?.value || '.txt',
+  });
   const jobEl = $('#analysis-job');
   if (jobEl) jobEl.innerHTML = '提交中...';
   try {
@@ -4873,9 +5411,11 @@ window.startDatasetAnalysis = async () => {
     });
     const jobId = response?.data?.job_id;
     if (!jobId) throw new Error('未返回 job_id');
+    state.activeTagJobId = jobId;
     if (jobEl) jobEl.innerHTML = `后台任务已提交：${escapeHtml(jobId)}`;
     showToast('分析任务已提交。');
     window.pollAnalysisJob(jobId, pathVal);
+    refreshTagJobs().catch(() => {});
   } catch (error) {
     if (jobEl) jobEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(error.message || '提交失败')}</span>`;
     showToast(error.message || '分析任务提交失败。');
@@ -4885,6 +5425,11 @@ window.startDatasetAnalysis = async () => {
 window.loadCachedDatasetAnalysis = async () => {
   const pathVal = $('#analysis-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  syncTagToolContext({
+    path: pathVal,
+    route_family: $('#analysis-route')?.value || '',
+    caption_extension: $('#analysis-ext')?.value || '.txt',
+  });
   const result = $('#analysis-result');
   if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>读取缓存中...</span></div>';
   try {
@@ -4913,12 +5458,13 @@ window.pollAnalysisJob = async (jobId, datasetPath) => {
       }
       if (data.status === 'completed') {
         clearInterval(timer);
-        const cached = await api.getTagAnalysisResult({ job_id: jobId, path: datasetPath });
-        _renderAnalysisReport(cached?.data?.payload || {});
+        await reopenTagJobResultInternal(jobId);
         showToast('数据集分析完成。');
+        refreshTagJobs().catch(() => {});
       } else if (data.status === 'failed' || data.status === 'cancelled') {
         clearInterval(timer);
         if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(data.error || data.status || '任务未完成')}</span></div>`;
+        refreshTagJobs().catch(() => {});
       }
     } catch (error) {
       clearInterval(timer);
@@ -4930,23 +5476,32 @@ window.pollAnalysisJob = async (jobId, datasetPath) => {
 window.cancelDatasetAnalysisJob = async (jobId) => {
   try {
     await api.cancelJob(jobId);
+    refreshTagJobs().catch(() => {});
     showToast('已请求取消分析任务。');
   } catch (error) {
     showToast(error.message || '取消失败。');
   }
 };
 
+window.openAnalysisHistory = async () => {
+  await renderTagResultHistory('analysis', 'analysis-history');
+};
+
 window.loadTagSuggestions = async () => {
   const pathVal = $('#suggest-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
-  const imagePath = $('#suggest-image')?.value?.trim();
+  syncTagToolContext({
+    path: pathVal,
+    route_family: $('#suggest-route')?.value || '',
+  });
+  const imagePaths = getSelectedSuggestionImagePaths();
   const result = $('#suggest-result');
   if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>加载建议中...</span></div>';
   try {
     const response = await api.getTagSuggestions({
       path: pathVal,
       route_family: $('#suggest-route')?.value || '',
-      image_paths: imagePath ? [imagePath] : [],
+      image_paths: imagePaths,
     });
     const data = response?.data || {};
     if (data.status === 'needs_refresh') {
@@ -4962,14 +5517,18 @@ window.loadTagSuggestions = async () => {
 window.refineTagSuggestionsWithLlm = async () => {
   const pathVal = $('#suggest-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
-  const imagePath = $('#suggest-image')?.value?.trim();
+  syncTagToolContext({
+    path: pathVal,
+    route_family: $('#suggest-route')?.value || '',
+  });
+  const imagePaths = getSelectedSuggestionImagePaths();
   const result = $('#suggest-result');
   if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>请求 LLM refine 中...</span></div>';
   try {
     const response = await api.refineTagSuggestions({
       path: pathVal,
       route_family: $('#suggest-route')?.value || '',
-      image_paths: imagePath ? [imagePath] : [],
+      image_paths: imagePaths,
       api_key: $('#suggest-api-key')?.value?.trim() || '',
     });
     const data = response?.data || {};
@@ -4986,25 +5545,40 @@ window.refineTagSuggestionsWithLlm = async () => {
 window.refreshTagSuggestionsIndex = async () => {
   const pathVal = $('#suggest-path')?.value?.trim();
   if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  syncTagToolContext({
+    path: pathVal,
+    route_family: $('#suggest-route')?.value || '',
+  });
+  const imagePaths = getSelectedSuggestionImagePaths();
+  const jobEl = $('#suggest-job');
   const result = $('#suggest-result');
   if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>刷新建议缓存中...</span></div>';
   try {
     const response = await api.refreshTagSuggestions({
       path: pathVal,
       route_family: $('#suggest-route')?.value || '',
+      image_paths: imagePaths,
     });
     const jobId = response?.data?.job_id;
     if (!jobId) throw new Error('未返回 job_id');
+    state.activeTagJobId = jobId;
+    if (jobEl) jobEl.innerHTML = `建议缓存任务已提交：${escapeHtml(jobId)}`;
+    refreshTagJobs().catch(() => {});
     const timer = setInterval(async () => {
       try {
         const job = await api.getJob(jobId);
+        if (jobEl) {
+          jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(job.status || 'pending')} ${(Math.round((job.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelTagJob('${escapeHtml(jobId)}')">取消</button>`;
+        }
         if (job.status === 'completed') {
           clearInterval(timer);
+          await reopenTagJobResultInternal(jobId);
           showToast('建议缓存刷新完成。');
-          window.loadTagSuggestions();
+          refreshTagJobs().catch(() => {});
         } else if (job.status === 'failed' || job.status === 'cancelled') {
           clearInterval(timer);
           if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(job.error || job.status || '刷新失败')}</span></div>`;
+          refreshTagJobs().catch(() => {});
         }
       } catch (error) {
         clearInterval(timer);
@@ -5014,6 +5588,353 @@ window.refreshTagSuggestionsIndex = async () => {
   } catch (error) {
     if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '刷新失败')}</span></div>`;
   }
+};
+
+window.openSuggestionsHistory = async () => {
+  await renderTagResultHistory('suggestions', 'suggest-history');
+};
+
+window.useCurrentSelectionForSuggestions = () => {
+  setSelectedDatasetImagePaths(state.selectedDatasetImagePaths || []);
+};
+
+function renderBatchTagActions() {
+  const content = $('#dataset-content');
+  if (!content) return;
+  const selectedCount = (state.selectedDatasetImagePaths || []).length;
+  content.innerHTML = `
+    <section class="form-section">
+      <header class="section-header"><h3>批量改标</h3></header>
+      <div class="section-summary">先预览，再异步提交批量改标任务。默认不自动重跑 analysis，避免无感触发大任务。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('batch-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+            <button class="picker-mode-icon-btn" type="button" onclick="openBuiltinPickerForInput('batch-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+            <input class="text-input" type="text" id="batch-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group">
+          <label>Action</label>
+          <select id="batch-action" onchange="updateBatchActionFieldHints()">
+            <option value="append_tags">append_tags</option>
+            <option value="prepend_tags">prepend_tags</option>
+            <option value="replace_tags">replace_tags</option>
+            <option value="remove_tags">remove_tags</option>
+            <option value="search_replace_tags">search_replace_tags</option>
+            <option value="search_replace_caption">search_replace_caption</option>
+            <option value="sort_tags">sort_tags</option>
+            <option value="dedupe_tags">dedupe_tags</option>
+            <option value="set_caption">set_caption</option>
+            <option value="truncate_tags_by_token_count">truncate_tags_by_token_count</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label>Caption 扩展名</label>
+          <input class="text-input" type="text" id="batch-ext" value=".txt">
+        </div>
+        <div class="config-group">
+          <label>Route Family</label>
+          <select id="batch-route">
+            <option value="">通用 / Generic</option>
+            <option value="sdxl">SDXL</option>
+            <option value="anima">Anima</option>
+            <option value="newbie">Newbie</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label id="batch-param1-label">参数 1</label>
+          <input class="text-input" type="text" id="batch-param1" placeholder="tag1, tag2">
+        </div>
+        <div class="config-group">
+          <label id="batch-param2-label">参数 2（可选）</label>
+          <input class="text-input" type="text" id="batch-param2" placeholder="replace / max token / history label">
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>递归扫描子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="batch-recursive" checked><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>应用前自动备份</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="batch-backup" checked><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>仅对当前选择图片生效</label><p class="field-desc">当前选择 ${selectedCount} 张；未勾选时对整个数据集生效。</p></div>
+          <label class="switch switch-compact"><input type="checkbox" id="batch-use-selection" ${selectedCount ? 'checked' : ''}><span class="slider round"></span></label>
+        </div>
+      </div>
+      <div class="tool-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" type="button" onclick="previewBatchTagAction()">预览改动</button>
+        <button class="btn btn-primary btn-sm" type="button" onclick="startBatchTagAction()">提交异步任务</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="openBatchHistory()">历史结果</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="refreshSuggestionsAfterBatch()">顺手刷新建议缓存</button>
+      </div>
+      <div id="batch-job" style="margin-top:12px;font-size:0.9rem;color:var(--text-dim);"></div>
+      <div id="batch-result" style="margin-top:16px;"></div>
+      <div id="batch-history" style="margin-top:16px;"></div>
+    </section>
+  `;
+  setTagToolInputsFromContext();
+  updateBatchActionFieldHints();
+}
+
+function buildBatchActionPayload() {
+  const action = $('#batch-action')?.value || 'append_tags';
+  const path = $('#batch-path')?.value?.trim() || '';
+  const params = {};
+  const param1 = $('#batch-param1')?.value?.trim() || '';
+  const param2 = $('#batch-param2')?.value?.trim() || '';
+  if (['append_tags', 'prepend_tags', 'replace_tags', 'remove_tags'].includes(action)) params.tags = param1;
+  if (['search_replace_tags', 'search_replace_caption'].includes(action)) {
+    params.search = param1;
+    params.replace = param2;
+  }
+  if (action === 'set_caption') params.caption = param1;
+  if (action === 'truncate_tags_by_token_count') params.max_token_count = Number(param1 || param2 || 75);
+  if (param2 && !['search_replace_tags', 'search_replace_caption', 'truncate_tags_by_token_count'].includes(action)) params.history_label = param2;
+  return {
+    path,
+    action,
+    route_family: $('#batch-route')?.value || '',
+    caption_extension: $('#batch-ext')?.value || '.txt',
+    recursive: $('#batch-recursive')?.checked ?? true,
+    create_backup: $('#batch-backup')?.checked ?? true,
+    image_paths: $('#batch-use-selection')?.checked ? dedupeStrings(state.selectedDatasetImagePaths || []) : [],
+    params,
+  };
+}
+
+window.updateBatchActionFieldHints = () => {
+  const action = $('#batch-action')?.value || 'append_tags';
+  const label1 = $('#batch-param1-label');
+  const label2 = $('#batch-param2-label');
+  const input1 = $('#batch-param1');
+  const input2 = $('#batch-param2');
+  if (!label1 || !label2 || !input1 || !input2) return;
+  const presets = {
+    append_tags: ['Tags', 'History Label（可选）', 'blue eyes, portrait', 'append_common_tags'],
+    prepend_tags: ['Tags', 'History Label（可选）', 'masterpiece, best quality', 'prepend_quality_tags'],
+    replace_tags: ['Tags', 'History Label（可选）', 'old_tag, new_tag', 'replace_tags'],
+    remove_tags: ['Tags', 'History Label（可选）', 'bad_tag, typo_tag', 'remove_noise_tags'],
+    search_replace_tags: ['Search', 'Replace', 'old_tag', 'new_tag'],
+    search_replace_caption: ['Search', 'Replace', 'blue hair', 'silver hair'],
+    sort_tags: ['说明', 'History Label（可选）', '无需填写', 'sort_tags'],
+    dedupe_tags: ['说明', 'History Label（可选）', '无需填写', 'dedupe_tags'],
+    set_caption: ['Caption', 'History Label（可选）', 'a calm portrait of a girl', 'set_caption'],
+    truncate_tags_by_token_count: ['Max Token Count', 'History Label（可选）', '75', 'truncate_tags'],
+  };
+  const [title1, title2, placeholder1, placeholder2] = presets[action] || presets.append_tags;
+  label1.textContent = title1;
+  label2.textContent = title2;
+  input1.placeholder = placeholder1;
+  input2.placeholder = placeholder2;
+};
+
+window.previewBatchTagAction = async () => {
+  const payload = buildBatchActionPayload();
+  if (!payload.path) { showToast('请先填写数据集路径。'); return; }
+  syncTagToolContext(payload);
+  const result = $('#batch-result');
+  if (result) result.innerHTML = '<div class="builtin-picker-empty"><span>预览中...</span></div>';
+  try {
+    const response = await api.previewTagBatchAction(payload);
+    state.lastBatchPreview = response?.data || null;
+    renderBatchActionResult(response?.data || {});
+  } catch (error) {
+    if (result) result.innerHTML = `<div class="builtin-picker-empty"><span>${escapeHtml(error.message || '预览失败')}</span></div>`;
+  }
+};
+
+window.startBatchTagAction = async () => {
+  const payload = buildBatchActionPayload();
+  if (!payload.path) { showToast('请先填写数据集路径。'); return; }
+  syncTagToolContext(payload);
+  const jobEl = $('#batch-job');
+  if (jobEl) jobEl.innerHTML = '提交中...';
+  try {
+    if (!state.lastBatchPreview) {
+      const previewResponse = await api.previewTagBatchAction(payload);
+      state.lastBatchPreview = previewResponse?.data || null;
+      renderBatchActionResult(state.lastBatchPreview || {});
+    }
+    const response = await api.startTagBatchAction(payload);
+    const jobId = response?.data?.job_id;
+    if (!jobId) throw new Error('未返回 job_id');
+    state.activeTagJobId = jobId;
+    if (jobEl) jobEl.innerHTML = `批量改标任务已提交：${escapeHtml(jobId)}`;
+    showToast('批量改标任务已提交。');
+    refreshTagJobs().catch(() => {});
+    const timer = setInterval(async () => {
+      try {
+        const job = await api.getJob(jobId);
+        if (jobEl) {
+          jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(job.status || 'pending')} ${(Math.round((job.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelTagJob('${escapeHtml(jobId)}')">取消</button>`;
+        }
+        if (job.status === 'completed') {
+          clearInterval(timer);
+          await reopenTagJobResultInternal(jobId);
+          showToast('批量改标完成，建议刷新 analysis/suggestions 缓存。');
+          refreshTagJobs().catch(() => {});
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
+          clearInterval(timer);
+          refreshTagJobs().catch(() => {});
+        }
+      } catch (error) {
+        clearInterval(timer);
+        if (jobEl) jobEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(error.message || '轮询失败')}</span>`;
+      }
+    }, 1200);
+  } catch (error) {
+    if (jobEl) jobEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(error.message || '提交失败')}</span>`;
+    showToast(error.message || '批量改标提交失败。');
+  }
+};
+
+window.openBatchHistory = async () => {
+  await renderTagResultHistory('batch_action', 'batch-history');
+};
+
+window.refreshSuggestionsAfterBatch = async () => {
+  const pathVal = $('#batch-path')?.value?.trim() || state.tagToolDatasetPath || '';
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  try {
+    const response = await api.refreshTagSuggestions({
+      path: pathVal,
+      route_family: $('#batch-route')?.value || state.tagToolRouteFamily || '',
+      image_paths: $('#batch-use-selection')?.checked ? dedupeStrings(state.selectedDatasetImagePaths || []) : [],
+    });
+    const jobId = response?.data?.job_id;
+    showToast(jobId ? `建议缓存刷新任务已提交：${jobId}` : '建议缓存刷新任务已提交。');
+    refreshTagJobs().catch(() => {});
+  } catch (error) {
+    showToast(error.message || '建议缓存刷新失败。');
+  }
+};
+
+function renderBatchRetag() {
+  const content = $('#dataset-content');
+  if (!content) return;
+  content.innerHTML = `
+    <section class="form-section">
+      <header class="section-header"><h3>批量重打标</h3></header>
+      <div class="section-summary">提交 interrogate batch 任务，支持查看全局 job 状态、取消和恢复历史结果。</div>
+      <div class="section-content tool-fields">
+        <div class="config-group" style="grid-column:1/-1;">
+          <label>数据集路径</label>
+          <div class="input-picker">
+            <button class="picker-icon" type="button" onclick="pickPathForInput('retag-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+            <button class="picker-mode-icon-btn" type="button" onclick="openBuiltinPickerForInput('retag-path', 'folder')"><svg class="icon"><use href="#icon-folder"></use></svg></button>
+            <input class="text-input" type="text" id="retag-path" placeholder="./train/your_dataset">
+          </div>
+        </div>
+        <div class="config-group">
+          <label>Route Family</label>
+          <select id="retag-route">
+            <option value="">通用 / Generic</option>
+            <option value="sdxl">SDXL</option>
+            <option value="anima">Anima</option>
+            <option value="newbie">Newbie</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label>Caption 扩展名</label>
+          <input class="text-input" type="text" id="retag-ext" value=".txt">
+        </div>
+        <div class="config-group">
+          <label>方法</label>
+          <select id="retag-method">
+            <option value="wd14">wd14</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label>模型</label>
+          <input class="text-input" type="text" id="retag-model" value="wd-convnext-v3">
+        </div>
+        <div class="config-group">
+          <label>阈值</label>
+          <input class="text-input" type="number" id="retag-threshold" value="0.35" min="0" max="1" step="0.01">
+        </div>
+        <div class="config-group">
+          <label>冲突处理</label>
+          <select id="retag-conflict">
+            <option value="ignore">ignore</option>
+            <option value="append">append</option>
+            <option value="prepend">prepend</option>
+            <option value="copy">copy / overwrite</option>
+          </select>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>递归扫描子目录</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="retag-recursive" checked><span class="slider round"></span></label>
+        </div>
+      </div>
+      <div class="tool-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" type="button" onclick="startBatchRetag()">提交重打标任务</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="openRetagHistory()">历史结果</button>
+      </div>
+      <div id="retag-job" style="margin-top:12px;font-size:0.9rem;color:var(--text-dim);"></div>
+      <div id="retag-result" style="margin-top:16px;"></div>
+      <div id="retag-history" style="margin-top:16px;"></div>
+    </section>
+  `;
+  setTagToolInputsFromContext();
+}
+
+window.startBatchRetag = async () => {
+  const pathVal = $('#retag-path')?.value?.trim();
+  if (!pathVal) { showToast('请先填写数据集路径。'); return; }
+  const payload = {
+    path: pathVal,
+    route_family: $('#retag-route')?.value || '',
+    caption_extension: $('#retag-ext')?.value || '.txt',
+    recursive: $('#retag-recursive')?.checked ?? true,
+    method: $('#retag-method')?.value || 'wd14',
+    conflict: $('#retag-conflict')?.value || 'ignore',
+    config: {
+      model: $('#retag-model')?.value || 'wd-convnext-v3',
+      threshold: Number($('#retag-threshold')?.value || 0.35),
+    },
+  };
+  syncTagToolContext(payload);
+  const jobEl = $('#retag-job');
+  if (jobEl) jobEl.innerHTML = '提交中...';
+  try {
+    const response = await api.startInterrogateBatch(payload);
+    const jobId = response?.data?.job_id;
+    if (!jobId) throw new Error('未返回 job_id');
+    state.activeTagJobId = jobId;
+    if (jobEl) jobEl.innerHTML = `重打标任务已提交：${escapeHtml(jobId)}`;
+    showToast('批量重打标任务已提交。');
+    refreshTagJobs().catch(() => {});
+    const timer = setInterval(async () => {
+      try {
+        const job = await api.getJob(jobId);
+        if (jobEl) {
+          jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(job.status || 'pending')} ${(Math.round((job.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelTagJob('${escapeHtml(jobId)}')">取消</button>`;
+        }
+        if (job.status === 'completed') {
+          clearInterval(timer);
+          await reopenTagJobResultInternal(jobId);
+          showToast('批量重打标完成。');
+          refreshTagJobs().catch(() => {});
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
+          clearInterval(timer);
+          refreshTagJobs().catch(() => {});
+        }
+      } catch (error) {
+        clearInterval(timer);
+        if (jobEl) jobEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(error.message || '轮询失败')}</span>`;
+      }
+    }, 1200);
+  } catch (error) {
+    if (jobEl) jobEl.innerHTML = `<span style="color:#ef4444;">${escapeHtml(error.message || '提交失败')}</span>`;
+    showToast(error.message || '批量重打标启动失败。');
+  }
+};
+
+window.openRetagHistory = async () => {
+  await renderTagResultHistory('retag', 'retag-history');
 };
 
 // ========== Caption 清洗 ==========
@@ -6840,7 +7761,16 @@ function validateConfigConflicts() {
   const swapCount = toNum(c.swap_count);
   const legacyBlocksToSwap = toNum(c.blocks_to_swap);
   const memorySwapEnabled = (swapGranularity !== 'off' && (swapRatio > 0 || swapCount > 0 || swapGranularity === 'auto')) || legacyBlocksToSwap > 0;
+  const moduleOffloadEnabled = toBool(c.module_offload_enabled);
+  const moduleOffloadRatio = toNum(c.module_offload_ratio);
+  const moduleOffloadBackboneRatio = c.module_offload_backbone_ratio === '' || c.module_offload_backbone_ratio == null ? null : toNum(c.module_offload_backbone_ratio);
+  const moduleOffloadTextEncoderRatio = c.module_offload_text_encoder_ratio === '' || c.module_offload_text_encoder_ratio == null ? null : toNum(c.module_offload_text_encoder_ratio);
+  const effectiveModuleOffloadBackboneRatio = moduleOffloadBackboneRatio == null ? moduleOffloadRatio : moduleOffloadBackboneRatio;
+  const effectiveModuleOffloadTextEncoderRatio = moduleOffloadTextEncoderRatio == null ? moduleOffloadRatio : moduleOffloadTextEncoderRatio;
+  const moduleOffloadRequested = moduleOffloadEnabled && (effectiveModuleOffloadBackboneRatio > 0 || effectiveModuleOffloadTextEncoderRatio > 0);
+  const distributedEnabled = toBool(c.enable_distributed_training) || toBool(c.enable_distributed) || toBool(c.multi_gpu) || toNum(c.num_processes) > 1 || toNum(c.num_machines) > 1;
   const isAnimaRoute = String(tt || '').startsWith('anima-') || String(c.model_train_type || '').toLowerCase().startsWith('anima-');
+  const moduleOffloadPipelineRoute = tt.includes('controlnet') || tt.includes('ip-adapter') || tt.includes('lllite') || toBool(c.ip_adapter_enabled) || Boolean(String(c.controlnet_model || '').trim());
   const supportedVramSwapModules = new Set([
     'networks.lora',
     'networks.lora_fa',
@@ -6978,6 +7908,42 @@ function validateConfigConflicts() {
   }
   if (memorySwapEnabled && toBool(c.cpu_offload_checkpointing)) {
     warnings.push('显存交换与 cpu_offload_checkpointing 通常不建议同时使用。');
+  }
+  if (moduleOffloadRatio < 0 || moduleOffloadRatio > 100) {
+    errors.push('模块级 Offload 总比例必须在 0 到 100 之间。');
+  }
+  if (moduleOffloadBackboneRatio != null && (moduleOffloadBackboneRatio < 0 || moduleOffloadBackboneRatio > 100)) {
+    errors.push('模块级 Offload 的主干覆盖比例必须在 0 到 100 之间。');
+  }
+  if (moduleOffloadTextEncoderRatio != null && (moduleOffloadTextEncoderRatio < 0 || moduleOffloadTextEncoderRatio > 100)) {
+    errors.push('模块级 Offload 的文本编码器覆盖比例必须在 0 到 100 之间。');
+  }
+  if (moduleOffloadRequested && memorySwapEnabled) {
+    errors.push('模块级 Offload 不能与现有显存交换同时使用。请关闭其中一个。');
+  }
+  if (moduleOffloadRequested && toBool(c.vram_swap_to_ram)) {
+    errors.push('模块级 Offload 不能与 VRAM Swap to RAM 同时使用。请只保留一种 CPU offload 策略。');
+  }
+  if (moduleOffloadRequested && (toBool(c.safe_fallback) || toBool(c.newbie_safe_fallback))) {
+    errors.push('模块级 Offload 不能与 OOM 安全回退同时使用。请关闭其中一个。');
+  }
+  if (moduleOffloadRequested && toBool(c.torch_compile)) {
+    errors.push('模块级 Offload 不能与 torch.compile 同时使用。请关闭其中一个。');
+  }
+  if (moduleOffloadRequested && distributedEnabled) {
+    errors.push('模块级 Offload v1 目前只支持单 GPU eager 训练，不能与分布式 / 多卡同时使用。');
+  }
+  if (moduleOffloadRequested && toBool(c.deepspeed)) {
+    errors.push('模块级 Offload v1 不能与 DeepSpeed 同时使用。');
+  }
+  if (moduleOffloadRequested && moduleOffloadPipelineRoute) {
+    errors.push('模块级 Offload v1 不能用于 ControlNet / IP-Adapter / LLLite 路线。');
+  }
+  if (moduleOffloadRequested && toBool(c.gradient_checkpointing)) {
+    errors.push('模块级 Offload v1 不能与梯度检查点同时使用。');
+  }
+  if (moduleOffloadRequested && toBool(c.cpu_offload_checkpointing)) {
+    errors.push('模块级 Offload 不能与 cpu_offload_checkpointing 同时使用。');
   }
 
   const flowModel = String(c.flow_model || '').trim();

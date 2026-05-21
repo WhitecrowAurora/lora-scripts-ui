@@ -122,7 +122,16 @@ export function createTrainingActionsController({
     const swapCount = toNum(c.swap_count);
     const legacyBlocksToSwap = toNum(c.blocks_to_swap);
     const memorySwapEnabled = (swapGranularity !== 'off' && (swapRatio > 0 || swapCount > 0 || swapGranularity === 'auto')) || legacyBlocksToSwap > 0;
+    const moduleOffloadEnabled = toBool(c.module_offload_enabled);
+    const moduleOffloadRatio = toNum(c.module_offload_ratio);
+    const moduleOffloadBackboneRatio = c.module_offload_backbone_ratio === '' || c.module_offload_backbone_ratio == null ? null : toNum(c.module_offload_backbone_ratio);
+    const moduleOffloadTextEncoderRatio = c.module_offload_text_encoder_ratio === '' || c.module_offload_text_encoder_ratio == null ? null : toNum(c.module_offload_text_encoder_ratio);
+    const effectiveModuleOffloadBackboneRatio = moduleOffloadBackboneRatio == null ? moduleOffloadRatio : moduleOffloadBackboneRatio;
+    const effectiveModuleOffloadTextEncoderRatio = moduleOffloadTextEncoderRatio == null ? moduleOffloadRatio : moduleOffloadTextEncoderRatio;
+    const moduleOffloadRequested = moduleOffloadEnabled && (effectiveModuleOffloadBackboneRatio > 0 || effectiveModuleOffloadTextEncoderRatio > 0);
+    const distributedEnabled = toBool(c.enable_distributed_training) || toBool(c.enable_distributed) || toBool(c.multi_gpu) || toNum(c.num_processes) > 1 || toNum(c.num_machines) > 1;
     const isAnimaRoute = String(tt || '').startsWith('anima-') || String(c.model_train_type || '').toLowerCase().startsWith('anima-');
+    const moduleOffloadPipelineRoute = tt.includes('controlnet') || tt.includes('ip-adapter') || tt.includes('lllite') || toBool(c.ip_adapter_enabled) || Boolean(String(c.controlnet_model || '').trim());
     const supportedVramSwapModules = new Set([
       'networks.lora',
       'networks.lora_fa',
@@ -247,6 +256,42 @@ export function createTrainingActionsController({
     }
     if (memorySwapEnabled && toBool(c.cpu_offload_checkpointing)) {
       warnings.push('显存交换与 cpu_offload_checkpointing 通常不建议同时使用。');
+    }
+    if (moduleOffloadRatio < 0 || moduleOffloadRatio > 100) {
+      errors.push('模块级 Offload 总比例必须在 0 到 100 之间。');
+    }
+    if (moduleOffloadBackboneRatio != null && (moduleOffloadBackboneRatio < 0 || moduleOffloadBackboneRatio > 100)) {
+      errors.push('模块级 Offload 的主干覆盖比例必须在 0 到 100 之间。');
+    }
+    if (moduleOffloadTextEncoderRatio != null && (moduleOffloadTextEncoderRatio < 0 || moduleOffloadTextEncoderRatio > 100)) {
+      errors.push('模块级 Offload 的文本编码器覆盖比例必须在 0 到 100 之间。');
+    }
+    if (moduleOffloadRequested && memorySwapEnabled) {
+      errors.push('模块级 Offload 不能与现有显存交换同时使用。请关闭其中一个。');
+    }
+    if (moduleOffloadRequested && toBool(c.vram_swap_to_ram)) {
+      errors.push('模块级 Offload 不能与 VRAM Swap to RAM 同时使用。请只保留一种 CPU offload 策略。');
+    }
+    if (moduleOffloadRequested && (toBool(c.safe_fallback) || toBool(c.newbie_safe_fallback))) {
+      errors.push('模块级 Offload 不能与 OOM 安全回退同时使用。请关闭其中一个。');
+    }
+    if (moduleOffloadRequested && toBool(c.torch_compile)) {
+      errors.push('模块级 Offload 不能与 torch.compile 同时使用。请关闭其中一个。');
+    }
+    if (moduleOffloadRequested && distributedEnabled) {
+      errors.push('模块级 Offload v1 目前只支持单 GPU eager 训练，不能与分布式 / 多卡同时使用。');
+    }
+    if (moduleOffloadRequested && toBool(c.deepspeed)) {
+      errors.push('模块级 Offload v1 不能与 DeepSpeed 同时使用。');
+    }
+    if (moduleOffloadRequested && moduleOffloadPipelineRoute) {
+      errors.push('模块级 Offload v1 不能用于 ControlNet / IP-Adapter / LLLite 路线。');
+    }
+    if (moduleOffloadRequested && toBool(c.gradient_checkpointing)) {
+      errors.push('模块级 Offload v1 不能与梯度检查点同时使用。');
+    }
+    if (moduleOffloadRequested && toBool(c.cpu_offload_checkpointing)) {
+      errors.push('模块级 Offload 不能与 cpu_offload_checkpointing 同时使用。');
     }
 
     const flowModel = String(c.flow_model || '').trim();
