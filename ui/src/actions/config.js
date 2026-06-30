@@ -20,6 +20,9 @@ updateJSONPreview,
   renderView,
   resetTransientState,
 }) {
+  const LEGACY_ANIMA_GLOKR_FULL_MATRIX_SENTINEL = 114514;
+  const ANIMA_GLOKR_FULL_MATRIX_COMPAT_DIM = 1;
+
   function isTruthyConfigFlag(value) {
   if (value === true || value === 1) {
       return true;
@@ -42,6 +45,62 @@ updateJSONPreview,
     return false;
   }
 
+  function normalizeAnimaAdapterRoute(target = state.config) {
+    if (!target || typeof target !== 'object') {
+      return false;
+    }
+    const trainingType = String(target.model_train_type || state.activeTrainingType || '').trim();
+    if (trainingType !== 'anima-lora') {
+      return false;
+    }
+    const loraType = String(target.lora_type || '').trim().toLowerCase();
+    const desiredNetworkModule = loraType === 'glokr' ? 'lycoris.kohya' : 'networks.lora_anima';
+    const desiredLycorisAlgo = loraType === 'glokr' ? 'glokr' : '';
+    let changed = false;
+    if (target.network_module !== desiredNetworkModule) {
+      target.network_module = desiredNetworkModule;
+      changed = true;
+    }
+    if (String(target.lycoris_algo || '') !== desiredLycorisAlgo) {
+      target.lycoris_algo = desiredLycorisAlgo;
+      changed = true;
+    }
+    return changed;
+  }
+
+  function normalizeLegacyAnimaGlokrFullMatrix(target = state.config) {
+    if (!target || typeof target !== 'object') {
+      return false;
+    }
+    const trainingType = String(target.model_train_type || state.activeTrainingType || '').trim();
+    if (trainingType !== 'anima-lora') {
+      return false;
+    }
+    const loraType = String(target.lora_type || target.lycoris_algo || '').trim().toLowerCase();
+    if (loraType !== 'glokr') {
+      return false;
+    }
+    const networkDim = Number(target.network_dim);
+    const networkAlpha = Number(target.network_alpha);
+    if (networkDim !== LEGACY_ANIMA_GLOKR_FULL_MATRIX_SENTINEL && networkAlpha !== LEGACY_ANIMA_GLOKR_FULL_MATRIX_SENTINEL) {
+      return false;
+    }
+    let changed = false;
+    if (target.network_dim !== ANIMA_GLOKR_FULL_MATRIX_COMPAT_DIM) {
+      target.network_dim = ANIMA_GLOKR_FULL_MATRIX_COMPAT_DIM;
+      changed = true;
+    }
+    if (target.network_alpha !== ANIMA_GLOKR_FULL_MATRIX_COMPAT_DIM) {
+      target.network_alpha = ANIMA_GLOKR_FULL_MATRIX_COMPAT_DIM;
+      changed = true;
+    }
+    if (target.full_matrix !== true) {
+      target.full_matrix = true;
+      changed = true;
+    }
+    return changed;
+  }
+
   function mergeConfigPatch(patch) {
     if (!patch || typeof patch !== 'object') {
       return;
@@ -59,6 +118,8 @@ updateJSONPreview,
       }
       state.config[key] = normalizeDraftValue(field, value);
     }
+    normalizeAnimaAdapterRoute();
+    normalizeLegacyAnimaGlokrFullMatrix();
     enforceLycorisDoraSafety();
   }
 
@@ -75,6 +136,8 @@ updateJSONPreview,
   }
 
   function syncConfigState() {
+    normalizeAnimaAdapterRoute();
+    normalizeLegacyAnimaGlokrFullMatrix();
     enforceLycorisDoraSafety();
     saveDraft();
     updateJSONPreview();
@@ -99,6 +162,8 @@ updateJSONPreview,
       state.fieldUndo[key] = previousValue;
     }
     state.config[key] = normalizedValue;
+    normalizeAnimaAdapterRoute();
+    normalizeLegacyAnimaGlokrFullMatrix();
     enforceLycorisDoraSafety();
     if (CONDITIONAL_KEYS.has(key) && state.activeModule === 'config') {
       saveDraft();
