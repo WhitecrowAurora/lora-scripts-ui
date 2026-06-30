@@ -505,6 +505,35 @@ const rectifiedFlowParams = () => [
 // helper: section factory
 const sec = (id, tab, title, desc, fields) => ({ id, tab, title, description: desc, fields });
 
+const ANIMA_MAIN_BLOCK_TEMPLATE_DEFAULT = '主干 block（self_attn + cross_attn + mlp）';
+const ANIMA_MAIN_BLOCK_TEMPLATE_WITH_ADLN = '主干 block + adln（self_attn + cross_attn + mlp + adln）';
+const ANIMA_MAIN_BLOCK_TEMPLATE_OPTIONS = [
+  ANIMA_MAIN_BLOCK_TEMPLATE_DEFAULT,
+  ANIMA_MAIN_BLOCK_TEMPLATE_WITH_ADLN,
+  '仅 attention（self_attn + cross_attn）',
+  '仅 self_attn',
+  '仅 cross_attn',
+  '仅 mlp',
+];
+const ANIMA_MAIN_BLOCK_TEMPLATE_ARGS = {
+  [ANIMA_MAIN_BLOCK_TEMPLATE_DEFAULT]: [],
+  [ANIMA_MAIN_BLOCK_TEMPLATE_WITH_ADLN]: [
+    "include_patterns=['.*blocks\\.[0-9]+\\.adaln_modulation_.*']",
+  ],
+  '仅 attention（self_attn + cross_attn）': [
+    "exclude_patterns=['.*mlp.*']",
+  ],
+  '仅 self_attn': [
+    "exclude_patterns=['.*cross_attn.*', '.*mlp.*']",
+  ],
+  '仅 cross_attn': [
+    "exclude_patterns=['.*self_attn.*', '.*mlp.*']",
+  ],
+  '仅 mlp': [
+    "exclude_patterns=['.*self_attn.*', '.*cross_attn.*']",
+  ],
+};
+
 // ================================================================
 // SECTIONS 定义: 每种训练类型
 // ================================================================
@@ -977,22 +1006,34 @@ const ANIMA_LORA_SECTIONS = [
   sec('dataset-settings', 'dataset', '数据集设置', '', ds('1024,1024', 2048, 64)),
   sec('caption-settings', 'dataset', 'Caption 选项', '', S_CAPTION.filter((f) => f.key !== 'max_token_length')),
   sec('data-aug-settings', 'dataset', '数据增强', '颜色、翻转与裁剪增强。', [...S_DATA_AUG]),
-  sec('network-settings', 'network', '网络设置', 'LoRA / T-LoRA / LoKr 模式。', [
-    { key: 'lora_type', type: 'select', label: '适配器类型（lora_type）', desc: 'LoRA 是基础路线；LoRA-FA 冻结 lora_down；VeRA 使用共享随机投影；T-LoRA 会按时间步动态 rank；LoKr 走内置线性层注入的实验路线', defaultValue: 'lora', options: ['lora', 'lora_fa', 'vera', 'tlora', 'lokr'] },
+  sec('network-settings', 'network', '网络设置', 'LoRA / T-LoRA / LoKr / GLoKr 模式。', [
+    { key: 'network_module', type: 'hidden', defaultValue: 'networks.lora_anima' },
+    { key: 'lycoris_algo', type: 'hidden', defaultValue: '' },
+    { key: 'lora_type', type: 'select', label: '适配器类型（lora_type）', desc: 'LoRA 是基础路线；LoRA-FA 冻结 lora_down；VeRA 使用共享随机投影；T-LoRA 会按时间步动态 rank；LoKr 走内置线性层注入的实验路线；GLoKr 走 Anima 的 LyCORIS 混合路线。', defaultValue: 'lora', options: ['lora', 'lora_fa', 'vera', 'tlora', 'lokr', 'glokr'] },
     { key: 'network_dim', type: 'slider', label: '网络维度（network_dim）', desc: '网络维度，常用 4~128，不是越大越好, 低 dim 可以降低显存占用', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'network_alpha', type: 'slider', label: '网络 Alpha（network_alpha）', desc: '常用值：等于 network_dim 或 network_dim*1/2 或 1', defaultValue: 16, min: 1, max: 256, step: 1 },
     { key: 'dim_from_weights', type: 'boolean', label: '从权重推断 Dim（dim_from_weights）', desc: '从已有 network_weights 自动推断 rank / dim', defaultValue: false },
     { key: 'scale_weight_norms', type: 'number', label: '最大范数正则化（scale_weight_norms）', desc: '最大范数正则化。如果使用，推荐为 1', defaultValue: '', min: 0, step: 0.01 },
     { key: 'train_norm', type: 'boolean', label: '训练 Norm 层（train_norm）', desc: '额外训练带可学习参数的归一化层（如 RMSNorm/LayerNorm 的 weight/bias），让 LoRA/T-LoRA/LoKr 之外还能调整特征尺度与分布；可能提升风格/域适配，但会小幅增加显存占用和 LoRA 文件大小，也更容易过拟合，默认建议关闭。', defaultValue: false },
-    { key: 'dora_wd', type: 'boolean', label: '启用 DoRA（dora_wd）', desc: '仅在 Anima 原生 LoRA 路线下生效。DoRA 会把权重分成方向与幅度两部分来训练，通常比普通 LoRA 更接近全量微调表现。', defaultValue: false, visibleWhen: when('lora_type', 'lora') },
-    { key: 'bypass_mode', type: 'boolean', label: 'Bypass Mode（bypass_mode）', desc: '仅保留兼容字段。当前 Anima DoRA 开启时会自动强制关闭；普通 Anima LoRA 默认也建议关闭。', defaultValue: false, visibleWhen: (c) => c.lora_type === 'lora' && !c.dora_wd },
-    { key: 'lokr_factor', type: 'number', label: 'LoKr 系数（lokr_factor）', desc: 'LoKr 系数，常用 4~无穷（-1 为无穷）', defaultValue: 8, min: -1, visibleWhen: when('lora_type', 'lokr') },
+    { key: 'dora_wd', type: 'boolean', label: '启用 DoRA（dora_wd）', desc: '在 Anima 原生 LoRA 或 GLoKr 路线下启用 DoRA。开启后会自动强制关闭 bypass_mode。', defaultValue: false, visibleWhen: (c) => c.lora_type === 'lora' || c.lora_type === 'glokr' },
+    { key: 'bypass_mode', type: 'boolean', label: 'Bypass Mode（bypass_mode）', desc: '兼容字段。当前 Anima DoRA 开启时会自动强制关闭；普通 Anima LoRA / GLoKr 默认也建议关闭。', defaultValue: false, visibleWhen: (c) => (c.lora_type === 'lora' || c.lora_type === 'glokr') && !c.dora_wd },
+    { key: 'anima_main_block_template', type: 'select', label: '主干 block 预设模板（anima_main_block_template）', desc: '只针对 DiT 主干 block 生效。默认就是主干 block；选择带 adln 的模板会额外补入 blocks.*.adaln_modulation_*，并继续保留手填 network_args_custom 的覆盖能力', defaultValue: ANIMA_MAIN_BLOCK_TEMPLATE_DEFAULT, options: ANIMA_MAIN_BLOCK_TEMPLATE_OPTIONS },
+    { key: 'lokr_factor', type: 'number', label: 'LoKr / GLoKr 系数（lokr_factor）', desc: 'LoKr / GLoKr 系数，常用 4~无穷（-1 为无穷）', defaultValue: 8, min: -1, visibleWhen: (c) => c.lora_type === 'lokr' || c.lora_type === 'glokr' },
     { key: 'network_dropout', type: 'number', label: 'Dropout', desc: 'Dropout 概率', defaultValue: 0, min: 0, step: 0.01, visibleWhen: (c) => c.lora_type === 'lora' || c.lora_type === 'lora_fa' || c.lora_type === 'vera' || c.lora_type === 'tlora' },
+    { key: 'dropout', type: 'number', label: 'GLoKr Dropout（dropout）', desc: 'GLoKr 主 dropout 概率。', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'rank_dropout', type: 'number', label: 'GLoKr Rank Dropout（rank_dropout）', desc: 'GLoKr rank dropout 概率。', defaultValue: '', min: 0, max: 1, step: 0.01, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'module_dropout', type: 'number', label: 'GLoKr Module Dropout（module_dropout）', desc: 'GLoKr module dropout 概率。', defaultValue: '', min: 0, max: 1, step: 0.01, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'use_scalar', type: 'boolean', label: 'GLoKr Scalar 参数化（use_scalar）', desc: '启用 GLoKr 的 scalar 参数化。', defaultValue: false, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'rs_lora', type: 'boolean', label: 'GLoKr rsLoRA 缩放（rs_lora）', desc: '启用 GLoKr 的 rsLoRA 风格缩放。', defaultValue: false, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'wd_on_output', type: 'boolean', label: 'GLoKr DoRA 输出侧范数（wd_on_output）', desc: 'GLoKr DoRA 范数统计沿输出通道计算。', defaultValue: true, visibleWhen: (c) => c.lora_type === 'glokr' && c.dora_wd },
+    { key: 'full_matrix', type: 'boolean', label: 'GLoKr Full Matrix（full_matrix）', desc: '强制使用 direct lokr_w1/lokr_w2 分支。', defaultValue: false, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'decompose_both', type: 'boolean', label: 'GLoKr 双侧分解（decompose_both）', desc: '启用 lokr_w1_a/b 和 lokr_w2_a/b 低秩分支。', defaultValue: false, visibleWhen: when('lora_type', 'glokr') },
+    { key: 'unbalanced_factorization', type: 'boolean', label: 'GLoKr 非均衡分解（unbalanced_factorization）', desc: '交换输出分解维度，用于对齐 LyCORIS 实验语义。', defaultValue: false, visibleWhen: when('lora_type', 'glokr') },
     { key: 'tlora_min_rank', type: 'number', label: 'T-LoRA 最小 Rank（tlora_min_rank）', desc: 'T-LoRA 最小动态 rank', defaultValue: 1, min: 1, visibleWhen: when('lora_type', 'tlora') },
     { key: 'tlora_rank_schedule', type: 'select', label: 'T-LoRA Rank 调度（tlora_rank_schedule）', desc: 'T-LoRA 动态 rank 调度策略', defaultValue: 'cosine', options: ['cosine', 'linear'], visibleWhen: when('lora_type', 'tlora') },
     { key: 'tlora_orthogonal_init', type: 'boolean', label: 'T-LoRA 正交初始化（tlora_orthogonal_init）', desc: '对 lora_down 使用正交初始化（实验性）', defaultValue: false, visibleWhen: when('lora_type', 'tlora') },
     { key: 'pissa_init', type: 'boolean', label: '启用 PiSSA 初始化（pissa_init）', desc: '启用 PiSSA 初始化（实验性，仅 LoRA 类型下生效）', defaultValue: false, visibleWhen: when('lora_type', 'lora') },
-    { key: 'network_args_custom', type: 'textarea', label: '自定义 network_args（network_args_custom）', desc: '自定义 network_args，每行一个参数。Anima 路线会直接附加到后端 payload。', defaultValue: '' },
+    { key: 'network_args_custom', type: 'textarea', label: '自定义 network_args（network_args_custom）', desc: '自定义 network_args，每行一个参数。Anima 路线会在主干 block 预设之后追加到后端 payload。', defaultValue: '' },
   ]),
   sec('optimizer-settings', 'optimizer', '学习率与优化器', '', [...S_LR]),
   sec('training-settings', 'training', '训练参数', '', S_TRAIN(10)),
@@ -1695,6 +1736,24 @@ export function buildRunConfig(config, typeId) {
   } else if (payload.lr_scheduler && !STANDARD_SCHEDULERS.includes(payload.lr_scheduler)) {
     payload.lr_scheduler_type = payload.lr_scheduler;
     payload.lr_scheduler = 'constant';
+  }
+
+  if (tid === 'anima-lora') {
+    const animaLoraType = String(payload.lora_type || config.lora_type || '').trim().toLowerCase();
+    if (animaLoraType === 'glokr') {
+      payload.network_module = 'lycoris.kohya';
+      payload.lycoris_algo = 'glokr';
+    } else {
+      payload.network_module = 'networks.lora_anima';
+      delete payload.lycoris_algo;
+    }
+    const blockTemplate = String(payload.anima_main_block_template || ANIMA_MAIN_BLOCK_TEMPLATE_DEFAULT);
+    const blockTemplateArgs = ANIMA_MAIN_BLOCK_TEMPLATE_ARGS[blockTemplate] || [];
+    if (blockTemplateArgs.length > 0) {
+      const existingArgs = payload.network_args || [];
+      payload.network_args = [...existingArgs, ...blockTemplateArgs];
+    }
+    delete payload.anima_main_block_template;
   }
 
   // ── Prodigy / 自适应优化器 optimizer_args 自动组装 ──

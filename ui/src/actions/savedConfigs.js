@@ -29,6 +29,132 @@ export function createSavedConfigsActions({
   // constants
   DRAFT_STORAGE_KEY,
 }) {
+  function normalizeImportedAnimaGlokr(target, trainingType) {
+    if (!target || typeof target !== 'object') {
+      return;
+    }
+    const normalizedType = String(trainingType || target.__training_type__ || target.model_train_type || '').trim();
+    if (normalizedType !== 'anima-lora') {
+      return;
+    }
+    const loraType = String(target.lora_type || '').trim().toLowerCase();
+    const lycorisAlgo = String(target.lycoris_algo || '').trim().toLowerCase();
+    if (loraType !== 'glokr' && lycorisAlgo !== 'glokr') {
+      return;
+    }
+    target.lora_type = 'glokr';
+    target.lycoris_algo = 'glokr';
+    target.network_module = 'lycoris.kohya';
+  }
+
+  function toBoolish(value) {
+    const text = String(value ?? '').trim().toLowerCase();
+    return text === 'true' || text === '1';
+  }
+
+  function toNumberOrEmpty(value) {
+    const num = Number(value);
+    return Number.isNaN(num) ? '' : num;
+  }
+
+  function mapAnimaPresetToTemplate(presetPath) {
+    const normalized = String(presetPath || '').trim().replaceAll('\\', '/');
+    const presetMap = {
+      './config/lycoris_presets/anima_main_block.toml': '主干 block（self_attn + cross_attn + mlp）',
+      './config/lycoris_presets/anima_main_block_with_adln.toml': '主干 block + adln（self_attn + cross_attn + mlp + adln）',
+      './config/lycoris_presets/anima_attention_only.toml': '仅 attention（self_attn + cross_attn）',
+      './config/lycoris_presets/anima_self_attn_only.toml': '仅 self_attn',
+      './config/lycoris_presets/anima_cross_attn_only.toml': '仅 cross_attn',
+      './config/lycoris_presets/anima_mlp_only.toml': '仅 mlp',
+    };
+    return presetMap[normalized] || '';
+  }
+
+  function normalizeImportedCustomAttributes(target) {
+    if (!target || typeof target !== 'object') {
+      return;
+    }
+    const customAttributes = target.custom_attributes;
+    if (!customAttributes || typeof customAttributes !== 'object' || Array.isArray(customAttributes)) {
+      return;
+    }
+    if (target.prefer_json_caption == null && customAttributes.prefer_json_caption != null) {
+      target.prefer_json_caption = Boolean(customAttributes.prefer_json_caption);
+    }
+  }
+
+  function restoreNetworkArgsToUiFields(target) {
+    if (!target || typeof target !== 'object' || !Array.isArray(target.network_args)) {
+      return;
+    }
+    const argMap = {};
+    for (const item of target.network_args) {
+      const eq = String(item).indexOf('=');
+      if (eq > 0) {
+        argMap[String(item).slice(0, eq).trim()] = String(item).slice(eq + 1).trim();
+      }
+    }
+    if (argMap.algo && !target.lycoris_algo) {
+      target.lycoris_algo = argMap.algo;
+    }
+    if (argMap.algo && !target.network_module) {
+      target.network_module = 'lycoris.kohya';
+    }
+    if (String(argMap.algo || '').trim().toLowerCase() === 'glokr') {
+      target.lora_type = 'glokr';
+    }
+    if (argMap.conv_dim != null) target.conv_dim = toNumberOrEmpty(argMap.conv_dim);
+    if (argMap.conv_alpha != null) target.conv_alpha = toNumberOrEmpty(argMap.conv_alpha);
+    if (argMap.preset != null) {
+      target.lycoris_preset = argMap.preset;
+      const animaTemplate = mapAnimaPresetToTemplate(argMap.preset);
+      if (animaTemplate) {
+        target.anima_main_block_template = animaTemplate;
+      }
+    }
+    if (argMap.dropout != null) target.dropout = toNumberOrEmpty(argMap.dropout);
+    if (argMap.rank_dropout != null) target.rank_dropout = toNumberOrEmpty(argMap.rank_dropout);
+    if (argMap.module_dropout != null) target.module_dropout = toNumberOrEmpty(argMap.module_dropout);
+    if (argMap.train_norm != null) target.train_norm = toBoolish(argMap.train_norm);
+    if (argMap.use_tucker != null) target.use_tucker = toBoolish(argMap.use_tucker);
+    else if (argMap.use_cp != null) target.use_tucker = toBoolish(argMap.use_cp);
+    else if (argMap.use_conv_cp != null) target.use_tucker = toBoolish(argMap.use_conv_cp);
+    else if (argMap.disable_conv_cp != null) target.use_tucker = !toBoolish(argMap.disable_conv_cp);
+    if (argMap.use_scalar != null) target.use_scalar = toBoolish(argMap.use_scalar);
+    if (argMap.block_size != null) target.block_size = toNumberOrEmpty(argMap.block_size);
+    if (argMap.rescaled != null) target.rescaled = toBoolish(argMap.rescaled);
+    if (argMap.constraint != null) target.constraint = toNumberOrEmpty(argMap.constraint);
+    else if (argMap.constrain != null) target.constraint = toNumberOrEmpty(argMap.constrain);
+    if (argMap.rs_lora != null) target.rs_lora = toBoolish(argMap.rs_lora);
+    if (argMap.lokr_factor != null) target.lokr_factor = toNumberOrEmpty(argMap.lokr_factor);
+    else if (argMap.factor != null) target.lokr_factor = toNumberOrEmpty(argMap.factor);
+    if (argMap.dora_wd != null) target.dora_wd = toBoolish(argMap.dora_wd);
+    if (argMap.wd_on_output != null) target.wd_on_output = toBoolish(argMap.wd_on_output);
+    if (argMap.bypass_mode != null) target.bypass_mode = toBoolish(argMap.bypass_mode);
+    if (argMap.decompose_both != null) target.decompose_both = toBoolish(argMap.decompose_both);
+    if (argMap.full_matrix != null) target.full_matrix = toBoolish(argMap.full_matrix);
+    if (argMap.unbalanced_factorization != null) target.unbalanced_factorization = toBoolish(argMap.unbalanced_factorization);
+    if (argMap.scale_weight_norms != null) target.scale_weight_norms = toNumberOrEmpty(argMap.scale_weight_norms);
+
+    const structured = new Set([
+      'algo', 'conv_dim', 'conv_alpha', 'preset', 'dropout', 'rank_dropout', 'module_dropout',
+      'train_norm', 'use_tucker', 'use_scalar', 'block_size', 'rescaled', 'constraint', 'constrain',
+      'rs_lora', 'factor', 'lokr_factor', 'dora_wd', 'wd_on_output', 'bypass_mode', 'decompose_both',
+      'full_matrix', 'unbalanced_factorization', 'scale_weight_norms', 'disable_conv_cp', 'use_cp', 'use_conv_cp',
+    ]);
+    const existingCustom = String(target.network_args_custom || '').trim();
+    const customLines = existingCustom ? existingCustom.split(/[\n\r]+/).map((line) => line.trim()).filter(Boolean) : [];
+    const remaining = target.network_args.filter((arg) => {
+      const key = String(arg).split('=')[0].trim();
+      return !structured.has(key);
+    });
+    const merged = [...customLines, ...remaining].filter(Boolean);
+    if (merged.length > 0) {
+      target.network_args_custom = Array.from(new Set(merged)).join('\n');
+    }
+    delete target.network_args;
+  }
+
   function setupImportConfig() {
     if (state.importInputBound) {
       return;
@@ -47,51 +173,12 @@ export function createSavedConfigsActions({
         const text = await file.text();
         let parsed;
         if (file.name.endsWith('.toml')) {
-        parsed = parseSimpleToml(text);
+          parsed = parseSimpleToml(text);
         } else {
           parsed = JSON.parse(text);
         }
-        // ── 旧格式兼容：把 network_args 数组反向映射回独立 UI 字段 ──
-        if (Array.isArray(parsed.network_args) && !parsed.lycoris_algo) {
-          const argMap = {};
-          for (const item of parsed.network_args) {
-            const eq = String(item).indexOf('=');
-            if (eq > 0) argMap[String(item).slice(0, eq).trim()] = String(item).slice(eq + 1).trim();
-          }
-          if (argMap.algo) {
-            parsed.lycoris_algo = argMap.algo;
-            if (!parsed.network_module) parsed.network_module = 'lycoris.kohya';
-          }
-          if (argMap.conv_dim != null) { const n = Number(argMap.conv_dim); parsed.conv_dim = Number.isNaN(n) ? '' : n; }
-          if (argMap.conv_alpha != null) { const n = Number(argMap.conv_alpha); parsed.conv_alpha = Number.isNaN(n) ? '' : n; }
-          if (argMap.preset != null) parsed.lycoris_preset = argMap.preset;
-          if (argMap.dropout != null) { const n = Number(argMap.dropout); parsed.dropout = Number.isNaN(n) ? '' : n; }
-          if (argMap.rank_dropout != null) { const n = Number(argMap.rank_dropout); parsed.rank_dropout = Number.isNaN(n) ? '' : n; }
-          if (argMap.module_dropout != null) { const n = Number(argMap.module_dropout); parsed.module_dropout = Number.isNaN(n) ? '' : n; }
-          if (argMap.train_norm != null) parsed.train_norm = argMap.train_norm === 'True';
-          if (argMap.use_tucker != null) parsed.use_tucker = argMap.use_tucker === 'True';
-          else if (argMap.use_cp != null) parsed.use_tucker = argMap.use_cp === 'True';
-          else if (argMap.use_conv_cp != null) parsed.use_tucker = argMap.use_conv_cp === 'True';
-    else if (argMap.disable_conv_cp != null) parsed.use_tucker = argMap.disable_conv_cp !== 'True';
-          if (argMap.use_scalar != null) parsed.use_scalar = argMap.use_scalar === 'True';
-          if (argMap.block_size != null) { const n = Number(argMap.block_size); parsed.block_size = Number.isNaN(n) ? '' : n; }
-          if (argMap.rescaled != null) parsed.rescaled = argMap.rescaled === 'True';
-          if (argMap.constraint != null) { const n = Number(argMap.constraint); parsed.constraint = Number.isNaN(n) ? '' : n; }
-          else if (argMap.constrain != null) { const n = Number(argMap.constrain); parsed.constraint = Number.isNaN(n) ? '' : n; }
-          if (argMap.rs_lora != null) parsed.rs_lora = argMap.rs_lora === 'True';
-          if (argMap.factor != null){ const n = Number(argMap.factor); parsed.lokr_factor = Number.isNaN(n) ? '' : n; }
-          if (argMap.dora_wd != null) parsed.dora_wd = argMap.dora_wd === 'True';
-          if (argMap.wd_on_output != null) parsed.wd_on_output = argMap.wd_on_output === 'True';
-          if (argMap.bypass_mode != null) parsed.bypass_mode = argMap.bypass_mode === 'True';
-          if (argMap.decompose_both != null) parsed.decompose_both = argMap.decompose_both === 'True';
-          if (argMap.full_matrix != null) parsed.full_matrix = argMap.full_matrix === 'True';
-          if (argMap.unbalanced_factorization != null) parsed.unbalanced_factorization = argMap.unbalanced_factorization === 'True';
-          if (argMap.scale_weight_norms != null) { const n = Number(argMap.scale_weight_norms); parsed.scale_weight_norms = Number.isNaN(n) ? '' : n; }
-          const structured = new Set(['algo', 'conv_dim', 'conv_alpha', 'preset', 'dropout', 'rank_dropout', 'module_dropout', 'train_norm', 'use_tucker', 'use_scalar', 'block_size', 'rescaled', 'constraint', 'constrain', 'rs_lora', 'factor', 'dora_wd', 'wd_on_output', 'bypass_mode', 'decompose_both', 'full_matrix', 'unbalanced_factorization', 'scale_weight_norms', 'disable_conv_cp', 'use_cp', 'use_conv_cp']);
-          const remaining =parsed.network_args.filter(a => { const k = String(a).split('=')[0].trim(); return !structured.has(k); });
-          if (remaining.length > 0) parsed.network_args_custom = remaining.join('\n');
-          delete parsed.network_args;
-        }
+        restoreNetworkArgsToUiFields(parsed);
+        normalizeImportedCustomAttributes(parsed);
         // 旧格式：optimizer_args 数组 → 还原 Prodigy 字段
         if (Array.isArray(parsed.optimizer_args) && !parsed.optimizer_args_custom) {
           const remainingArgs = [];
@@ -121,6 +208,7 @@ export function createSavedConfigsActions({
         }
         // 导入文件时先重置为默认配置，防止旧参数残留
         const importType = parsed.model_train_type || state.activeTrainingType;
+        normalizeImportedAnimaGlokr(parsed, importType);
         if (importType &&importType !== state.activeTrainingType) {
           window.switchTrainingType(importType);
         }
@@ -280,47 +368,8 @@ try {
 
       // ── 旧格式兼容：把 buildRunConfig 产出的后端字段反向映射回 UI 字段 ──
       // 旧保存格式中 LyCORIS 参数被合并进 network_args 数组，日志/优化器等 UI 字段被删除
-      if (Array.isArray(data.network_args) && !data.lycoris_algo) {
-        const argMap = {};
-        for (const item of data.network_args) {
-          const eq = String(item).indexOf('=');
-          if (eq > 0) argMap[String(item).slice(0, eq).trim()] = String(item).slice(eq + 1).trim();
-        }
-        if (argMap.algo) {
-          data.lycoris_algo = argMap.algo;
-          if (!data.network_module) data.network_module = 'lycoris.kohya';
-   }
-  if (argMap.conv_dim != null) { const n = Number(argMap.conv_dim); data.conv_dim = Number.isNaN(n) ? '' : n; }
-        if (argMap.conv_alpha != null) { const n = Number(argMap.conv_alpha); data.conv_alpha = Number.isNaN(n) ? '' : n; }
-        if (argMap.preset != null) data.lycoris_preset = argMap.preset;
-        if (argMap.dropout != null) { const n = Number(argMap.dropout); data.dropout = Number.isNaN(n) ? '' : n; }
-        if (argMap.rank_dropout != null) { const n = Number(argMap.rank_dropout); data.rank_dropout = Number.isNaN(n) ? '' : n; }
-        if (argMap.module_dropout != null) { const n = Number(argMap.module_dropout); data.module_dropout = Number.isNaN(n) ? '' : n; }
-        if (argMap.train_norm != null) data.train_norm =argMap.train_norm === 'True';
-        if (argMap.use_tucker != null) data.use_tucker = argMap.use_tucker === 'True';
-        else if (argMap.use_cp != null) data.use_tucker = argMap.use_cp === 'True';
-        else if (argMap.use_conv_cp != null) data.use_tucker = argMap.use_conv_cp === 'True';
-        else if (argMap.disable_conv_cp != null) data.use_tucker = argMap.disable_conv_cp !== 'True';
-        if (argMap.use_scalar != null) data.use_scalar = argMap.use_scalar === 'True';
-        if (argMap.block_size != null) { const n = Number(argMap.block_size); data.block_size = Number.isNaN(n) ? '' : n; }
-        if (argMap.rescaled != null) data.rescaled = argMap.rescaled === 'True';
-        if (argMap.constraint != null) { const n = Number(argMap.constraint); data.constraint = Number.isNaN(n) ? '' : n; }
-        else if (argMap.constrain != null) { const n = Number(argMap.constrain); data.constraint = Number.isNaN(n) ? '' : n; }
-        if(argMap.rs_lora != null) data.rs_lora = argMap.rs_lora === 'True';
-        if (argMap.factor != null) { const n = Number(argMap.factor); data.lokr_factor = Number.isNaN(n) ? '' : n; }
-        if (argMap.dora_wd != null) data.dora_wd = argMap.dora_wd === 'True';
-      if (argMap.wd_on_output != null) data.wd_on_output = argMap.wd_on_output === 'True';
-        if (argMap.bypass_mode != null) data.bypass_mode = argMap.bypass_mode === 'True';
-        if (argMap.decompose_both != null) data.decompose_both = argMap.decompose_both === 'True';
-        if (argMap.full_matrix != null) data.full_matrix = argMap.full_matrix === 'True';
-        if (argMap.unbalanced_factorization != null) data.unbalanced_factorization = argMap.unbalanced_factorization === 'True';
-        if (argMap.scale_weight_norms != null) { const n = Number(argMap.scale_weight_norms); data.scale_weight_norms = Number.isNaN(n) ? '' : n; }
-        // 剩余非结构化的 args 放入 network_args_custom
-        const structured = new Set(['algo', 'conv_dim', 'conv_alpha', 'preset', 'dropout', 'rank_dropout', 'module_dropout', 'train_norm', 'use_tucker', 'use_scalar', 'block_size', 'rescaled', 'constraint', 'constrain', 'rs_lora', 'factor', 'dora_wd', 'wd_on_output', 'bypass_mode', 'decompose_both', 'full_matrix', 'unbalanced_factorization', 'scale_weight_norms', 'disable_conv_cp', 'use_cp', 'use_conv_cp']);
-        const remaining = data.network_args.filter(a => { const k = String(a).split('=')[0].trim(); return !structured.has(k); });
-        if (remaining.length > 0) data.network_args_custom = remaining.join('\n');
-        delete data.network_args;
-      }
+      restoreNetworkArgsToUiFields(data);
+      normalizeImportedCustomAttributes(data);
       // 旧格式：optimizer_args数组 → optimizer_args_custom
       if (Array.isArray(data.optimizer_args) && !data.optimizer_args_custom) {
        // Prodigy 特有字段还原
@@ -352,6 +401,7 @@ try {
           delete data.lr_scheduler_type;
         }
       }
+      normalizeImportedAnimaGlokr(data, savedType || data.model_train_type || state.activeTrainingType);
       // 旧格式：base_weights 数组 → string
       if (Array.isArray(data.base_weights)) {
         data.base_weights = data.base_weights.join('\n');

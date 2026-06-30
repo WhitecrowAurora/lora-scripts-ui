@@ -1,5 +1,8 @@
-// 轻量级 TOML 序列化 / 反序列化（仅覆盖训练配置的平铺结构）。
-// 训练 .toml 文件不含嵌套 [[section]]，所以只需一个避免模仿完整 TOML 语法的简易实现。
+// 轻量级 TOML 序列化 / 反序列化。
+// 这里不追求完整 TOML 规范，只覆盖训练配置导入导出需要的：
+// - 基础标量
+// - 内联数组
+// - 基础 [section] 嵌套对象
 
 function _tomlValue(v) {
   if (typeof v === 'boolean') return v ? 'true' : 'false';
@@ -30,13 +33,85 @@ export function configToToml(config) {
   return lines.join('\n') + '\n';
 }
 
+function stripComment(raw) {
+  let inQuote = false;
+  let quoteChar = '';
+  let escaped = false;
+  let out = '';
+  for (const ch of String(raw || '')) {
+    if (inQuote) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === quoteChar) {
+        inQuote = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = true;
+      quoteChar = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === '#') {
+      break;
+    }
+    out += ch;
+  }
+  return out.trim();
+}
+
+function parseTomlScalar(raw) {
+  const val = String(raw ?? '').trim();
+  if (val === 'true') return true;
+  if (val === 'false') return false;
+  if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    return val.slice(1, -1).replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\n/g, '\n');
+  }
+  const num = Number(val);
+  if (!Number.isNaN(num) && val !== '') return num;
+  return val;
+}
+
+function parseTomlArray(raw) {
+  const inner = raw.slice(1, raw.lastIndexOf(']')).trim();
+  if (!inner) return [];
+  const items = [];
+  const re = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^,"\s][^,]*)/g;
+  let m;
+  while ((m = re.exec(inner)) !== null) {
+    if (m[1] !== undefined) {
+      items.push(m[1].replace(/\\\\/g, '\\').replace(/\\"/g, '"'));
+    } else if (m[2] !== undefined) {
+      items.push(m[2].replace(/\\\\/g, '\\').replace(/\\'/g, "'"));
+    } else if (m[3] !== undefined) {
+      items.push(parseTomlScalar(m[3].trim()));
+    }
+  }
+  return items;
+}
+
+function ensureTomlSection(root, path) {
+  let current = root;
+  for (const key of path) {
+    if (!current[key] || typeof current[key] !== 'object' || Array.isArray(current[key])) {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+  return current;
+}
+
 /**
- * 解析简易 TOML（平铺结构）。
- * 支持：bool / number / string / 字符串数组（含多行）。
- * 忿略 [section] 头、不支持嵌套表。
+ * 解析简易 TOML。
+ * 支持：bool / number / string / 字符串数组（含多行）/ [section]。
  */
 export function parseSimpleToml(text) {
   const result = {};
+  let currentSection = [];
   // 预处理：将多行数组合并为单行，以便逐行解析
   const rawLines = text.split(/\r?\n/);
   const mergedLines = [];
@@ -52,46 +127,39 @@ export function parseSimpleToml(text) {
     mergedLines.push(line);
   }
   for (const raw of mergedLines) {
-    // 剔除注释，但仅在字符串外的 # 才算
-    const commentIdx = raw.indexOf('#');
-    const quoteBeforeComment = commentIdx >= 0 ? (raw.slice(0, commentIdx).split('"').length - 1) % 2 : 0;
-    const line = (quoteBeforeComment ? raw : (commentIdx >= 0 ? raw.slice(0, commentIdx) : raw)).trim();
-    if (!line || line.startsWith('[')) continue; // 跳过空行、注释、section 头
+    const line = stripComment(raw);
+    if (!line) continue;
+    if (line.startsWith('[') && line.endsWith(']')) {
+      const section = line.slice(1, -1).trim();
+      currentSection = section
+        ? section.split('.').map((part) => part.trim()).filter(Boolean)
+        : [];
+      ensureTomlSection(result, currentSection);
+      continue;
+    }
     const eqIdx = line.indexOf('=');
     if (eqIdx < 1) continue;
     const key = line.slice(0, eqIdx).trim();
     let val = line.slice(eqIdx + 1).trim();
+    const target = ensureTomlSection(result, currentSection);
     // boolean
-    if (val === 'true') { result[key] = true; continue; }
-    if (val === 'false') { result[key] = false; continue; }
+    if (val === 'true') { target[key] = true; continue; }
+    if (val === 'false') { target[key] = false; continue; }
     // array
     if (val.startsWith('[')) {
-      // 简易内联数组解析器
-      const inner = val.slice(1, val.lastIndexOf(']')).trim();
-      if (!inner) { result[key] = []; continue; }
-      const items = [];
-      // 匹配引号字符串或逗号间的裸值
-      const re = /"((?:[^"\\]|\\.)*)"|([^,"\s]+)/g;
-      let m;
-      while ((m = re.exec(inner)) !== null) {
-        if (m[1] !== undefined) items.push(m[1].replace(/\\\\/g, '\\').replace(/\\"/g, '"'));
-        else if (m[2] !== undefined) {
-          const n = Number(m[2]);
-          items.push(Number.isNaN(n) ? m[2] : n);
-        }
-      }
-      result[key] = items; continue;
+      target[key] = parseTomlArray(val);
+      continue;
     }
     // 引号字符串
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      result[key] = val.slice(1, -1).replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\n/g, '\n');
+      target[key] = val.slice(1, -1).replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\n/g, '\n');
       continue;
     }
     // 数字
     const num = Number(val);
-    if (!Number.isNaN(num) && val !== '') { result[key] = num; continue; }
+    if (!Number.isNaN(num) && val !== '') { target[key] = num; continue; }
     // 其他裸字符串
-    result[key] = val;
+    target[key] = val;
   }
   return result;
 }
