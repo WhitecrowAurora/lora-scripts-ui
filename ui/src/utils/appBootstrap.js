@@ -40,9 +40,6 @@ export function createAppBootstrap({
     state.loading.runtime = true;
     updateJSONPreview();
 
-    const startTime = Date.now();
-    console.log('[DEBUG appBootstrap] Starting loadBootstrapData...');
-
     const timers = {};
     const timedFetch = (name, promise) => {
       const start = Date.now();
@@ -68,10 +65,6 @@ export function createAppBootstrap({
       timedFetch('getConfigOptions', api.getConfigOptions()),
       timedFetch('getExecutionProfiles', api.getExecutionProfiles()),
     ]);
-
-    const totalTime = Date.now() - startTime;
-    console.log('[DEBUG appBootstrap] API timings:', timers);
-    console.log('[DEBUG appBootstrap] Total loadBootstrapData time:', totalTime, 'ms');
 
     if (runtimeResult.status === 'fulfilled') {
       state.runtime = runtimeResult.value.data || null;

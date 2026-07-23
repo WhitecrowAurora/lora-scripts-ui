@@ -19,7 +19,7 @@ import { formatDuration, renderBubbleAdvisorAbEvidenceBadge, renderSummaryCard }
 import { getBubbleClosedLoopHistoryBucket, renderBubbleClosedLoopBadge } from '../utils/bubbleClosedLoopEvidence.js';
 import { getMultiBatchEvidenceFromTask, renderMultiBatchEvidenceBadge } from '../utils/multiBatchEvidence.js';
 import { getTrainingRuntimeSummaryFromTask } from '../utils/trainingRuntimeSummary.js';
-import { canDeleteTask, getQueueMetaText, getQueuedTasks, getRunningTasks, getTaskId, isTaskQueued } from '../utils/taskStatus.js';
+import { canDeleteTask, getQueueMetaText, getQueuedTasks, getRunningTasks, getTaskId, isTaskQueued, isTaskRunning, isTaskFailed, isTaskSuccessful } from '../utils/taskStatus.js';
 import { tweenNumber, clearNumberCache } from '../utils/numberTween.js';
 import {
   renderCompileRuntimeCard,
@@ -188,19 +188,117 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
       + '</div>';
   }
 
+  function _queueTaskLabel(task) {
+    var id = getTaskId(task);
+    return task.output_name || task.name || (id ? id.slice(0, 8) : 'task');
+  }
+
+  function _queueStatusMeta(task) {
+    if (isTaskRunning(task)) return { key: 'running', label: '运行中', color: 'var(--warning)' };
+    if (isTaskQueued(task)) return { key: 'queued', label: '排队中', color: 'var(--info)' };
+    if (isTaskSuccessful(task)) return { key: 'done', label: '已完成', color: 'var(--success)' };
+    if (isTaskFailed(task)) return { key: 'failed', label: '失败/终止', color: 'var(--danger)' };
+    return { key: 'other', label: String(task.status || '—'), color: 'var(--text-dim)' };
+  }
+
+  function renderTrainingQueueRail(activeId, queueItems) {
+    var followLatest = state.trainingLogFollowLatest !== false;
+    var itemsHtml = !queueItems.length
+      ? '<div class="train-queue-empty">暂无任务<br><span class="train-queue-empty-hint">启动训练后会出现在此列表</span></div>'
+      : queueItems.map(function(task) {
+        var id = getTaskId(task);
+        var selected = id && id === activeId;
+        var meta = _queueStatusMeta(task);
+        var label = _queueTaskLabel(task);
+        var typeTag = task.training_type_label || task.model_train_type || '';
+        var queueMeta = getQueueMetaText(task);
+        var shortId = id ? id.slice(0, 8) : '--------';
+        return ''
+          + '<button type="button" class="train-queue-item' + (selected ? ' is-selected' : '') + ' status-' + meta.key + '"'
+          + ' data-task-id="' + escapeHtml(id) + '"'
+          + ' onclick="selectTrainingLogTask(\'' + String(id).replace(/'/g, '') + '\',{pin:true})"'
+          + ' title="' + escapeHtml(label + ' · ' + shortId) + '">'
+          +   '<div class="train-queue-item-top">'
+          +     '<span class="train-queue-dot" style="background:' + meta.color + ';"></span>'
+          +     '<span class="train-queue-name">' + escapeHtml(label) + '</span>'
+          +   '</div>'
+          +   '<div class="train-queue-item-meta">'
+          +     '<span class="train-queue-status" style="color:' + meta.color + ';">' + escapeHtml(meta.label) + '</span>'
+          +     (typeTag ? '<span class="train-queue-type">' + escapeHtml(typeTag) + '</span>' : '')
+          +     '<span class="train-queue-id">' + escapeHtml(shortId) + '</span>'
+          +   '</div>'
+          +   (queueMeta ? '<div class="train-queue-extra">' + escapeHtml(queueMeta) + '</div>' : '')
+          + '</button>';
+      }).join('');
+
+    return ''
+      + '<div class="train-queue-rail">'
+      +   '<div class="train-panel-header train-queue-header">'
+      +     '<span class="train-panel-title">' + _ico('logs', 14) + ' 训练队列</span>'
+      +     '<span class="train-queue-count">' + queueItems.length + '</span>'
+      +   '</div>'
+      +   '<label class="train-queue-follow">'
+      +     '<input type="checkbox" ' + (followLatest ? 'checked ' : '')
+      +       'onchange="setTrainingLogFollowLatest(this.checked)">'
+      +     '自动跟随最新'
+      +   '</label>'
+      +   '<div class="train-queue-list">' + itemsHtml + '</div>'
+      + '</div>';
+  }
+
   function renderTraining(container) {
     var running = getRunningTasks(state.tasks);
     var queued = getQueuedTasks(state.tasks);
     var finished = state.tasks.filter(function(t) { return ['FINISHED', 'COMPLETED'].includes(String(t.status || '').toUpperCase()); });
-    var terminated = state.tasks.filter(function(t) { return ['TERMINATED', 'FAILED', 'CANCELLED'].includes(String(t.status || '').toUpperCase()); });
+    var terminated = state.tasks.filter(function(t) { return ['TERMINATED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(String(t.status || '').toUpperCase()); });
     var lastTask = state.tasks[state.tasks.length - 1];
     var logSnapshot = state.trainingLogSnapshot || {};
     var hasRunning = running.length > 0;
     var hasQueued = queued.length > 0;
     var m = state.trainingMetrics;
-    var curTask = running[0] || queued[0] || lastTask;
+    // Prefer follow-latest running/queued; only honor a pinned selection when
+    // follow is off. Otherwise a stale activeTrainingTaskId (e.g. cancelled
+    // history) freezes the log pane on "正在加载" while a live run exists.
+    var followLatest = state.trainingLogFollowLatest !== false;
+    var selectedTask = null;
+    if (followLatest) {
+      selectedTask = running[0] || queued[0] || null;
+      if (selectedTask) {
+        var followId = getTaskId(selectedTask);
+        if (followId && state.activeTrainingTaskId !== followId) {
+          state.activeTrainingTaskId = followId;
+        }
+      }
+    }
+    if (!selectedTask && state.activeTrainingTaskId) {
+      selectedTask = state.tasks.find(function(t) {
+        return t.id === state.activeTrainingTaskId || t.task_id === state.activeTrainingTaskId;
+      }) || null;
+    }
+    if (!selectedTask && !followLatest) {
+      // pinned id may have left the list — keep null so empty state shows
+      selectedTask = null;
+    }
+    var curTask = selectedTask || running[0] || queued[0] || lastTask;
     var taskId = getTaskId(curTask);
     var taskIdShort = taskId ? taskId.slice(0, 8).toUpperCase() : '--------';
+    // Queue rail: active first, then recent terminals (cap to keep rail compact).
+    var seenIds = {};
+    var queueRailItems = [];
+    function _pushQueue(task) {
+      var id = getTaskId(task);
+      if (!id || seenIds[id]) return;
+      seenIds[id] = true;
+      queueRailItems.push(task);
+    }
+    running.forEach(_pushQueue);
+    queued.forEach(_pushQueue);
+    if (selectedTask) _pushQueue(selectedTask);
+    state.tasks.slice().reverse().forEach(function(task) {
+      if (queueRailItems.length >= 24) return;
+      if (isTaskRunning(task) || isTaskQueued(task)) return;
+      _pushQueue(task);
+    });
 
     // Compute live metrics for header
     var curStep = m.lastStep || 0;
@@ -412,31 +510,39 @@ var statusDot = '', statusText = '';
    + (state.trainSubTab === 'samples' ?_renderSamplesPanel() : '')
     + (state.trainSubTab === 'monitor' ? (
     '<div class="train-body">'
-    // ---- Left: Terminal ----
+    // ---- Far left: training queue rail ----
+    +   renderTrainingQueueRail(taskId, queueRailItems)
+    // ---- Center: Terminal ----
     +   '<div class="train-logs-area">'
     +     '<div class="train-panel-header">'
-    +       '<span class="train-panel-title">' + _ico('terminal', 14) + ' \u7cfb\u7edf\u6267\u884c\u65e5\u5fd7</span>'
+    +       '<span class="train-panel-title">' + _ico('terminal', 14) + ' 系统执行日志'
+    +         (taskId ? ' <span class="train-log-task-tag">' + escapeHtml(taskIdShort) + '</span>' : '')
+    +       '</span>'
     +       '<div style="display:flex;gap:8px;align-items:center;">'
    +         '<label style="display:flex;align-items:center;gap:4px;font-size:0.7rem;color:var(--text-muted);cursor:pointer;">'
-    +           '<input type="checkbox" id="training-log-autoscroll" checked style="width:13px;height:13px;"> \u81ea\u52a8\u6eda\u52a8'
+    +           '<input type="checkbox" id="training-log-autoscroll" checked style="width:13px;height:13px;"> 自动滚动'
     +         '</label>'
-    +         '<button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingLog()" style="font-size:0.68rem;padding:2px 10px;">\u5237\u65b0</button>'
+    +         '<button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingLog(\'' + String(taskId || '').replace(/'/g, '') + '\')" style="font-size:0.68rem;padding:2px 10px;">\u5237\u65b0</button>'
     +       '</div>'
     +     '</div>'
     +     '<div id="training-log-container" class="train-terminal">'
-   +       (hasRunning
+   +       (isTaskRunning(curTask)
         ? (logSnapshot.html && logSnapshot.taskId === taskId
                   ? logSnapshot.html
-                  : '<span style="color:var(--text-muted);">' + _ico('loader', 14) + ' \u6b63\u5728\u52a0\u8f7d\u8bad\u7ec3\u8f93\u51fa...</span>')
-              : (hasQueued
+                  : '<span style="color:var(--text-muted);">' + _ico('loader', 14) + ' 正在加载训练输出...</span>')
+              : (isTaskQueued(curTask)
                   ? '<span style="color:var(--info);">' + _ico('clock', 14) + ' 训练任务正在排队，开始运行后日志会自动接入。' + (getQueueMetaText(curTask) ? '<br><span style="color:var(--text-muted);">' + escapeHtml(getQueueMetaText(curTask)) + '</span>' : '') + '</span>'
-                  : (logSnapshot.html
+                  : (logSnapshot.html && (!taskId || logSnapshot.taskId === taskId)
                   ? logSnapshot.html
-                  : '<div class="train-terminal-empty">'
+                  : (taskId
+                    // Terminal/history: never spin forever — empty snapshot means
+                    // "no log yet / failed fetch"; poll will replace with content or error.
+                    ? '<span style="color:var(--text-muted);">' + _ico('loader', 14) + ' 正在加载任务日志… 若长时间无内容请点「刷新」或开启「自动跟随最新」</span>'
+                    : '<div class="train-terminal-empty">'
                     + '<div class="train-terminal-empty-icon">' + _ico('terminal', 40) + '</div>'
-                    + '<div class="train-terminal-empty-title">\u6682\u65e0\u8bad\u7ec3\u4efb\u52a1\u8fd0\u884c\u4e2d</div>'
-                    + '<div class="train-terminal-empty-hint">\u914d\u7f6e\u597d\u53c2\u6570\u540e\uff0c\u70b9\u51fb\u300c\u5f00\u59cb\u8bad\u7ec3\u300d\u542f\u52a8<br>\u5b9e\u65f6\u65e5\u5fd7\u4e0e\u8fdb\u5ea6\u4f1a\u5728\u6b64\u663e\u793a</div>'
-                    + '</div>')))
+                    + '<div class="train-terminal-empty-title">暂无训练任务运行中</div>'
+                    + '<div class="train-terminal-empty-hint">配置好参数后，点击「开始训练」启动<br>实时日志与进度会在此显示</div>'
+                    + '</div>'))))
     +     '</div>'
     +   '</div>'
 
@@ -512,11 +618,13 @@ var statusDot = '', statusText = '';
           : visibleHistoryTasks.map(function(task) {
       var statusMap = { QUEUED: _ico('clock') + ' 排队中', RUNNING: _ico('loader') + ' \u8fd0\u884c\u4e2d', FINISHED: _ico('check-circle')+ ' \u5df2\u5b8c\u6210', COMPLETED: _ico('check-circle') + ' \u5df2\u5b8c\u6210', TERMINATED: _ico('stop-circle') + ' \u5df2\u7ec8\u6b62', FAILED: _ico('x-circle') + ' \u5931\u8d25', CANCELLED: _ico('stop-circle') + ' \u5df2\u53d6\u6d88', CANCELED: _ico('stop-circle') + ' 已取消', CREATED: _ico('clock') + ' \u5df2\u521b\u5efa' };
       var statusColor = { QUEUED: 'var(--info)', RUNNING: 'var(--warning)', FINISHED: 'var(--success)', COMPLETED: 'var(--success)', TERMINATED: 'var(--danger)', FAILED: 'var(--danger)', CANCELLED: 'var(--danger)', CANCELED: 'var(--danger)', CREATED: 'var(--text-dim)' };
-      var canScore = ['FINISHED', 'COMPLETED'].includes(String(task.status || '').toUpperCase());
+      var taskStatus = String(task.status || '').toUpperCase();
+      var canScore = ['FINISHED', 'COMPLETED'].includes(taskStatus);
+      var canInspectQuality = ['FINISHED', 'COMPLETED', 'FAILED', 'TERMINATED', 'STOPPED', 'CANCELLED', 'CANCELED'].includes(taskStatus);
       var taskId = getTaskId(task);
       var hasCached = canScore && !!(state.taskSummaries[taskId] && state.taskSummaries[taskId]._v >= 2);
       var canDelete = canDeleteTask(task);
-      var badge = hasCached ? _ico('bar-chart', 14) : (canScore && !task._recentlyFinished ? '\u70b9\u51fb\u8bc4\u5206' : '');
+      var badge = hasCached ? _ico('bar-chart', 14) : (canInspectQuality && !task._recentlyFinished ? (canScore ? '\u70b9\u51fb\u8bc4\u5206' : '点击查看报告') : '');
       var sdkSummary = getPluginSdkSummary(task);
       var bubbleEvidence = getBubbleAdvisorAbEvidence(task);
       var bubbleClosedLoop = getBubbleClosedLoopState(task);
@@ -530,7 +638,7 @@ var statusDot = '', statusText = '';
       var metaStr = metaParts.join(' \u00b7 ');
       return '<div style="border-bottom:1px solid var(--border);padding:5px 0;" id="task-row-' + task.id + '">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;">'
-        + '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;' + (canScore ? 'cursor:pointer;' : '') + '" ' + (canScore ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : '') + '>'
+        + '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;' + (canInspectQuality ? 'cursor:pointer;' : '') + '" ' + (canInspectQuality ? 'onclick="showTaskSummary(\'' + task.id + '\')"' : '') + '>'
         + '<span style="font-size:0.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(taskLabel) + '</span>'
         + (typeTag ? '<span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:1px 5px;border-radius:3px;">' + escapeHtml(typeTag) + '</span>' : '')
         + (badge ? '<span style="font-size:0.68rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : '')

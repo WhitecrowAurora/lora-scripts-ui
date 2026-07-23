@@ -56,7 +56,10 @@ export function createTrainingActions({
     const optimizerText = `${c.optimizer_type || ''} ${c.optimizer || ''}`.toLowerCase();
     const routeText = String((tt || '') + ' ' + (c.model_train_type || '')).toLowerCase();
     const isAnimaRoute = routeText.includes('anima');
+    const isKrea2Route = routeText.includes('krea2');
     const isNativeDitSelectiveRoute = routeText.includes('anima') || routeText.includes('newbie');
+    const weightCompressionPreset = String(c.weight_compression_preset || 'off').trim().toLowerCase();
+    const weightCompressionRequested = weightCompressionPreset !== 'off' || toBool(c.fp8_base) || toBool(c.weight_compression_enabled);
     const swapGranularity = String(c.swap_granularity || 'off').trim().toLowerCase().replace('-', '_');
     const validSwapGranularities = new Set(['off', 'auto', 'block', 'merged_block', 'layer']);
     const swapRatio = toNum(c.swap_ratio);
@@ -118,9 +121,14 @@ export function createTrainingActions({
       errors.push('「缓存文本编码器输出到磁盘」已开启但「缓存文本编码器输出」未开启。请一并勾选「缓存文本编码器输出」。');
     }
 
-    // 4. 注意力后端全部未开启
-    if (!toBool(c.xformers) && !toBool(c.sdpa) && !toBool(c.sageattn) && !toBool(c.flashattn) && !toBool(c.mem_eff_attn)) {
-      errors.push('未启用任何注意力加速后端（xformers / SDPA / SageAttention / FlashAttention）。训练将极度缓慢且显存占用极高。请至少开启 SDPA。');
+    // 4. 注意力：默认 auto 跟随启动环境，不再强制勾选布尔开关。
+    // 仅当用户显式写了无法识别的 backend 时告警；全关布尔是合法默认路径。
+    const attnBackend = String(c.attention_backend || c.attn_mode || '').trim().toLowerCase();
+    const hasExplicitAttn = toBool(c.xformers) || toBool(c.sdpa) || toBool(c.sageattn)
+      || toBool(c.flashattn) || toBool(c.mem_eff_attn) || toBool(c.use_sdpa)
+      || (attnBackend && attnBackend !== 'auto');
+    if (!hasExplicitAttn) {
+      // ok — runtime profile default applies
     }
 
 
@@ -152,6 +160,18 @@ export function createTrainingActions({
     // 10. full_fp16 与 full_bf16 冲突
     if (toBool(c.full_fp16) && toBool(c.full_bf16)) {
       errors.push('不能同时启用「完全 FP16」和「完全 BF16」。请只保留其中一个。');
+    }
+    if (weightCompressionRequested && toBool(c.torch_compile)) {
+      errors.push('权重压缩 / FP8 不能与 torch.compile 同时使用。请关闭其中一个。');
+    }
+    if (weightCompressionPreset !== 'off' && toBool(c.fp8_base)) {
+      errors.push('不要同时启用「冻结主干量化预设」和「原生 FP8 基座存储」。前者走 torchao/quanto 预设，后者走原生 fp8_e4m3 路线，请二选一。');
+    }
+    if (isKrea2Route && toBool(c.fp8_base)) {
+      warnings.push('Krea-2 当前正式推荐路线是 qfloat8 / experimental_float8 冻结主干量化。原生 fp8_base 先作为搁置，尤其 text fusion 路径不建议使用。');
+    }
+    if (toBool(c.fp8_base) && !toBool(c.fp8_base_compute) && (c.weight_compression_verify === undefined || toBool(c.weight_compression_verify))) {
+      warnings.push('已启用「原生 FP8 基座存储」，但未开启「原生 FP8 计算」。当前后端会将 native fp8_e4m3 视为 storage-only 并跳过应用；若想真的走原生 FP8 训练，请一并开启 fp8_base_compute。');
     }
 
     if (networkModule=== 'lycoris.kohya' && toBool(c.dora_wd) && toBool(c.bypass_mode)) {
@@ -364,17 +384,54 @@ export function createTrainingActions({
         }
 
         state.preflight = preflightResponse.data;
-        if (state.preflight?.execution_profile_id) {
-          runConfig.execution_profile_id = state.preflight.execution_profile_id;
+        // Preflight is validation / display only — never authority for attention.
+        // Keep auto when user has no explicit override so launcher runtime wins.
+        const localBackend = String(runConfig.attention_backend || '').trim().toLowerCase();
+        const localMode = String(runConfig.attn_mode || runConfig.anima_attn_mode || '').trim().toLowerCase();
+        const userFlashOn = runConfig.flashattn === true
+          || runConfig.flashattn === 'true'
+          || runConfig.flashattn === 1
+          || localBackend === 'flash2'
+          || localMode === 'flash2'
+          || localMode === 'flash';
+        const userSageOn = runConfig.sageattn === true
+          || runConfig.sageattn === 'true'
+          || localBackend === 'sageattn'
+          || localMode === 'sageattn'
+          || localMode === 'sage';
+        const userXformersOn = runConfig.xformers === true
+          || runConfig.mem_eff_attn === true
+          || localBackend === 'xformers'
+          || localMode === 'xformers';
+        const userExplicitAttn = userFlashOn || userSageOn || userXformersOn
+          || runConfig.use_sdpa === true
+          || (localBackend && localBackend !== 'auto')
+          || (localMode && localMode !== 'auto' && localMode !== '');
+        const localProfile = String(runConfig.execution_profile_id || '').trim();
+        // Only fill empty profile for display; backend still re-inherits launcher
+        // when value is empty/standard pollution. Prefer leaving empty for inherit.
+        if (!localProfile && state.preflight?.execution_profile_id) {
+          // Keep empty so effective_execution_profile_id can inherit last_runtime.
+          // Do not write preflight standard into runConfig.
         }
-        if (state.preflight?.resolved_attention_backend) {
-          runConfig.attention_backend = state.preflight.resolved_attention_backend;
+        if (userFlashOn) {
+          runConfig.attention_backend = 'flash2';
+          runConfig.flashattn = true;
+        } else if (userSageOn) {
+          runConfig.attention_backend = 'sageattn';
+          runConfig.sageattn = true;
+        } else if (userXformersOn) {
+          runConfig.attention_backend = 'xformers';
+        } else if (!userExplicitAttn) {
+          // Default path: auto — do NOT write resolved_attention_backend back.
+          runConfig.attention_backend = 'auto';
         }
+        // else: keep explicit non-auto backend as-is
       } else {
         state.preflight = {
           can_start: true,
           errors: [],
-          warnings: ['实验训练由 Lulynx LAB 后端路由校验，已跳过普通 sd-scripts 预检。'],
+          warnings: ['该训练由 Lulynx LAB 后端路由校验，已跳过普通 sd-scripts 预检。'],
         };
       }
 
@@ -402,7 +459,7 @@ export function createTrainingActions({
       state.trainingFailed = false;
       const responseData = response?.data || {};
       const responseQueued = isTaskQueued(responseData?.status || responseData?.native_status);
-      state.lastMessage = response.message || (responseQueued ? '训练已加入队列。' : (labLaunchApi ? '实验训练任务已提交。' : '训练已启动。'));
+      state.lastMessage = response.message || (responseQueued ? '训练已加入队列。' : (labLaunchApi ? '训练任务已提交。' : '训练已启动。'));
       showToast(state.lastMessage);
       resetTrainingMetrics();
       const responseTaskId = responseData.task_id || responseData.id || responseData.run_id || '';

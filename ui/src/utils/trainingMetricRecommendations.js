@@ -4,17 +4,13 @@ export function getSmartSensingRecommendationItems(profile) {
   if (!profile || typeof profile !== 'object' || profile.phase !== 'runtime_slowdown') return [];
   const rawItems = Array.isArray(profile.recommendations) ? profile.recommendations : [];
   const labels = {
-    enable_streaming_offload: 'Streaming Offload：下次训练启用流式权重卸载，降低显存常驻压力',
-    enable_streaming_prefetch: 'Prefetch：下次配合预取，提前搬运即将使用的块，减少等待',
-    enable_sparse_swap: 'Sparse Swap：下次优先尝试稀疏换入换出，只移动高收益模块',
+    enable_block_offload: 'Block Offload：下次训练启用块级权重卸载，牺牲速度换更少显存使用量',
     enable_delta_cache_observe: 'Delta/Cache Observe：下次开启 Delta/Cache 观察，评估缓存候选与 PCIe 传输',
     check_shared_vram_or_pageable_memory: '检查共享显存/分页内存：确认是否有系统共享显存介入',
     inspect_data_or_cpu_pipeline: '检查数据或 CPU 管线：显存压力不明显时优先排查数据加载瓶颈',
   };
   const fallback = [
-    'enable_streaming_offload',
-    'enable_streaming_prefetch',
-    'enable_sparse_swap',
+    'enable_block_offload',
     'enable_delta_cache_observe',
   ];
   const source = rawItems.length ? rawItems : fallback;

@@ -145,6 +145,8 @@ export function createLayoutActions({ state, getAvailableTabs }) {
     toggle.addEventListener('click', (e) => {
       const btn = e.target.closest('.mode-btn');
       if (!btn) return;
+      // 标准=false / 高级=true；切标准后 getAvailableTabs 会藏 advanced+frontier，
+      // renderView → syncTopbarState 会把 activeTab 回退到首个可用页签
       state.config.performance_expert_mode = btn.dataset.mode === 'advanced';
       sync();
       renderView(state.activeModule);

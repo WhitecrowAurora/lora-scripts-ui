@@ -2,8 +2,15 @@
   "key": "ema_decay",
   "title": "EMA 衰减率",
   "category": "训练 / 平滑",
-  "appliesTo": ["anima-lora", "sdxl-lora", "sd-lora", "newbie-lora"],
-  "layers": ["训练控制层"],
+  "appliesTo": [
+    "anima-lora",
+    "sdxl-lora",
+    "sd-lora",
+    "newbie-lora"
+  ],
+  "layers": [
+    "训练控制层"
+  ],
   "standard": {
     "summary": "控制 EMA 副本对历史权重的记忆长度。值越接近 1，平均窗口越长，对最新步的响应越慢。",
     "effect": "decay=0.999 ≈ 最近 1000 步加权平均；decay=0.9999 ≈ 最近 10000 步。值越大越平滑，但对训练末期调整的响应越迟钝。",
@@ -17,5 +24,9 @@
     "tradeoffs": "decay 过高在步数不足时 EMA 权重可能长期偏向初始化，导致 EMA 权重质量反而差于直接保存权重。",
     "codePath": "core/lulynx_trainer/training_loop.py → EMA update"
   },
-  "relatedConfigs": ["ema_enabled", "ema_update_every", "ema_update_after_step"]
+  "relatedConfigs": [
+    "ema_enabled",
+    "ema_update_every",
+    "ema_update_after_step"
+  ]
 }

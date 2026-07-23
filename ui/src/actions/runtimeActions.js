@@ -164,9 +164,11 @@ export function createRuntimeActions({ state, api, showToast, renderView, update
       }
       if (preflightRes.status === 'fulfilled' && preflightRes.value.status === 'success') {
         state.preflight = _mergePreflightWithBenchmark(preflightRes.value.data);
-        if (state.preflight?.execution_profile_id) {
-          mergeConfigPatch({ execution_profile_id: state.preflight.execution_profile_id });
-          saveDraft();
+        // Keep empty execution_profile_id so backend inherits launcher last_runtime.
+        // Preflight profile is display-only and must not clobber the inherit path.
+        const localProfile = String(state.config?.execution_profile_id || '').trim();
+        if (!localProfile && state.preflight?.execution_profile_id) {
+          // intentionally no-op writeback of preflight execution_profile_id
         }
       } else {
         state.preflight = _mergePreflightWithBenchmark({

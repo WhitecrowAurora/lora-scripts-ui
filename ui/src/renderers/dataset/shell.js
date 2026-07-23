@@ -7,6 +7,7 @@ const DATASET_TABS = [
   { id: 'analysis', label: '数据集分析' },
   { id: 'suggestions', label: '智能建议' },
   { id: 'cleanup', label: 'Caption 清洗' },
+  { id: 'mutate', label: 'Mutate 预览' },
   { id: 'tagmanager', label: '标签管理 Lite' },
   { id: 'bbox', label: '框标注 Lite' },
   { id: 'backups', label: 'Caption 备份' },

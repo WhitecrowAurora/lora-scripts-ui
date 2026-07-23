@@ -56,25 +56,25 @@ function getExperimentalCopy(typeId) {
   if (typeId === 'lab-distiller') {
     return {
       title: 'LAB Distiller',
-      desc: '把传统 LoRA 蒸馏为 Lulynx sidecar。真实短测前先保持 dry-run，确认 CLIP/Jina CLIP teacher、bf16 和 1e-5 学习率。',
+      desc: '把传统 LoRA 蒸馏为 Lulynx sidecar。',
     };
   }
   if (typeId === 'sdxl-turbo-lora') {
     return {
       title: 'SDXL Turbo / LCM LoRA',
-      desc: '实验 few-step LoRA 入口。dry-run 负责契约和 metadata；真实短测只验证加载、梯度、保存和 sidecar，不等于质量完成。',
+      desc: 'few-step LoRA 入口。',
     };
   }
   if (typeId === 'anima-few-step-lora') {
     return {
       title: 'Anima Few-step LoRA',
-      desc: 'Anima DiT few-step acceleration 契约入口。当前用于打通 metadata、资源识别和后端 runner。',
+      desc: 'Anima DiT few-step acceleration',
     };
   }
   if (typeId === 'newbie-few-step-lora') {
     return {
       title: 'Newbie Few-step LoRA',
-      desc: 'Newbie DiT few-step acceleration 契约入口。真实质量训练后置，当前先验证表单到 runner 的链路。',
+      desc: 'Newbie DiT few-step acceleration',
     };
   }
   return null;

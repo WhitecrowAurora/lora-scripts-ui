@@ -674,13 +674,31 @@ body.developer-mode-enabled .nav-item.developer-only {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-dark);
+  min-width: 0;
 }
 
 .top-nav {
   display: flex;
-  gap: 25px;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.top-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.top-nav::-webkit-scrollbar-thumb {
+  background: var(--border, rgba(255, 255, 255, 0.18));
+  border-radius: 999px;
 }
 
 .top-nav-item {
@@ -690,6 +708,8 @@ body.developer-mode-enabled .nav-item.developer-only {
   font-weight: 500;
   padding: 8px 0;
   position: relative;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .top-nav-item:hover {
@@ -863,7 +883,23 @@ body.developer-mode-enabled .nav-item.developer-only {
   background: var(--bg-hover, rgba(255,255,255,0.06));
   color: var(--text);
 }
-.optimizer-btn.active {
+/* PyTorch 模式 — 主题强调色 */
+.optimizer-btn[data-optimizer="pytorch"].active {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
+/* TurboCore 模式 — 青绿高亮（与 Lulynx 金黄区分） */
+.optimizer-btn[data-optimizer="turbocore"].active {
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(20, 184, 166, 0.45);
+}
+/* 兜底：未知 data-optimizer 仍用 accent */
+.optimizer-btn.active:not([data-optimizer]) {
   background: var(--accent, #3b82f6);
   color: #fff;
   border-color: transparent;
@@ -1626,6 +1662,99 @@ input[type="range"]::-webkit-slider-thumb {
   border-color: var(--text-dim);
   background: rgba(255, 255, 255, 0.05);
 }
+
+/* Action field compact layout - horizontal split design */
+.config-group.config-action-field-compact {
+  background: transparent !important;
+  border: none !important;
+  padding: 16px 0 !important;
+  margin-bottom: 24px !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 24px !important;
+  flex-wrap: nowrap !important;
+  grid-column: 1 / -1 !important;
+}
+
+.config-group.config-action-field-compact .action-field-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.config-group.config-action-field-compact .action-field-header {
+  margin-bottom: 8px;
+}
+
+.config-group.config-action-field-compact .action-field-header label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  display: block;
+}
+
+.config-group.config-action-field-compact .action-field-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0;
+  opacity: 0.85;
+}
+
+.config-group.config-action-field-compact .action-field-button-wrapper {
+  flex: 1 0 auto;
+  min-width: 200px;
+}
+
+.config-group.config-action-field-compact .config-action-btn-full {
+  display: block;
+  width: 100%;
+  padding: 14px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  box-sizing: border-box;
+}
+
+.config-group.config-action-field-compact .config-action-btn-full:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+}
+
+.config-group.config-action-field-compact .action-field-summary {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 10px 14px;
+  background: var(--bg-darker);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  line-height: 1.6;
+  flex: 1 1 100%;
+}
+
+@media (max-width: 900px) {
+  .config-group.config-action-field-compact {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .config-group.config-action-field-compact .action-field-button-wrapper {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}
+
+
 
 .btn-primary {
   background-color: var(--accent);
@@ -2572,6 +2701,58 @@ body.compact-layout .config-group.row {
   margin-top: 14px;
 }
 
+.training-option-help-options-block {
+  border-bottom: none;
+}
+
+.training-option-help-options {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: min(42vh, 360px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-panel) 88%, var(--border));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.training-option-help-opt {
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.training-option-help-opt:last-child {
+  border-bottom: none;
+}
+
+.training-option-help-opt-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.training-option-help-opt-label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.training-option-help-opt-value {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.training-option-help-opt-desc {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .training-option-help-related span {
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -3457,8 +3638,144 @@ body.compact-layout .config-group.row {
   border-color: rgba(255,215,0,0.18); font-weight: 700;
 }
 
-/* ── Two-Column Body ── */
+/* ── Three-Column Body: queue | logs | side ── */
 .train-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+/* ── Far left: training queue rail ── */
+.train-queue-rail {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+  min-height: 0;
+  overflow: hidden;
+}
+.train-queue-header { padding: 14px 12px 6px; margin-bottom: 0; }
+.train-queue-count {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.train-queue-follow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 10px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+.train-queue-follow input { width: 13px; height: 13px; }
+.train-queue-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.train-queue-list::-webkit-scrollbar { width: 4px; }
+.train-queue-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+.train-queue-empty {
+  padding: 18px 10px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.train-queue-empty-hint { color: var(--text-muted); font-size: 0.65rem; }
+.train-queue-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.train-queue-item:hover {
+  border-color: rgba(255, 215, 0, 0.28);
+  background: var(--bg-hover);
+}
+.train-queue-item.is-selected {
+  border-color: rgba(255, 215, 0, 0.45);
+  background: rgba(255, 215, 0, 0.06);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.train-queue-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.train-queue-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.train-queue-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.train-queue-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.train-queue-status { font-weight: 700; }
+.train-queue-type {
+  background: var(--bg-hover);
+  padding: 0 4px;
+  border-radius: 3px;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.train-queue-id { opacity: 0.75; }
+.train-queue-extra {
+  margin-top: 3px;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.train-log-task-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.6rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--accent);
+  background: rgba(255, 215, 0, 0.08);
+  border: 1px solid rgba(255, 215, 0, 0.18);
+  border-radius: 4px;
+  padding: 1px 6px;
+  vertical-align: middle;
+  text-transform: none;
+}
 
 /* ── Left: Log Area ── */
 .train-logs-area {
@@ -3648,6 +3965,20 @@ body.compact-layout .config-group.row {
 /* Responsive */
 @media (max-width: 960px) {
   .train-body { flex-direction: column; }
+  .train-queue-rail {
+    width: 100%;
+    max-height: 180px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .train-queue-list {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 10px;
+  }
+  .train-queue-item { min-width: 160px; flex: 0 0 auto; }
   .train-side-panel {
     width: 100%; border-left: none; border-top: 1px solid var(--border);
     max-height: 320px; flex-direction: row; flex-wrap: wrap; gap: 16px;
@@ -7027,6 +7358,215 @@ body.compact-layout .config-group.row {
   color: var(--text-secondary, #555);
 }
 
-/* 训练助手配置面板样式 */
-@import './styles/assistant-config.css';
+/* 训练助手配置面板样式已合并 */
 
+/* 训练确认对话框样式已合并 */
+
+
+/* ========== Boot Bubble (Topbar Backend Startup Progress) ========== */
+.topbar-boot-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-secondary, rgba(200, 200, 200, 0.24));
+  border-radius: 16px;
+  background: var(--bg-card, rgba(255, 255, 255, 0.06));
+  font-size: 13px;
+  color: var(--text-primary, #e5e7eb);
+  white-space: nowrap;
+}
+
+.boot-bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.boot-bubble-text {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.boot-progress-track {
+  width: 120px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.08));
+  overflow: hidden;
+}
+
+.boot-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+  border-radius: 2px;
+  transition: width 0.3s ease-out;
+}
+/* 训练确认对话框样式 */
+
+.training-summary-dialog {
+  max-width: 720px;
+  width: 90vw;
+}
+
+.training-summary-body {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+/* 分组容器 */
+.ts-groups-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+/* 单个分组 */
+.ts-group {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ts-group-title {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-main);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.02em;
+}
+
+.ts-group-content {
+  padding: 0.5rem;
+}
+
+/* 参数行 */
+.ts-param-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 2fr;
+  gap: 1rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.ts-param-row:hover {
+  background: var(--bg-hover);
+}
+
+.ts-param-row + .ts-param-row {
+  margin-top: 0.25rem;
+}
+
+.ts-param-label {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.ts-param-value {
+  font-size: 0.875rem;
+  color: var(--text-main);
+  font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  word-break: break-word;
+  display: flex;
+  align-items: center;
+}
+
+/* 警告行样式 */
+.ts-row-warn {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+}
+
+.ts-row-warn .ts-param-label {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.ts-row-warn .ts-param-value {
+  color: var(--danger);
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+  .training-summary-dialog {
+    width: 95vw;
+    max-width: none;
+  }
+
+  .ts-param-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .ts-param-label {
+    font-size: 0.8125rem;
+  }
+
+  .ts-param-value {
+    font-size: 0.8125rem;
+    padding-left: 0;
+  }
+
+  .ts-groups-container {
+    gap: 1rem;
+  }
+}
+
+/* ================================================================
+   父子联动字段视觉分组着色（conditionalGroupTint.js）
+   已启用的布尔父开关 + 它展开的子项共享同一档轮转底色，
+   相邻父组自动错开色相，便于分辨"这几项属于同一个父"。
+   固定 5 档低饱和色相，不派生 --accent（避免三主题下混同）。
+   ================================================================ */
+[data-lx-cgroup] {
+  --lx-cgroup-tint: transparent;
+  --lx-cgroup-bar: transparent;
+  position: relative;
+  background: color-mix(in srgb, var(--lx-cgroup-tint) 9%, transparent);
+  border-radius: 8px;
+  padding-left: 12px;
+  border-left: 3px solid var(--lx-cgroup-bar);
+}
+
+/* 父子同底色（同一比例），层级只靠左连接条粗细区分：父更粗作为该组的"锚" */
+[data-lx-cgroup][data-lx-cgroup-role="parent"] {
+  border-left-width: 4px;
+}
+[data-lx-cgroup][data-lx-cgroup-role="child"] {
+  border-left-width: 3px;
+}
+
+/* 分组左连接条颜色必须来自分组色板，不能被 accent。
+   注意：父开关被打开 = field-modified，各主题（尤其 clay: .clay-theme .config-group.field-modified，
+   优先级 0,3,0）会用主题色改写左条，把父卡片左条抢成主题紫，造成"父紫子青"。
+   这里用 .config-group[data-lx-cgroup]（同为 0,3,0）+ 靠源码顺序在后取胜，覆盖所有主题。 */
+.config-group[data-lx-cgroup] {
+  border-left-color: var(--lx-cgroup-bar);
+}
+.config-group[data-lx-cgroup].field-modified {
+  border-left-color: var(--lx-cgroup-bar);
+  background: color-mix(in srgb, var(--lx-cgroup-tint) 10%, transparent);
+}
+
+/* 5 档色相：靛 / 青 / 琥珀 / 玫瑰 / 紫 —— 相邻父组轮转错开 */
+[data-lx-cgroup="0"] { --lx-cgroup-tint: #6366f1; --lx-cgroup-bar: color-mix(in srgb, #6366f1 55%, transparent); }
+[data-lx-cgroup="1"] { --lx-cgroup-tint: #14b8a6; --lx-cgroup-bar: color-mix(in srgb, #14b8a6 55%, transparent); }
+[data-lx-cgroup="2"] { --lx-cgroup-tint: #f59e0b; --lx-cgroup-bar: color-mix(in srgb, #f59e0b 55%, transparent); }
+[data-lx-cgroup="3"] { --lx-cgroup-tint: #f43f5e; --lx-cgroup-bar: color-mix(in srgb, #f43f5e 55%, transparent); }
+[data-lx-cgroup="4"] { --lx-cgroup-tint: #a855f7; --lx-cgroup-bar: color-mix(in srgb, #a855f7 55%, transparent); }
+
+/* 亮色主题下底色比例略降，避免过艳（父子仍同色，只降整体比例） */
+.light-theme [data-lx-cgroup] {
+  background: color-mix(in srgb, var(--lx-cgroup-tint) 6%, transparent);
+}

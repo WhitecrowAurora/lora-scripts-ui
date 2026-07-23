@@ -38,6 +38,141 @@ export function createSavedConfigsActions({
     return targetType && !targetType.disabled ? targetType : null;
   }
 
+  function looksLikeForeignToml(text) {
+    const sample = String(text || '');
+    return (
+      /\[model_arguments\]|\[dataset_arguments\]|\[additional_network_arguments\]|\[optimizer_arguments\]|\[training_arguments\]|\[saving_arguments\]/i.test(sample)
+      || /network_module\s*=\s*["']networks\./i.test(sample)
+      // musubi-tuner: dataset [[datasets]] image/video dirs, or train --config_file `dit =`
+      || /\b(image_directory|video_directory|image_jsonl_file|video_jsonl_file)\s*=/i.test(sample)
+      || /^\s*dit\s*=/im.test(sample)
+      || /\bdataset_config\s*=/i.test(sample)
+      // diffusion-pipe: train [model]/[adapter] or dataset [[directory]]
+      || /\bmicro_batch_size_per_gpu\s*=/i.test(sample)
+      || /\bpipeline_stages\s*=/i.test(sample)
+      || /\[model\][\s\S]{0,400}\b(ckpt_path|diffusers_path|transformer_path)\s*=/i.test(sample)
+      || /\[adapter\][\s\S]{0,200}\brank\s*=/i.test(sample)
+      || /\[\[directory\]\]/i.test(sample)
+      || /\bframe_buckets\s*=/i.test(sample)
+    );
+  }
+
+  function looksLikeSimpleTunerJson(obj) {
+    // multidatabackend array
+    if (Array.isArray(obj) && obj.length) {
+      let hits = 0;
+      for (const entry of obj) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        if ('instance_data_dir' in entry || entry.dataset_type === 'text_embeds') hits += 1;
+        if ((entry.type === 'local' || entry.type === 'aws' || entry.type === 'csv')
+          && ('id' in entry || 'resolution' in entry)) hits += 1;
+      }
+      return hits >= 1;
+    }
+    if (!obj || typeof obj !== 'object') return false;
+    let body = obj;
+    if (obj.config && typeof obj.config === 'object' && !Array.isArray(obj.config)
+      && ('_metadata' in obj || Object.keys(obj.config).some((k) => String(k).startsWith('--')))) {
+      body = obj.config;
+    }
+    const keys = Object.keys(body || {});
+    const dash = keys.filter((k) => String(k).startsWith('--')).length;
+    const bare = new Set(keys.map((k) => String(k).replace(/^-+/, '')));
+    const stMarkers = [
+      'model_family', 'data_backend_config', 'lora_type', 'lycoris_config',
+      'resolution_type', 'aspect_bucket_rounding', 'checkpoint_step_interval',
+      'validation_step_interval', 'hub_model_id', 'tracker_project_name', 'disable_benchmark',
+    ];
+    let markerHits = 0;
+    for (const m of stMarkers) {
+      if (bare.has(m)) markerHits += 1;
+    }
+    if (dash >= 3 && (markerHits >= 1 || bare.has('pretrained_model_name_or_path')
+      || bare.has('model_family') || bare.has('learning_rate'))) {
+      return true;
+    }
+    if (markerHits >= 2) return true;
+    if ('_metadata' in obj && obj.config && typeof obj.config === 'object'
+      && (bare.has('model_family') || bare.has('pretrained_model_name_or_path'))) {
+      return true;
+    }
+    return false;
+  }
+
+  function looksLikeForeignKohyaJson(obj) {
+    if (looksLikeSimpleTunerJson(obj)) return true;
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+    const wrappers = ['args', 'config', 'parameters', 'params', 'train', 'training', 'settings', 'options'];
+    let data = obj;
+    let unwrapped = false;
+    const signalKeys = [
+      'pretrained_model_name_or_path', 'train_data_dir', 'network_dim', 'network_module',
+      'learning_rate', 'max_train_steps', 'max_train_epochs', 'output_dir', 'optimizer_type',
+      'model_arguments', 'dataset_arguments', 'additional_network_arguments', 'training_arguments',
+    ];
+    const lulynxOpts = new Set([
+      'adamw', 'adamw_8bit', 'lion', 'lion_8bit', 'sgd', 'sgd_8bit', 'dadaptation', 'prodigy',
+    ]);
+    let rootHits = 0;
+    for (const k of signalKeys) {
+      if (k in data) rootHits += 1;
+    }
+    if (rootHits < 2) {
+      for (const w of wrappers) {
+        const inner = data[w];
+        if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+          let hits = 0;
+          for (const k of signalKeys) {
+            if (k in inner) hits += 1;
+          }
+          if (hits >= 2) {
+            data = inner;
+            rootHits = hits;
+            unwrapped = true;
+            break;
+          }
+        }
+      }
+    }
+    if (data.model_arguments && typeof data.model_arguments === 'object') return true;
+    const mod = data.network_module;
+    if (typeof mod === 'string' && (mod.startsWith('networks.') || mod.startsWith('lycoris.'))) {
+      return true;
+    }
+    const opt = data.optimizer_type;
+    if (typeof opt === 'string' && /^(AdamW8bit|AdamW|Lion8bit|Lion|Prodigy|DAdaptation|SGDNesterov8bit|SGDNesterov)$/i.test(opt)) {
+      return true;
+    }
+    // Wrapper peel + training keys → foreign (even if values already look normalized)
+    if (unwrapped && rootHits >= 2) return true;
+    // Flat foreign: several signal keys AND at least one foreign-looking value
+    if (rootHits >= 3) {
+      if (typeof mod === 'string' && mod && mod !== 'lora' && mod !== 'lycoris') return true;
+      if (typeof opt === 'string' && opt && !lulynxOpts.has(String(opt).toLowerCase())) return true;
+      if ('vae' in data && !('vae_path' in data)) return true;
+      if ('lr_scheduler' in data && !('lr_scheduler_type' in data)) return true;
+    }
+    return false;
+  }
+
+  async function importExternalViaApi(file) {
+    if (typeof api.importExternalConfig !== 'function') {
+      throw new Error('当前后端未提供外部配置导入接口。');
+    }
+    const response = await api.importExternalConfig(file);
+    if (response?.status === 'error') {
+      throw new Error(response.message || '外部配置导入失败。');
+    }
+    const data = response?.data ?? response ?? {};
+    const parsed = data.config && typeof data.config === 'object' ? data.config : null;
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('外部配置导入结果为空。');
+    }
+    const notes = Array.isArray(data.notes) ? data.notes : [];
+    const mappedCount = Number(data.mapped_count || Object.keys(parsed).length || 0);
+    return { parsed, notes, mappedCount, formatName: data.format_name || '' };
+  }
+
   function setupImportConfig() {
     if (state.importInputBound) {
       return;
@@ -46,6 +181,12 @@ export function createSavedConfigsActions({
     if (!input) {
       return;
     }
+    // Accept Kohya/anima/musubi/DP TOML / ST·Kohya JSON / ai-toolkit YAML
+    try {
+      input.setAttribute('accept', '.toml,.json,.yaml,.yml,application/json,application/x-yaml,text/yaml');
+    } catch (_e) {
+      /* ignore */
+    }
     state.importInputBound = true;
     input.addEventListener('change', async (event) => {
       const file = event.target.files?.[0];
@@ -53,11 +194,51 @@ export function createSavedConfigsActions({
         return;
       }
       try {
-        const text = await file.text();
+        const lower = String(file.name || '').toLowerCase();
         let parsed;
-        if (file.name.endsWith('.toml')) {
-        parsed = parseSimpleToml(text);
+        let externalNotes = [];
+        let externalMeta = null;
+
+        if (lower.endsWith('.yaml') || lower.endsWith('.yml')) {
+          externalMeta = await importExternalViaApi(file);
+          parsed = externalMeta.parsed;
+          externalNotes = externalMeta.notes;
+        } else if (lower.endsWith('.toml')) {
+          const text = await file.text();
+          if (looksLikeForeignToml(text)) {
+            externalMeta = await importExternalViaApi(new File([text], file.name, { type: file.type || 'application/toml' }));
+            parsed = externalMeta.parsed;
+            externalNotes = externalMeta.notes;
+          } else {
+            try {
+              parsed = parseSimpleToml(text);
+            } catch (localErr) {
+              externalMeta = await importExternalViaApi(new File([text], file.name, { type: file.type || 'application/toml' }));
+              parsed = externalMeta.parsed;
+              externalNotes = externalMeta.notes;
+            }
+          }
+        } else if (lower.endsWith('.json')) {
+          const text = await file.text();
+          let localObj = null;
+          try {
+            localObj = JSON.parse(text);
+          } catch (jsonErr) {
+            throw new Error('JSON 解析失败');
+          }
+          // Foreign Kohya-like JSON (networks.*, AdamW8bit, args wrapper…) → backend map
+          // Pure lulynx draft / saved preset JSON → keep local keys as-is
+          if (looksLikeForeignKohyaJson(localObj)) {
+            externalMeta = await importExternalViaApi(
+              new File([text], file.name, { type: file.type || 'application/json' }),
+            );
+            parsed = externalMeta.parsed;
+            externalNotes = externalMeta.notes;
+          } else {
+            parsed = localObj;
+          }
         } else {
+          const text = await file.text();
           parsed = JSON.parse(text);
         }
         // ── 旧格式兼容：把 network_args 数组反向映射回独立 UI 字段 ──
@@ -141,7 +322,16 @@ export function createSavedConfigsActions({
         state.hasLocalDraft = true;
         saveDraft();
         renderView(state.activeModule);
-        showToast('配置文件已导入。');
+        if (externalMeta) {
+          const notePreview = externalNotes
+            .filter((line) => line && !String(line).startsWith('==='))
+            .slice(0, 4)
+            .join('；');
+          const head = `已从${externalMeta.formatName || '外部配置'}填入 ${externalMeta.mappedCount || Object.keys(parsed).length} 个字段`;
+          showToast(notePreview ? `${head}。${notePreview}` : `${head}，请核对路径与未映射项。`);
+        } else {
+          showToast('配置文件已导入。');
+        }
       } catch (error) {
         showToast(error.message || '导入配置文件失败。');
       } finally {

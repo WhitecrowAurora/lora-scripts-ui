@@ -69,6 +69,7 @@ export function renderCaptionSettingsContentLayout({ fields, renderField, render
     'caption_tag_dropout_targets',
     'caption_tag_dropout_target_mode',
     'caption_tag_dropout_target_count',
+    'nl_dropout_rate',
   ];
   const tagDropoutFields = tagDropoutKeys.map((key) => byKey.get(key)).filter(Boolean);
   if (tagDropoutFields.length) {
@@ -208,7 +209,7 @@ export function renderTrainingSettingsContentLayout({ fields, config = {}, rende
     ? {
         key: 'max_train_steps',
         type: 'number',
-        label: '最大训练步数（max_train_steps）',
+        label: '最大训练步数',
         desc: '最大训练 step（步数）',
         defaultValue: 1000,
         min: 1,
@@ -216,7 +217,7 @@ export function renderTrainingSettingsContentLayout({ fields, config = {}, rende
     : {
         key: 'max_train_epochs',
         type: 'number',
-        label: '最大训练轮数（max_train_epochs）',
+        label: '最大训练轮数',
         desc: '最大训练 epoch（轮数）',
         defaultValue: 10,
         min: 1,
@@ -234,6 +235,7 @@ export function renderTrainingSettingsContentLayout({ fields, config = {}, rende
   pushField('train_batch_size');
   pushField('gradient_checkpointing');
   pushField('gradient_accumulation_steps');
+  pushField('gradient_accumulation_mode');
   pushField('network_train_unet_only');
   pushField('network_train_text_encoder_only');
   pushField('enable_block_weights');

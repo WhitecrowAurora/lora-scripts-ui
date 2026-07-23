@@ -1,0 +1,26 @@
+{
+  "key": "bucket_selection_mode",
+  "title": "分桶策略（bucket_selection_mode）",
+  "category": "训练参数",
+  "appliesTo": [],
+  "layers": [],
+  "standard": {
+    "summary": "legacy 为原始穷举桶，nearest_only 就近桶",
+    "effect": "",
+    "whenToUse": "不确定时先保持默认，小步数短测后再调。",
+    "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。",
+    "optionDescriptions": {
+      "legacy": "老分桶逻辑。",
+      "nearest_only": "只挑最靠近目标分辨率的桶。",
+      "custom_only": "只用你自定义的桶表。"
+    }
+  },
+  "advanced": {
+    "principle": "legacy 为原始穷举桶，nearest_only 就近桶，custom_only 自定义桶列表",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "",
+    "codePath": ""
+  },
+  "relatedConfigs": []
+}

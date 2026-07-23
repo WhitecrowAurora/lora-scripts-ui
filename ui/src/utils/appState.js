@@ -1,11 +1,11 @@
 import { readUiPreferences, loadDeletedTaskIds } from './storage.js';
-import { TRAINING_TYPES } from '../trainingTypeRegistry.js';
+import { VISIBLE_TRAINING_TYPES } from '../trainingTypeRegistry.js';
 
 const DEFAULT_TRAINING_TYPE = 'sdxl-lora';
 
 function normalizeActiveTrainingType(typeId) {
   const candidate = String(typeId || '').trim();
-  return TRAINING_TYPES.some((type) => type.id === candidate) ? candidate : DEFAULT_TRAINING_TYPE;
+  return VISIBLE_TRAINING_TYPES.some((type) => type.id === candidate && !type.disabled) ? candidate : DEFAULT_TRAINING_TYPE;
 }
 
 function loadTrainingAdvisorPosition() {
@@ -30,6 +30,7 @@ export function createInitialAppState({ createDefaultConfig }) {
     navigatorWidth: uiPreferences.navigatorWidth,
     jsonPanelWidth: uiPreferences.jsonPanelWidth,
     fieldUndo: {},
+    trainingIntentExplicitFields: {},
     activeFieldMenu: null,
     datasetSubTab: 'tagger',
     trainSubTab: 'monitor',
@@ -77,6 +78,8 @@ export function createInitialAppState({ createDefaultConfig }) {
       updatedAt: 0,
     },
     activeTrainingTaskId: '',
+    // When true, activeTrainingTaskId auto-follows newest running/queued task.
+    trainingLogFollowLatest: true,
     trainingMetrics: {
       speeds: [],
       losses: [],

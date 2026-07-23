@@ -18,7 +18,13 @@
     "summary": "控制 LoRA 权重文件的保存格式：safetensors（推荐，快速加载，无安全风险）/ pt（PyTorch 原始格式）/ ckpt（旧格式，不推荐）。",
     "effect": "safetensors = 最广泛兼容（A1111/ComfyUI 原生支持）；pt = PyTorch 原生，某些工具更好支持；ckpt = 旧格式，含 Python pickle 有安全风险。",
     "whenToUse": "推荐 safetensors（最安全且兼容性最好）。",
-    "avoidWhen": "ckpt 格式因含 Python pickle 存在代码执行风险，不建议分发（作为分发给其他人的格式）。"
+    "avoidWhen": "ckpt 格式因含 Python pickle 存在代码执行风险，不建议分发（作为分发给其他人的格式）。",
+    "optionDescriptions": {
+      "safetensors": "safetensors，现在最常见，也没有 pickle 那套风险。",
+      "pt": "老式 .pt，有的旧脚本只认这个。",
+      "ckpt": "ckpt 后缀，本质还是 torch 那套。",
+      "pth": "pth 后缀，跟 pt 一类。"
+    }
   },
   "advanced": {
     "principle": "safetensors 是 HuggingFace 设计的安全格式：只存储 tensor 数据（无 Python 对象），并发安全（mmap 读取）。pt 通过 pickle 序列化完整 Python 对象，功能更全但有安全风险。",

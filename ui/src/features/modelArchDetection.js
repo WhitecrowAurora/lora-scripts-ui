@@ -55,20 +55,24 @@ export async function detectModelArchitecture(modelPath) {
 
 /**
  * Get current training page type from URL or state
- * @returns {'anima' | 'sdxl' | 'flux' | 'sd15' | 'sd3' | null}
+ * @returns {'anima' | 'sdxl' | 'flux' | 'flux2' | 'sd15' | 'sd3' | 'krea2' | null}
  */
 function getCurrentPageArch() {
-  // Check URL hash
+  // Check URL hash — flux2/klein before bare flux
   const hash = window.location.hash;
   if (hash.includes('anima')) return 'anima';
+  if (hash.includes('krea2') || hash.includes('krea-2')) return 'krea2';
   if (hash.includes('sdxl')) return 'sdxl';
+  if (hash.includes('flux2') || hash.includes('flux-2') || hash.includes('klein')) return 'flux2';
   if (hash.includes('flux')) return 'flux';
 
   // Check global state if available
   if (window.currentTrainingType) {
     const type = String(window.currentTrainingType).toLowerCase();
     if (type.includes('anima')) return 'anima';
+    if (type.includes('krea2') || type.includes('krea-2')) return 'krea2';
     if (type.includes('sdxl')) return 'sdxl';
+    if (type.includes('flux2') || type.includes('flux-2') || type.includes('klein')) return 'flux2';
     if (type.includes('flux')) return 'flux';
     if (type.includes('sd15') || type.includes('sd1.5')) return 'sd15';
     if (type.includes('sd3')) return 'sd3';
@@ -85,8 +89,10 @@ function getArchDisplayName(arch) {
     'anima': 'Anima',
     'sdxl': 'SDXL',
     'flux': 'FLUX',
+    'flux2': 'FLUX.2 Klein',
     'sd15': 'SD 1.5',
     'sd3': 'SD3',
+    'krea2': 'Krea-2',
     'unknown': '未知'
   };
   return names[arch] || '未知';

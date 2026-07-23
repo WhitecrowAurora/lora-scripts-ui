@@ -68,6 +68,7 @@ export function createTrainingChromeActions({
     };
     const standard = safeEntry.standard || {};
     const related = Array.isArray(safeEntry.relatedConfigs) ? safeEntry.relatedConfigs : [];
+    const optionsHtml = loading ? '' : renderSelectOptionsHelp(field, safeEntry);
     const body = document.createElement('div');
     body.className = 'training-option-help-modal open';
     body.innerHTML = `
@@ -81,10 +82,11 @@ export function createTrainingChromeActions({
         </div>
         <div class="training-option-help-body">
           ${loading ? '<p class="field-desc">正在加载参数说明...</p>' : ''}
-          ${renderHelpRow('简单说', standard.summary)}
-          ${renderHelpRow('打开后效果', standard.effect)}
-          ${renderHelpRow('适合什么时候开', standard.whenToUse)}
-          ${renderHelpRow('什么时候先别开', standard.avoidWhen)}
+          ${renderHelpRow('简单说', typeof standard.summary === 'string' ? standard.summary : '')}
+          ${renderHelpRow('打开后效果', typeof standard.effect === 'string' ? standard.effect : '')}
+          ${renderHelpRow('适合什么时候开', typeof standard.whenToUse === 'string' ? standard.whenToUse : '')}
+          ${renderHelpRow('什么时候先别开', typeof standard.avoidWhen === 'string' ? standard.avoidWhen : '')}
+          ${optionsHtml}
           ${safeEntry.fallback ? '<p class="training-option-help-note">完整 Wiki 条目还在补充中，当前内容来自训练 schema。</p>' : ''}
           ${related.length ? `<div class="training-option-help-related">${related.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>` : ''}
         </div>
@@ -102,6 +104,103 @@ export function createTrainingChromeActions({
       <div class="training-option-help-row">
         <strong>${escapeHtml(title)}</strong>
         <p>${escapeHtml(text)}</p>
+      </div>
+    `;
+  }
+
+  function asStringMap(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (v == null) continue;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[String(k)] = String(v);
+    }
+    return out;
+  }
+
+  function normalizeHelpOption(opt) {
+    if (opt == null) return null;
+    if (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean') {
+      const value = String(opt);
+      return { value, label: value };
+    }
+    if (typeof opt === 'object') {
+      const value = opt.value == null ? '' : String(opt.value);
+      if (!value && !opt.label) return null;
+      return { value, label: String(opt.label || value) };
+    }
+    return null;
+  }
+
+  function optionKeyAliases(value) {
+    const raw = String(value || '');
+    const lower = raw.toLowerCase();
+    const snake = raw
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[\s-]+/g, '_')
+      .toLowerCase();
+    const compact = snake.replace(/_/g, '');
+    const digitSplit = snake.replace(/([a-z])(\d)/g, '$1_$2');
+    return [...new Set([raw, lower, snake, compact, digitSplit, digitSplit.replace(/_/g, '')].filter(Boolean))];
+  }
+
+  function lookupOptionDescription(wikiDesc, value, label) {
+    for (const k of [...optionKeyAliases(value), ...optionKeyAliases(label)]) {
+      if (wikiDesc[k]) return wikiDesc[k];
+    }
+    const want = new Set(optionKeyAliases(value).map((s) => s.replace(/_/g, '')));
+    for (const [k, desc] of Object.entries(wikiDesc)) {
+      if (want.has(String(k).toLowerCase().replace(/_/g, ''))) return desc;
+    }
+    return '';
+  }
+
+  function renderSelectOptionsHelp(field, entry) {
+    const schemaOpts = Array.isArray(field?.options) ? field.options : [];
+    const wikiDesc = {
+      ...asStringMap(entry?.optionDescriptions),
+      ...asStringMap(entry?.standard?.optionDescriptions),
+      ...asStringMap(entry?.standard?.recommendedValues),
+    };
+    const rows = [];
+    const seen = new Set();
+    for (const opt of schemaOpts) {
+      const n = normalizeHelpOption(opt);
+      if (!n) continue;
+      const key = n.value || n.label;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const description = lookupOptionDescription(wikiDesc, n.value, n.label);
+      rows.push({ ...n, description });
+    }
+    for (const [k, desc] of Object.entries(wikiDesc)) {
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rows.push({ value: k, label: k, description: desc });
+    }
+    if (!rows.length) return '';
+    const items = rows
+      .map((row) => {
+        const valueHtml =
+          row.value && row.value !== row.label
+            ? `<code class="training-option-help-opt-value">${escapeHtml(row.value)}</code>`
+            : '';
+        const descHtml = row.description
+          ? `<p class="training-option-help-opt-desc">${escapeHtml(row.description)}</p>`
+          : '';
+        return `<li class="training-option-help-opt">
+          <div class="training-option-help-opt-head">
+            <span class="training-option-help-opt-label">${escapeHtml(row.label)}</span>
+            ${valueHtml}
+          </div>
+          ${descHtml}
+        </li>`;
+      })
+      .join('');
+    return `
+      <div class="training-option-help-row training-option-help-options-block">
+        <strong>可选值</strong>
+        <ul class="training-option-help-options">${items}</ul>
       </div>
     `;
   }

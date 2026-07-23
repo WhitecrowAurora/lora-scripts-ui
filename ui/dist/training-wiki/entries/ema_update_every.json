@@ -2,8 +2,15 @@
   "key": "ema_update_every",
   "title": "EMA 更新间隔",
   "category": "训练 / 平滑",
-  "appliesTo": ["anima-lora", "sdxl-lora", "sd-lora", "newbie-lora"],
-  "layers": ["训练控制层"],
+  "appliesTo": [
+    "anima-lora",
+    "sdxl-lora",
+    "sd-lora",
+    "newbie-lora"
+  ],
+  "layers": [
+    "训练控制层"
+  ],
   "standard": {
     "summary": "每隔多少个优化步更新一次 EMA 副本。默认 1 = 每步更新。",
     "effect": "增大该值可略微降低 EMA 的计算开销，但平滑效果会变粗糙（相当于 decay 等效窗口缩短）。",
@@ -17,5 +24,9 @@
     "tradeoffs": "EMA 更新本身开销很小（仅 tensor 加权），通常不是瓶颈，一般不需要调整。",
     "codePath": "core/lulynx_trainer/training_loop.py → EMA update 条件判断"
   },
-  "relatedConfigs": ["ema_enabled", "ema_decay", "ema_update_after_step"]
+  "relatedConfigs": [
+    "ema_enabled",
+    "ema_decay",
+    "ema_update_after_step"
+  ]
 }

@@ -20,6 +20,7 @@ import {
 import {
   UI_TABS,
   SDXL_SECTIONS,
+  ALL_TRAINING_TYPES,
   TRAINING_TYPES,
   applyBackendConfigOptions,
   buildRunConfig,
@@ -30,13 +31,15 @@ import {
   getSectionsForType,
   isFieldVisible,
   normalizeDraftValue,
+  collectConditionalKeys,
+  getFieldConditionalParents,
 } from './schemaIndex.js';
 import {
   SCHEDULER_TYPE_TO_VALUE,
 } from './features/settingsOptions.js';
 import {
   TOPBAR_TABS,
-  CONDITIONAL_KEYS,
+  CONDITIONAL_KEYS as CONDITIONAL_KEYS_MANUAL,
   COLLAPSIBLE_FIELD_KEYS,
   DRAFT_STORAGE_KEY,
   DELETED_TASK_IDS_STORAGE_KEY,
@@ -83,6 +86,9 @@ import './actions/trainingAssistantConfig.js';
 import { setupTurbocoreToggle } from './actions/turbocoreToggle.js';
 import { setupPerfModeToggle } from './actions/perfModeToggle.js';
 import { setupOptimizerToggle } from './actions/optimizerToggle.js';
+import { createResourceCenterRenderer } from './renderers/resourceCenter.js';
+import { createSemanticRegionWeightsActions } from './actions/semanticRegionWeightsActions.js';
+import { createProgressivePhaseEditorActions } from './actions/progressivePhaseEditorActions.js';
 
 const state = createInitialAppState({ createDefaultConfig });
 installGlobalErrorReporter();
@@ -123,7 +129,11 @@ const {
   renderNetworkOptionGroup,
   renderCaptionTagDropoutGroup,
   renderRegularizationFieldGroup,
+  startSampleDifficultyScoring,
+  previewTrainingIntentProfile,
+  applyTrainingIntentSuggestions,
 } = createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVisible, COLLAPSIBLE_FIELD_KEYS });
+bindWindowActions({ startSampleDifficultyScoring, previewTrainingIntentProfile, applyTrainingIntentSuggestions });
 const { renderSections: renderConfigSections } = createConfigShellRenderer({
   state,
   UI_TABS,
@@ -165,6 +175,7 @@ const {
 } = createPluginsRenderer({ pluginStore, loadPluginRuntime, loadPluginSdkStatus, getRegisteredSlots, api });
 // tools renderer
 const { renderTools, renderToolDetail } = createToolsRenderer({ state, renderSlot });
+const { renderResourceCenter } = createResourceCenterRenderer({ api, showToast, renderView });
 // dataset renderer + actions
 const {
   renderDataset,
@@ -194,6 +205,7 @@ const {
   useSuggestionPreview,
   runCaptionCleanupPreview,
   runCaptionCleanupApply,
+  runCaptionMutatePreview,
   cancelCleanupJob,
   createCaptionBackup,
   listCaptionBackups,
@@ -207,6 +219,13 @@ const {
   runAdvStructurePreview,
   runAdvStructureApply,
   runAdvDedupe,
+  runAdvDedupePlan,
+  runAdvDedupeQuarantine,
+  runAdvContentScan,
+  runAdvContentQuarantine,
+  runAdvCacheHealthReport,
+  runAdvCacheHealthPlan,
+  runAdvCacheHealthQuarantine,
   runAdvFrequencyPreview,
   runAdvFrequencyApply,
   runAdvReviewQueue,
@@ -248,6 +267,7 @@ bindWindowActions({
   useSuggestionPreview,
   runCaptionCleanupPreview,
   runCaptionCleanupApply,
+  runCaptionMutatePreview,
   cancelCleanupJob,
   createCaptionBackup,
   listCaptionBackups,
@@ -261,6 +281,13 @@ bindWindowActions({
   runAdvStructurePreview,
   runAdvStructureApply,
   runAdvDedupe,
+  runAdvDedupePlan,
+  runAdvDedupeQuarantine,
+  runAdvContentScan,
+  runAdvContentQuarantine,
+  runAdvCacheHealthReport,
+  runAdvCacheHealthPlan,
+  runAdvCacheHealthQuarantine,
   runAdvFrequencyPreview,
   runAdvFrequencyApply,
   runAdvReviewQueue,
@@ -280,6 +307,8 @@ const { _buildSysMonitorHTML } = createSysMonitorRenderer({ state });
 const {
   resetTrainingLogCursor: _resetTrainingLogCursor,
   refreshTrainingLog,
+  selectTrainingLogTask,
+  setTrainingLogFollowLatest,
   startTrainingLogPolling,
   startSysMonitorPolling,
   pollSystemMonitor: _pollSystemMonitor,
@@ -291,7 +320,17 @@ const {
   resetTrainingMetrics: (options) => resetTrainingMetrics(options),
   buildSysMonitorHTML: () => _buildSysMonitorHTML(),
 });
-bindWindowActions({ refreshTrainingLog });
+bindWindowActions({
+  refreshTrainingLog,
+  selectTrainingLogTask: (taskId, options) => {
+    selectTrainingLogTask(taskId, options);
+    if (state.activeModule === 'training') renderView('training');
+  },
+  setTrainingLogFollowLatest: (enabled) => {
+    setTrainingLogFollowLatest(enabled);
+    if (state.activeModule === 'training') renderView('training');
+  },
+});
 // training renderer（renderTraining + renderTrainingSummaryHTML）
 // 副作用函数 syncFooterAction / startTrainingLogPolling / startSysMonitorPolling /
 // _pollSystemMonitor 都在 main.js 后续定义；由于它们是 `function` 声明（hoisted），
@@ -560,6 +599,10 @@ function renderConfig(container) {
 
 // layout actions—提前装配以供后续 renderSettings/_trainingDeps 使用
 // （已在 createBackendHeartbeat 之前完成装配，此处保留注释作为锚点）
+// 联动重渲染键：手工 base（显式安全兜底）∪ 从 schema visibleWhen 自动推导的依赖键。
+// 自动推导覆盖所有 *_enabled 父开关，杜绝"开了父开关子项不出现"随 schema 增长而复发。
+const CONDITIONAL_KEYS = new Set(CONDITIONAL_KEYS_MANUAL);
+for (const k of collectConditionalKeys()) CONDITIONAL_KEYS.add(k);
 // config actions—依赖 layout.resetTransientState、jsonPanel.updateJSONPreview
 const {
   isTruthyConfigFlag,
@@ -616,10 +659,55 @@ const {
   updateJSONPreview,
   renderView,
 });
+const {
+  addSemanticRegionWeight,
+  removeSemanticRegionWeight,
+  updateSemanticRegionWeight,
+  updateSemanticRegionCurvePoint,
+  beginSemanticRegionCurveDrag,
+  probeSemanticSegmentation,
+  previewSemanticSegmentation,
+  buildSemanticSegmentationCache,
+} = createSemanticRegionWeightsActions({
+  state,
+  api,
+  showToast,
+  syncConfigState,
+  updateJSONPreview,
+  renderView,
+});
+const {
+  addProgressivePhase,
+  removeProgressivePhase,
+  updateProgressivePhaseField,
+  updateProgressivePhaseScheduleJson,
+  applyProgressivePhaseScheduleJson,
+  resetProgressivePhaseSchedule,
+} = createProgressivePhaseEditorActions({
+  state,
+  showToast,
+  syncConfigState,
+  updateJSONPreview,
+  renderView,
+});
 bindWindowActions({
   addPreviewGroup,
   removePreviewGroup,
   updatePreviewGroup,
+  addSemanticRegionWeight,
+  removeSemanticRegionWeight,
+  updateSemanticRegionWeight,
+  updateSemanticRegionCurvePoint,
+  beginSemanticRegionCurveDrag,
+  probeSemanticSegmentation,
+  previewSemanticSegmentation,
+  buildSemanticSegmentationCache,
+  addProgressivePhase,
+  removeProgressivePhase,
+  updateProgressivePhaseField,
+  updateProgressivePhaseScheduleJson,
+  applyProgressivePhaseScheduleJson,
+  resetProgressivePhaseSchedule,
   updateConfigValue,
   resetAllParams,
   resetFieldValue,
@@ -629,9 +717,10 @@ bindWindowActions({
 
 // Feature 5：包装 updateConfigValue 以支持提示词历史钩子
 const _origUpdateConfigValue = window.updateConfigValue;
-window.updateConfigValue = (key, value) => {
-  _origUpdateConfigValue(key, value);
-  window.__onConfigValueUpdated?.(key, value);
+window.updateConfigValue = (key, value, options) => {
+  const result = _origUpdateConfigValue(key, value, options);
+  if (options?.explicit !== false) window.__onConfigValueUpdated?.(key, value);
+  return result;
 };
 
 // sample actions—依赖 _samplesGetSorted (samples renderer)
@@ -810,7 +899,7 @@ const renderNavigator = createNavigatorRenderer({
 const renderSettings = createSettingsRenderer({ state, t, renderSlot, applyAndPersistLayout, renderView, applyTheme, showToast });
 _renderConfigImpl = createConfigPageRenderer({
   state,
-  TRAINING_TYPES,
+  TRAINING_TYPES: ALL_TRAINING_TYPES,
   escapeHtml,
   renderPreflightOverviewPanel,
   renderPreflightReport,
@@ -823,6 +912,8 @@ _renderConfigImpl = createConfigPageRenderer({
   syncFooterAction,
   updateJSONPreview,
   setupWaterfallScrollSpy: (container) => _trainingChromeActions?.setupWaterfallScrollSpy(container),
+  getFieldConditionalParents,
+  getFieldDefinition,
 }).renderConfig;
 _renderViewImpl = createAppViewRenderer({
   state,
@@ -840,7 +931,7 @@ _renderViewImpl = createAppViewRenderer({
   renderWizard,
   renderPlugins,
   renderTurboCore,
-  renderTraining,
+  renderTraining,  renderResourceCenter,
 }).renderView;
 _trainingChromeActions = createTrainingChromeActions({
   state,
@@ -908,7 +999,7 @@ const {
   state, api, showToast, renderView, renderNavigator,
   saveDraft, resetTransientState, updateJSONPreview,
   enforceLycorisDoraSafety, mergeConfigPatch,
-  createDefaultConfig, TRAINING_TYPES, SCHEDULER_TYPE_TO_VALUE,
+  createDefaultConfig, TRAINING_TYPES: ALL_TRAINING_TYPES, SCHEDULER_TYPE_TO_VALUE,
   parseSimpleToml: _parseSimpleToml, configToToml: _configToToml, buildRunConfig,
   DRAFT_STORAGE_KEY,
 });
@@ -938,7 +1029,7 @@ const {
   loadTaskSummariesFromCache,
   showTaskSummary,
 } = createTrainingMetadataActions({
-  state, api, TRAINING_TYPES, saveLocalTaskHistory,
+  state, api, TRAINING_TYPES: ALL_TRAINING_TYPES, saveLocalTaskHistory,
   _resetTrainingLogCursor: () => _resetTrainingLogCursor(),
 });
 bindWindowActions({ showTaskSummary });

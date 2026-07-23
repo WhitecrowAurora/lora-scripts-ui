@@ -47,13 +47,22 @@ export function createTrainingSummaryTool() {
 // ── 渲染 ──────────────────────────────────────────────────────────────
 
 function renderSummary(config, trainingType) {
-  const rows = buildSummaryRows(config, trainingType);
-  const rowsHtml = rows.map(({ label, value, warn }) => `
-    <tr class="${warn ? 'ts-row-warn' : ''}">
-      <td class="ts-label">${escapeHtml(label)}</td>
-      <td class="ts-value">${escapeHtml(String(value ?? '—'))}</td>
-    </tr>
-  `).join('');
+  const groups = buildSummaryGroups(config, trainingType);
+  const groupsHtml = groups.map(group => {
+    const rowsHtml = group.rows.map(({ label, value, warn }) => `
+      <div class="ts-param-row ${warn ? 'ts-row-warn' : ''}">
+        <span class="ts-param-label">${escapeHtml(label)}</span>
+        <span class="ts-param-value">${escapeHtml(String(value ?? '—'))}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="ts-group">
+        <div class="ts-group-title">${escapeHtml(group.title)}</div>
+        <div class="ts-group-content">${rowsHtml}</div>
+      </div>
+    `;
+  }).join('');
 
   return `
     <div class="training-option-help-dialog training-summary-dialog"
@@ -67,12 +76,7 @@ function renderSummary(config, trainingType) {
       </div>
       <div class="training-option-help-body training-summary-body">
         <p class="field-desc">请确认以下参数无误后再启动训练：</p>
-        <table class="lora-meta-table training-summary-table">
-          <thead>
-            <tr><th>参数</th><th>值</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
+        <div class="ts-groups-container">${groupsHtml}</div>
       </div>
       <div class="training-option-help-foot">
         <button class="btn btn-outline" type="button" data-ts-cancel>取消</button>
@@ -82,38 +86,60 @@ function renderSummary(config, trainingType) {
   `;
 }
 
-function buildSummaryRows(config, trainingType) {
+function buildSummaryGroups(config, trainingType) {
   const c = config || {};
-  const rows = [];
+  const groups = [];
 
-  const add = (label, value, { warn = false } = {}) => rows.push({ label, value, warn });
+  const addGroup = (title, rowsFn) => {
+    const rows = [];
+    const add = (label, value, { warn = false } = {}) => {
+      if (value !== undefined && value !== null && value !== '') {
+        rows.push({ label, value, warn });
+      }
+    };
+    rowsFn(add);
+    if (rows.length > 0) {
+      groups.push({ title, rows });
+    }
+  };
 
-  add('训练类型', trainingType || c.model_train_type || '—');
-  add('输出名称', c.output_name || '—', { warn: !c.output_name });
-  add('输出目录', c.output_dir || '—', { warn: !c.output_dir });
-  add('基础模型', _short(c.pretrained_model_name_or_path));
+  // 基础配置
+  addGroup('基础配置', (add) => {
+    add('训练类型', trainingType || c.model_train_type || '—');
+    add('输出名称', c.output_name || '—', { warn: !c.output_name });
+    add('输出目录', c.output_dir || '—', { warn: !c.output_dir });
+    add('基础模型', _short(c.pretrained_model_name_or_path));
+  });
 
-  // LoRA / 网络
+  // LoRA 参数
   const networkMod = c.network_module || c.lora_type || '';
-  if (networkMod) add('网络模块', networkMod);
-  if (c.network_dim)   add('LoRA Rank',  c.network_dim);
-  if (c.network_alpha) add('LoRA Alpha', c.network_alpha);
+  if (networkMod || c.network_dim || c.network_alpha) {
+    addGroup('网络模块', (add) => {
+      if (networkMod) add('网络模块', networkMod);
+      if (c.network_dim) add('LoRA Rank', c.network_dim);
+      if (c.network_alpha) add('LoRA Alpha', c.network_alpha);
+    });
+  }
 
   // 训练参数
-  const steps = c.max_train_steps || c.max_train_epochs
-    ? (c.max_train_steps ? `${c.max_train_steps} 步` : `${c.max_train_epochs} Epoch`)
-    : '—';
-  add('训练量', steps);
-  if (c.train_batch_size) add('Batch Size', c.train_batch_size);
-  if (c.resolution)       add('训练分辨率', c.resolution);
+  addGroup('训练参数', (add) => {
+    const steps = c.max_train_steps || c.max_train_epochs
+      ? (c.max_train_steps ? `${c.max_train_steps} 步` : `${c.max_train_epochs} Epoch`)
+      : '—';
+    add('训练量', steps);
+    if (c.train_batch_size) add('Batch Size', c.train_batch_size);
+    if (c.resolution) add('训练分辨率', c.resolution);
+  });
 
-  // 学习率
-  const lr = c.unet_lr || c.learning_rate;
-  if (lr) add('学习率', lr);
-  if (c.optimizer_type || c.optimizer) add('优化器', c.optimizer_type || c.optimizer);
-  if (c.lr_scheduler)    add('LR Scheduler', c.lr_scheduler);
+  // 优化器与调度器
+  addGroup('优化器', (add) => {
+    const lr = c.unet_lr || c.learning_rate;
+    if (lr) add('学习率', lr);
+    if (c.optimizer_type || c.optimizer) add('优化器', c.optimizer_type || c.optimizer);
+    if (c.lr_scheduler) add('LR Scheduler', c.lr_scheduler);
+  });
 
-  return rows;
+  return groups;
 }
 
 /** 截断长路径只保留文件名 */

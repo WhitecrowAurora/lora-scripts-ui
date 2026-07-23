@@ -1,4 +1,4 @@
-// renderers/dataset.js — 数据集处理页面（标签器 / 标签编辑器 / 图像预处理 / 数据集分析 / Caption 清洗 / Caption 备份 / 蒙版损失审查）
+// renderers/dataset.js — 数据集处理页面（标签器 / 标签编辑器 / 图像预处理 / 数据集分析 / Caption 清洗 / Mutate 预览 / Caption 备份 / 蒙版损失审查）
 //
 // 包含 7 个 render 函数 + 4 个 hint 辅助 + gatherCleanupParams + _pollTaggerProgress
 // 以及 14 个 action（runTagger / runLlmTagger / runImageResize / runDatasetAnalysis / 等）
@@ -10,6 +10,7 @@ import { $, escapeHtml, _ico } from '../utils/dom.js';
 import { createBBoxAnnotator } from './dataset/bboxAnnotator.js';
 import { createCaptionBackups } from './dataset/captionBackups.js';
 import { createCaptionCleanupPanel } from './dataset/captionCleanupPanel.js';
+import { createCaptionMutatePreviewPanel } from './dataset/captionMutatePreviewPanel.js';
 import { createImageResizePanel } from './dataset/imageResizePanel.js';
 import { createAnalysisSuggestions } from './dataset/analysisSuggestions.js';
 import { createMaskedLossAudit } from './dataset/maskedLossAudit.js';
@@ -32,6 +33,7 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
   const analysisSuggestions = createAnalysisSuggestions({ state, api, $, escapeHtml, showToast, renderView });
   const captionBackups = createCaptionBackups({ api, $, escapeHtml, showToast });
   const captionCleanupPanel = createCaptionCleanupPanel({ api, $, escapeHtml, showToast });
+  const captionMutatePreviewPanel = createCaptionMutatePreviewPanel({ api, $, escapeHtml, showToast });
   const maskedLossAudit = createMaskedLossAudit({ api, $, escapeHtml, showToast });
   const imageResizePanel = createImageResizePanel({ api, $, _ico, escapeHtml, showToast });
   const advancedTagToolsPanel = createAdvancedTagToolsPanel({ api, $, escapeHtml, showToast });
@@ -51,6 +53,7 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
       analysis: analysisSuggestions.renderDatasetAnalysis,
       suggestions: analysisSuggestions.renderTagSuggestions,
       cleanup: captionCleanupPanel.renderCaptionCleanup,
+      mutate: captionMutatePreviewPanel.renderCaptionMutatePreview,
       tagmanager: renderTagManagerLite,
       bbox: bboxAnnotator.renderBBoxAnnotator,
       backups: captionBackups.renderCaptionBackups,
@@ -509,6 +512,7 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
     runDatasetAnalysis: analysisSuggestions.runDatasetAnalysis,
     runCaptionCleanupPreview: captionCleanupPanel.runCaptionCleanupPreview,
     runCaptionCleanupApply: captionCleanupPanel.runCaptionCleanupApply,
+    runCaptionMutatePreview: captionMutatePreviewPanel.runCaptionMutatePreview,
     runTagManagerPreview,
     runTagManagerApply,
     cancelTagManagerJob,
@@ -530,6 +534,13 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
     runAdvStructurePreview: advancedTagToolsPanel.runAdvStructurePreview,
     runAdvStructureApply: advancedTagToolsPanel.runAdvStructureApply,
     runAdvDedupe: advancedTagToolsPanel.runAdvDedupe,
+    runAdvDedupePlan: advancedTagToolsPanel.runAdvDedupePlan,
+    runAdvDedupeQuarantine: advancedTagToolsPanel.runAdvDedupeQuarantine,
+    runAdvContentScan: advancedTagToolsPanel.runAdvContentScan,
+    runAdvContentQuarantine: advancedTagToolsPanel.runAdvContentQuarantine,
+    runAdvCacheHealthReport: advancedTagToolsPanel.runAdvCacheHealthReport,
+    runAdvCacheHealthPlan: advancedTagToolsPanel.runAdvCacheHealthPlan,
+    runAdvCacheHealthQuarantine: advancedTagToolsPanel.runAdvCacheHealthQuarantine,
     runAdvFrequencyPreview: advancedTagToolsPanel.runAdvFrequencyPreview,
     runAdvFrequencyApply: advancedTagToolsPanel.runAdvFrequencyApply,
     runAdvReviewQueue: advancedTagToolsPanel.runAdvReviewQueue,

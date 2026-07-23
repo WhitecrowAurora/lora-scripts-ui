@@ -24,3 +24,5 @@ export { createConfigShellRenderer } from './configShell.js';
 export { createAppViewRenderer } from './appView.js';
 export { renderTurboCore, turboCoreProbeStatus, turboCoreCopyFlags } from './turboCore.js';
 
+
+export { createResourceCenterRenderer } from './resourceCenter.js';

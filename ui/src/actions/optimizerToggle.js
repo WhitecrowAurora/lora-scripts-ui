@@ -42,11 +42,25 @@ async function loadOptimizerState(api, buttons) {
       const data = await response.json();
       optimizerMode = data.enabled ? 'turbocore' : 'pytorch';
       updateUI(buttons, optimizerMode);
+      syncTurboCoreConfig(optimizerMode === 'turbocore');
     }
   } catch (error) {
     // 后端不支持或未启动，使用默认 turbocore 模式
     console.log('Optimizer status not available, using default:', error.message);
     updateUI(buttons, 'turbocore');
+    syncTurboCoreConfig(true);
+  }
+}
+
+/**
+ * 同步顶栏 TurboCore 状态到 config，供 schema visibleWhen 互斥使用。
+ * TC 开时强制 turbocore_optimizer_mode=off，避免与 Lulynx Triton 双抢 step。
+ */
+function syncTurboCoreConfig(enabled) {
+  if (typeof window.updateConfigValue !== 'function') return;
+  window.updateConfigValue('turbocore_enabled', !!enabled);
+  if (enabled) {
+    window.updateConfigValue('turbocore_optimizer_mode', 'off');
   }
 }
 
@@ -71,11 +85,12 @@ async function switchOptimizer(api, showToast, buttons, newMode) {
     if (response.ok) {
       optimizerMode = newMode;
       updateUI(buttons, optimizerMode);
+      syncTurboCoreConfig(newMode === 'turbocore');
 
       if (newMode === 'turbocore') {
-        showToast('TurboCore 优化器已启用 (20x 加速)');
+        showToast('成功切换到 TurboCore 优化器');
       } else {
-        showToast('已切换到 PyTorch 原生优化器');
+        showToast('成功切换到 PyTorch 原生优化器');
       }
     } else {
       throw new Error('切换失败');

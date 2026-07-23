@@ -76,10 +76,12 @@ export function createTaskHistoryActions(deps) {
     const byId = new Map();
     const localById = new Map();
     const currentById = new Map();
+    const backendIds = new Set();
     for (const t of (currentTasks || [])) currentById.set(getTaskId(t), t);
     for (const t of localHistory) {
       const taskId = getTaskId(t);
       if (deletedIds.has(taskId)) continue;
+      // 本地只应保留终态历史；若误存了 RUNNING/QUEUED 且后端已无此任务，下面会丢掉。
       localById.set(taskId, t);
       byId.set(taskId, { ...t });
     }
@@ -87,7 +89,8 @@ export function createTaskHistoryActions(deps) {
     const activeTaskId = state.activeTrainingTaskId || (pendingMeta && pendingMeta.taskId) || '';
     for (const t of backendTasks) {
       const taskId = getTaskId(t);
-      if (deletedIds.has(taskId)) continue;
+      if (!taskId || deletedIds.has(taskId)) continue;
+      backendIds.add(taskId);
       const existing = byId.get(taskId);
       if (existing) {
         const saved = localById.get(taskId);
@@ -107,9 +110,15 @@ export function createTaskHistoryActions(deps) {
         byId.set(taskId, { ...t });
       }
     }
+    // 丢弃「本地/内存仍活跃，但后端列表已无此 id」的幽灵任务，防止底栏卡「训练中」。
+    for (const [taskId, task] of Array.from(byId.entries())) {
+      if (isTaskActive(task) && !backendIds.has(taskId)) {
+        byId.delete(taskId);
+      }
+    }
     const arr = Array.from(byId.values());
     arr.sort(compareActiveTasksFirst);
- return arr;
+    return arr;
   }
 
   // ── 任务历史删除 ──

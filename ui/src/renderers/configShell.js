@@ -1,3 +1,5 @@
+import { resolveTabLabel } from '../schemaFieldI18n.js';
+
 export function createConfigShellRenderer({
   state,
   UI_TABS,
@@ -18,7 +20,9 @@ export function createConfigShellRenderer({
     }
 
     const tabKeyToLabel = {};
-    for (const tab of UI_TABS) tabKeyToLabel[tab.key] = tab.label;
+    for (const tab of UI_TABS) {
+      tabKeyToLabel[tab.key] = resolveTabLabel(tab, state.lang);
+    }
 
     const allSections = [];
     const availableTabKeys = getAvailableTabs(trainingType, state.config).map((tab) => tab.key);

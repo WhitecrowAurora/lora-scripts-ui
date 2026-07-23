@@ -179,7 +179,7 @@ function collectPayload(root, cfg) {
     },
     search_space: searchSpace,
     start_policy: root.querySelector('[data-cp-input="cp-policy"]')?.value || 'warm_start',
-    execution_profile_id: cfg.execution_profile_id || cfg.__execution_profile_id || 'standard',
+    execution_profile_id: cfg.execution_profile_id || cfg.__execution_profile_id || '',
     attention_backend: cfg.attention_backend || 'auto',
     schema_id: cfg.__schema_id || '',
     dry_run: dryRun,

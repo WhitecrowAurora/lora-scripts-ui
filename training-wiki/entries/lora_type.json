@@ -1,0 +1,43 @@
+{
+  "key": "lora_type",
+  "title": "适配器类型",
+  "category": "训练参数",
+  "appliesTo": [],
+  "layers": [],
+  "standard": {
+    "summary": "Anima 概念编辑当前支持原生 LoRA / DoRA / LoRA+ /",
+    "effect": "",
+    "whenToUse": "不确定时先保持默认，小步数短测后再调。",
+    "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。",
+    "optionDescriptions": {
+      "lora": "原生 LoRA。",
+      "lora_plus": "LoRA+。",
+      "rs_lora": "rsLoRA。",
+      "lora_fa": "LoRA-FA。",
+      "vera": "VeRA。",
+      "tlora": "T-LoRA。",
+      "flexrank": "FlexRank。",
+      "fera": "FeRA。",
+      "gdlokr": "GDLoKr。",
+      "locon": "LoCon。",
+      "loha": "LoHa。",
+      "lokr": "LoKr。",
+      "glora": "GLoRA。",
+      "glokr": "GLoKr。",
+      "ia3": "IA³。",
+      "dora": "DoRA。",
+      "oft": "OFT。",
+      "diag-oft": "Diag-OFT。",
+      "full": "最重那档。",
+      "hydralora": "HydraLoRA。"
+    }
+  },
+  "advanced": {
+    "principle": "Anima 概念编辑当前支持原生 LoRA / DoRA / LoRA+ / rsLoRA / LoRA-FA / VeRA / T-LoRA / FlexRank / HydraLoRA / FeRA / LyCORIS。概念编辑首版建议优先从普通 LoRA 开始。",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "",
+    "codePath": ""
+  },
+  "relatedConfigs": []
+}

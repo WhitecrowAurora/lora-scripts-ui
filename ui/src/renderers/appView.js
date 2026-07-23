@@ -18,6 +18,7 @@ export function createAppViewRenderer({
   renderPlugins,
   renderTurboCore,
   renderTraining,
+  renderResourceCenter,
 }) {
   const renderers = {
     config: renderConfig,
@@ -31,6 +32,7 @@ export function createAppViewRenderer({
     plugins: renderPlugins,
     turbocore: renderTurboCore,
     training: renderTraining,
+    resources: renderResourceCenter,
   };
 
   function renderFallback(container, module) {

@@ -92,7 +92,19 @@ updateJSONPreview,
     return `预设 ${index + 1}`;
   }
 
-  async function updateConfigValue(key, rawValue) {
+  function explicitFieldSet() {
+    const typeId = state.activeTrainingType || 'sdxl-lora';
+    state.trainingIntentExplicitFields ||= {};
+    state.trainingIntentExplicitFields[typeId] ||= new Set();
+    return state.trainingIntentExplicitFields[typeId];
+  }
+
+  function markExplicitField(key) {
+    if (key) explicitFieldSet().add(key);
+  }
+
+  async function updateConfigValue(key, rawValue, options = {}) {
+    if (options.explicit !== false) markExplicitField(key);
     const field = getFieldDefinition(key);
     const normalizedValue = normalizeDraftValue(field, rawValue);
     const previousValue = state.config[key];
@@ -133,6 +145,7 @@ updateJSONPreview,
 
   function resetAllParams() {
     state.config = createDefaultConfig(state.activeTrainingType);
+    state.trainingIntentExplicitFields[state.activeTrainingType] = new Set();
     state.hasLocalDraft = false;
     localStorage.removeItem(DRAFT_STORAGE_KEY);
     resetTransientState();
@@ -168,6 +181,9 @@ updateJSONPreview,
     const preset = state.presets[index];
     if (!preset) return;
     mergeConfigPatch(preset);
+    for (const key of Object.keys(preset)) {
+      if (getFieldDefinition(key)) markExplicitField(key);
+    }
     state.hasLocalDraft = true;
     resetTransientState();
     saveDraft();

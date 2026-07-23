@@ -2,8 +2,17 @@
   "key": "optimizer_state_paging_enabled",
   "title": "优化器状态分页",
   "category": "显存 / Offload",
-  "appliesTo": ["sdxl-lora", "sd-lora", "anima-lora", "newbie-lora", "finetune"],
-  "layers": ["内存层", "优化器层"],
+  "appliesTo": [
+    "sdxl-lora",
+    "sd-lora",
+    "anima-lora",
+    "newbie-lora",
+    "finetune"
+  ],
+  "layers": [
+    "内存层",
+    "优化器层"
+  ],
   "standard": {
     "summary": "将 optimizer state（AdamW 的 m_t 和 v_t）在 step 间隙停放在 CPU 内存中，只在 step 时搬到 GPU。减少 optimizer state 的常驻显存。",
     "effect": "大 rank LoRA 的 optimizer state 可能比模型权重还大（rank=128 约 800MB）。分页可将这部分显存降到接近 0。",
@@ -17,5 +26,9 @@
     "tradeoffs": "与 fused_optimizer 可能不完全兼容。",
     "codePath": "training_loop.py:optimizer_state_paging → per-step state .to(device)/.to('cpu')"
   },
-  "relatedConfigs": ["optimizer_state_paging_min_tensor_mb", "optimizer_state_paging_pin_memory", "optimizer_type"]
+  "relatedConfigs": [
+    "optimizer_state_paging_min_tensor_mb",
+    "optimizer_state_paging_pin_memory",
+    "optimizer_type"
+  ]
 }

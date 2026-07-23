@@ -38,11 +38,63 @@ export function createTrainingLivePolling({
   }
 
   function getActiveTrainingLogTask() {
+    const followLatest = state.trainingLogFollowLatest !== false;
+    if (followLatest) {
+      // Auto-follow newest running/queued even if a previous id is still stored.
+      const latest = getRunningTasks(state.tasks)[0] || getActiveTasks(state.tasks)[0] || null;
+      if (latest) {
+        const latestId = getTaskId(latest);
+        if (latestId && state.activeTrainingTaskId !== latestId) {
+          state.activeTrainingTaskId = latestId;
+        }
+        return latest;
+      }
+    }
     if (state.activeTrainingTaskId) {
       const active = state.tasks.find((task) => task.id === state.activeTrainingTaskId || task.task_id === state.activeTrainingTaskId);
       if (active) return active;
+      // Stale selection (task removed) — fall through.
     }
+    if (!followLatest) return null;
     return getRunningTasks(state.tasks)[0] || getActiveTasks(state.tasks)[0] || null;
+  }
+
+  function selectTrainingLogTask(taskId, options = {}) {
+    const id = String(taskId || '').trim();
+    if (!id) return;
+    const pin = options && options.pin === true;
+    const follow = options && options.follow === true;
+    if (follow) {
+      state.trainingLogFollowLatest = true;
+    } else if (pin || state.activeTrainingTaskId !== id) {
+      // Manual click pins the selection until user re-enables follow-latest.
+      state.trainingLogFollowLatest = false;
+    }
+    if (state.activeTrainingTaskId !== id) {
+      state.activeTrainingTaskId = id;
+      resetTrainingLogCursor(id);
+      // Keep metrics only when switching away from a still-running task view.
+      const target = state.tasks.find((task) => task.id === id || task.task_id === id);
+      resetTrainingMetrics({ keepLogSnapshot: !!(target && !isTaskRunning(target)) });
+      state.trainingLogSnapshot = { taskId: id, html: '', updatedAt: 0 };
+    }
+    if (!isTaskQueued(state.tasks.find((task) => task.id === id || task.task_id === id) || {})) {
+      refreshTrainingLog(id);
+      startTrainingLogPolling();
+    }
+  }
+
+  function setTrainingLogFollowLatest(enabled) {
+    state.trainingLogFollowLatest = !!enabled;
+    if (state.trainingLogFollowLatest) {
+      const latest = getRunningTasks(state.tasks)[0] || getActiveTasks(state.tasks)[0] || null;
+      const latestId = getTaskId(latest);
+      if (latestId) {
+        state.activeTrainingTaskId = latestId;
+        refreshTrainingLog(latestId);
+        startTrainingLogPolling();
+      }
+    }
   }
 
   function startTrainingLogPolling() {
@@ -118,9 +170,12 @@ export function createTrainingLivePolling({
 
     try {
       const resp = await api.getTaskOutput(targetId, 1000);
-      const lines = resp?.data?.lines || [];
-      const total = Number(resp?.data?.total || 0) || 0;
-      const liveLine = resp?.data?.live_line || '';
+      const data = resp?.data || {};
+      const lines = data.lines || [];
+      const total = Number(data.total || 0) || 0;
+      const liveLine = data.live_line || '';
+      const resolvedId = String(data.resolved_run_id || targetId || '');
+      const status = String(data.status || '').toLowerCase();
       const renderedLines = mergeTrainingLogLines(lines, liveLine);
       const incrementalLines = collectIncrementalLines(targetId, lines, total, liveLine);
       const logEl = $('#training-log-container');
@@ -130,24 +185,52 @@ export function createTrainingLivePolling({
         collectTrainingMetrics(incrementalLines);
       }
 
-      const placeholderHtml = '<span style="color:var(--text-dim);">等待训练输出...</span>';
-      const nextLogHtml = renderedLines.length === 0 ? placeholderHtml : renderLogLines(renderedLines);
-      state.trainingLogSnapshot = { taskId: targetId, html: nextLogHtml, updatedAt: Date.now() };
+      let nextLogHtml;
+      if (renderedLines.length > 0) {
+        nextLogHtml = renderLogLines(renderedLines);
+      } else if (isRunningTarget) {
+        nextLogHtml = '<span style="color:var(--text-dim);">等待训练输出...</span>';
+      } else if (status === 'missing') {
+        nextLogHtml = '<span style="color:var(--text-muted);">该任务没有可读取的 output.log（目录可能已清理）。请选择运行中的任务，或开启「自动跟随最新」。</span>';
+      } else {
+        nextLogHtml = '<span style="color:var(--text-muted);">暂无日志输出。</span>';
+      }
+      // Snapshot key must match the id used by the renderer (requested task id).
+      state.trainingLogSnapshot = {
+        taskId: targetId,
+        resolvedRunId: resolvedId,
+        html: nextLogHtml,
+        updatedAt: Date.now(),
+        status,
+      };
 
       if (!logEl) {
         updateTrainingLiveMetrics();
         return;
       }
-      logEl.innerHTML = nextLogHtml;
-
-      const autoScroll = $('#training-log-autoscroll');
-      if (autoScroll?.checked) {
-        logEl.scrollTop = logEl.scrollHeight;
+      // Only paint when this target is still the active selection/follow target.
+      const activeNow = getActiveTrainingLogTask();
+      const activeId = activeNow ? getTaskId(activeNow) : '';
+      if (!activeId || activeId === targetId || state.activeTrainingTaskId === targetId) {
+        logEl.innerHTML = nextLogHtml;
+        const autoScroll = $('#training-log-autoscroll');
+        if (autoScroll?.checked) {
+          logEl.scrollTop = logEl.scrollHeight;
+        }
       }
 
       updateTrainingLiveMetrics();
-    } catch (_e) {
-      // Log polling is intentionally silent to avoid noisy UI during restarts.
+    } catch (error) {
+      const message = String(error?.message || error || '日志请求失败');
+      const errHtml = `<span style="color:var(--danger);">加载任务日志失败：${message}</span>`;
+      state.trainingLogSnapshot = {
+        taskId: targetId,
+        html: errHtml,
+        updatedAt: Date.now(),
+        status: 'error',
+      };
+      const logEl = $('#training-log-container');
+      if (logEl) logEl.innerHTML = errHtml;
     }
   }
 
@@ -235,6 +318,9 @@ export function createTrainingLivePolling({
   return {
     resetTrainingLogCursor,
     refreshTrainingLog,
+    selectTrainingLogTask,
+    setTrainingLogFollowLatest,
+    getActiveTrainingLogTask,
     startTrainingLogPolling,
     startSysMonitorPolling,
     pollSystemMonitor,

@@ -793,6 +793,8 @@ export default defineConfig({
   ],
   build: {
     outDir: 'dist',
-    emptyOutDir: false,
+    // true: 每次 build 清空 dist/，避免历史 index-*.js/*.css 构建产物无限堆积。
+    // training-wiki/ 不受影响——copyTrainingWikiAssets 插件的 closeBundle 钩子会重新复制。
+    emptyOutDir: true,
   },
 });

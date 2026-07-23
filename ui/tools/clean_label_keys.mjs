@@ -1,46 +1,80 @@
 /**
- * P3: 清理 schema label 末尾的 (snake_case_key) 括号后缀
- * 规则: label 字符串末尾 「（[a-z][a-z0-9_]*）」 → 删除
- * 不动: 括号内含中文/大写/空格等非 snake_case 内容
- * 同步将 key 值写入同 field 的 title 属性(若该行已有 title 则跳过)
+ * P3: strip trailing fullwidth （snake_case_key） from schema labels.
+ * Keeps parentheses with Chinese / spaces / non-snake content.
+ * If the same line has label but no title, inject title: '<field.key>'.
  *
- * 用法: node tools/clean_label_keys.mjs [--write]
+ * Dual tree roots (paths relative to each root):
+ *   legacy: plugin/lora-scripts-ui-main/ui  → src/...
+ *   next:   plugin/Lulynx-evolution-ui/ui     → src/schema/...
+ *
+ * Usage (from either ui/ or repo root — script resolves via import.meta.url):
+ *   node tools/clean_label_keys.mjs           # dry-run
+ *   node tools/clean_label_keys.mjs --write   # write
  */
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const KEY_SUFFIX = /（[a-z][a-z0-9_]*）(?=\s*['"`])/g;
-
-// label 行里同时提取该字段的 key 值,用于写 title
 const FIELD_KEY = /\bkey:\s*['"`]([^'"`]+)['"`]/;
 
-const FILES = [
+const HERE = dirname(fileURLToPath(import.meta.url));
+// tools/ → ui/
+const LEGACY_UI = join(HERE, '..');
+// tools/ → ui/ → Lulynx-evolution-ui sibling via plugin/
+const NEXT_UI = join(HERE, '..', '..', '..', 'Lulynx-evolution-ui', 'ui');
+
+const LEGACY_REL = [
   'src/schemaFieldGroups.js',
   'src/animaSchema.js',
   'src/sdxlSchema.js',
+  'src/otherDitSchemas.js',
+  'src/schemaCommon.js',
+  'src/experimentalTrainingSchemas.js',
+  'src/otherSchemas.js',
+  'src/schemaFrontierGroups.js',
+  'src/features/settingsOptions.js',
+  'src/conceptEditUnifiedSchema.js',
+];
+
+const NEXT_REL = [
+  'src/schema/schemaFieldGroups.js',
+  'src/schema/animaSchema.js',
+  'src/schema/sdxlSchema.js',
+  'src/schema/otherDitSchemas.js',
+  'src/schema/schemaCommon.js',
+  'src/schema/experimentalTrainingSchemas.js',
+  'src/schema/otherSchemas.js',
+  'src/schema/schemaFrontierGroups.js',
+  'src/schema/features/settingsOptions.js',
+  'src/schema/conceptEditUnifiedSchema.js',
 ];
 
 const write = process.argv.includes('--write');
 let totalChanged = 0;
+let totalFiles = 0;
 
-for (const file of FILES) {
-  const src = readFileSync(file, 'utf8');
+function cleanFile(absPath, label) {
+  if (!existsSync(absPath)) {
+    console.log(`SKIP missing ${label}`);
+    return;
+  }
+  const src = readFileSync(absPath, 'utf8');
   const lines = src.split('\n');
   let changed = 0;
 
   const result = lines.map((line) => {
+    KEY_SUFFIX.lastIndex = 0;
     if (!KEY_SUFFIX.test(line)) return line;
     KEY_SUFFIX.lastIndex = 0;
 
-    // 删除 label 末尾括号 key
     let out = line.replace(KEY_SUFFIX, '');
 
-    // 提取当前 field 的 key,补 title 属性(仅当行内已有 label 且无 title 时)
     const hasLabel = /\blabel:/.test(out);
     const hasTitle = /\btitle:/.test(out);
     if (hasLabel && !hasTitle) {
       const keyMatch = out.match(FIELD_KEY);
       if (keyMatch) {
-        // 在 label: '...' 后插入 title: 'key'
         out = out.replace(
           /(label:\s*['"`][^'"`]*['"`])/,
           `$1, title: '${keyMatch[1]}'`,
@@ -48,17 +82,30 @@ for (const file of FILES) {
       }
     }
 
-    changed++;
+    changed += 1;
     return out;
   });
 
   totalChanged += changed;
-  console.log(`${file}: ${changed} 行`);
+  totalFiles += 1;
+  console.log(`${label}: ${changed} lines`);
 
-  if (write) {
-    writeFileSync(file, result.join('\n'), 'utf8');
-    console.log(`  → 已写入`);
+  if (write && changed > 0) {
+    writeFileSync(absPath, result.join('\n'), 'utf8');
+    console.log('  → written');
   }
 }
 
-console.log(`\n合计: ${totalChanged} 行${write ? ' (已写入)' : ' (dry-run,加 --write 写入)'}`);
+console.log('=== legacy ===');
+for (const rel of LEGACY_REL) {
+  cleanFile(join(LEGACY_UI, rel), `legacy/${rel}`);
+}
+
+console.log('=== next ===');
+for (const rel of NEXT_REL) {
+  cleanFile(join(NEXT_UI, rel), `next/${rel}`);
+}
+
+console.log(
+  `\nfiles=${totalFiles} lines_with_suffix=${totalChanged}${write ? ' (written)' : ' (dry-run, pass --write)'}`,
+);

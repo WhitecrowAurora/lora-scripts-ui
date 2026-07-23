@@ -1,3 +1,5 @@
+import { applyConditionalGroupTint } from './conditionalGroupTint.js';
+
 export function createConfigPageRenderer({
   state,
   TRAINING_TYPES,
@@ -13,6 +15,8 @@ export function createConfigPageRenderer({
   syncFooterAction,
   updateJSONPreview,
   setupWaterfallScrollSpy,
+  getFieldConditionalParents,
+  getFieldDefinition,
 }) {
   function renderConfig(container) {
     const trainingType = state.activeTrainingType;
@@ -39,6 +43,14 @@ export function createConfigPageRenderer({
     syncTopbarState();
     syncFooterAction();
     updateJSONPreview();
+
+    // 父子视觉分组：给"已启用的布尔父开关"展开出来的子项染上与父同档的轮转底色，
+    // 相邻父组自动错开，便于分辨哪些子项属于同一个父（见 conditionalGroupTint.js）。
+    applyConditionalGroupTint(container, {
+      config: state.config || {},
+      getFieldConditionalParents,
+      getFieldDefinition,
+    });
 
     if (waterfall) {
       setupWaterfallScrollSpy?.(container);

@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lulynx Trainer</title>
-  <script type="module" crossorigin src="./assets/index-BoNspzrc.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CcEhlyvK.css">
+    <title>Lulynx Trainer</title>
+  <script type="module" crossorigin src="./assets/index-BicaC4Y-.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-D4oUCagK.css">
 </head>
 
 <body class="dark-theme">
@@ -144,14 +144,16 @@
             <!-- Contextual Topbar -->
             <header class="topbar">
                 <nav class="top-nav">
+                    <!-- DOM 槽位顺序必须与 UI_TABS / TOPBAR_TABS 一致：model…speed, frontier, advanced -->
                     <a href="#" class="top-nav-item active" data-i18n="topbar.model">Model</a>
-                    <a href="#" class="top-nav-item" data-i18n="topbar.tagger">Tagger</a>
-                    <a href="#" class="top-nav-item" data-i18n="topbar.advanced">Advanced</a>
-                    <a href="#" class="top-nav-item" data-i18n="topbar.dataset">Dataset</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.tagger">Dataset</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.advanced">Training</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.dataset">Network</a>
                     <a href="#" class="top-nav-item" data-i18n="topbar.optimizer">Optimizer</a>
-                    <a href="#" class="top-nav-item" data-i18n="topbar.tensorboard">Tensorboard</a>
-                    <a href="#" class="top-nav-item" data-i18n="topbar.tools">Tools</a>
-                    <a href="#" class="top-nav-item" data-i18n="topbar.help">Help</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.tensorboard">Preview</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.tools">Acceleration</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.frontier">Frontier</a>
+                    <a href="#" class="top-nav-item" data-i18n="topbar.help">Advanced</a>
                 </nav>
                 <div class="topbar-mode-toggle" id="topbar-mode-toggle">
                     <button class="mode-btn active" data-mode="standard">标准</button>
@@ -168,8 +170,8 @@
                     </button>
                 </div>
                 <div class="topbar-optimizer-toggle" id="topbar-optimizer-toggle">
-                    <button class="optimizer-btn" data-optimizer="pytorch">PyTorch</button>
                     <button class="optimizer-btn active" data-optimizer="turbocore">TurboCore</button>
+                    <button class="optimizer-btn" data-optimizer="pytorch">PyTorch</button>
                 </div>
                 <div class="topbar-search" id="topbar-search">
                     <div class="topbar-search-input-wrap">
@@ -178,6 +180,7 @@
                     </div>
                     <div class="topbar-search-dropdown" id="topbar-search-dropdown"></div>
                 </div>
+                <div class="topbar-boot-bubble" id="topbar-boot-bubble" hidden></div>
             </header>
 
             <!-- Configuration Form -->
@@ -288,7 +291,7 @@
             <div class="panel-preset-actions" id="panel-preset-actions"></div>
         </aside>
     </div>
-    <input type="file" id="config-file-input" accept=".toml,.json,application/json" hidden>
+    <input type="file" id="config-file-input" accept=".toml,.json,.yaml,.yml,application/json,application/x-yaml,text/yaml" hidden>
     <input type="file" id="native-picker-input" hidden>
     <div class="builtin-picker-modal" id="builtin-picker-modal">
         <div class="builtin-picker-dialog">
@@ -573,7 +576,7 @@
 
 
     </svg>
-
+
 </body>
 
 </html>

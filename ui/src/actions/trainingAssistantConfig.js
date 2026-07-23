@@ -88,22 +88,22 @@ const PRESET_CONFIG = {
   lora_expert: {
     name: 'LoRA 专家',
     description: '擅长配置调优和问题诊断',
-    icon: '🎓'
+    icon: ''
   },
   diagnostics: {
     name: '诊断专家',
     description: '专注分析训练问题',
-    icon: '🔍'
+    icon: ''
   },
   calculator: {
     name: '参数计算',
     description: '显存估算和性能预测',
-    icon: '🧮'
+    icon: ''
   },
   concise: {
     name: '简洁助手',
     description: '简明扼要的建议',
-    icon: '⚡'
+    icon: ''
   }
 };
 

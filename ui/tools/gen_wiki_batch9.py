@@ -111,7 +111,7 @@ write('frontier_optimizer_candidate.json', {
   'aliases': ['frontier_optimizer_product_candidate_enabled'],
   'standard': {
     'summary': '选择已回签的 Frontier 优化器产品候选（如 AutomagicPlusPlus / AutoProdigy / Riemannion / Rose / Aurora 等实验性优化器）。需要先开启 frontier_optimizer_product_candidate_enabled 才生效。',
-    'effect': '覆盖 optimizer_type，使用选中的前沿优化器。这些优化器均以 cleanroom 方式实现，default-off。',
+    'effect': '覆盖 optimizer_type，使用选中的前沿优化器。这些优化器均为自有实现，default-off。',
     'whenToUse': '有明确需要测试前沿优化器时使用。先了解各优化器的特性（通过问号帮助或文档）再开启。',
     'avoidWhen': '不了解具体优化器特性时不要随意切换。前沿优化器可能有未知的稳定性问题。'
   },

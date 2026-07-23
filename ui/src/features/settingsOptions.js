@@ -43,27 +43,23 @@ export const CURATED_PYTORCH_OPTIMIZER_NAMES = [
   'SCION',
 ];
 
+// 已并入主列表的已验证 frontier 候选（UI 仍可保留元数据；双开关已隐藏）。
 export const FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS = [
   { value: 'ADOPT', label: 'ADOPT' },
   { value: 'KahanAdamW', label: 'KahanAdamW' },
-  { value: 'KahanAdamW8bit', label: 'KahanAdamW8bit' },
   { value: 'Muon', label: 'Muon' },
-  { value: 'Riemannion', label: 'Riemannion' },
-  { value: 'Rose', label: 'Rose' },
-  { value: 'Aurora', label: 'Aurora' },
 ];
 
+// 仍 hold 的未验证/缺模块实验优化器（不进主列表）。
 const FRONTIER_RELEASE_HOLD_OPTIMIZER_BASE_NAMES = new Set([
-  'adopt',
-  'adamwkahan',
   'adamw8bitkahan',
+  'kahanadamw8bit',
   'adamuon',
   'aurora',
   'auroraopt',
   'auroraoptimizer',
   'distributedmuon',
   'mars',
-  'muon',
   'riemann',
   'riemannion',
   'riemannlora',
@@ -73,6 +69,14 @@ const FRONTIER_RELEASE_HOLD_OPTIMIZER_BASE_NAMES = new Set([
   'roseoptimizer',
   'soap',
 ]);
+
+// 从 hold 中放出并直接并入 optimizer_type 的已验证子集。
+// KahanAdamW8bit 暂不并入（Python 模块缺失）。
+export const VERIFIED_FRONTIER_OPTIMIZERS = [
+  'ADOPT',
+  'KahanAdamW',
+  'Muon',
+];
 
 function isFrontierReleaseHoldOptimizer(name) {
   return FRONTIER_RELEASE_HOLD_OPTIMIZER_BASE_NAMES.has(optimizerBaseName(name));
@@ -232,6 +236,7 @@ const BASE_OPTIMIZER_BASE_NAMES = new Set(BASE_OPTIMIZERS.map(optimizerBaseName)
 
 export const ALL_OPTIMIZERS = dedupeKeepOrder([
   ...BASE_OPTIMIZERS.filter((name) => !isFrontierReleaseHoldOptimizer(name)),
+  ...VERIFIED_FRONTIER_OPTIMIZERS,
   ...CURATED_PYTORCH_OPTIMIZER_NAMES
     .filter((name) => !BASE_OPTIMIZER_BASE_NAMES.has(name.toLowerCase()))
     .map((name) => `pytorch_optimizer.${name}`),
@@ -288,21 +293,21 @@ export const BUILTIN_SCHEDULERS = [
 ];
 
 export const SCHEDULER_LABELS = Object.freeze({
-  linear: '线性衰减（linear）',
-  cosine: '余弦退火（cosine）',
-  cosine_with_restarts: '余弦重启（cosine_with_restarts）',
-  polynomial: '多项式衰减（polynomial）',
-  constant: '恒定学习率（constant）',
-  constant_with_warmup: '预热后恒定（constant_with_warmup）',
-  adafactor: 'Adafactor 内置调度（adafactor）',
-  inverse_sqrt: '反平方根衰减（inverse_sqrt）',
-  reduce_lr_on_plateau: '平台期降学习率（reduce_lr_on_plateau）',
-  cosine_with_min_lr: '带最小值余弦（cosine_with_min_lr）',
-  cosine_warmup_with_min_lr: '预热 + 最小值余弦（cosine_warmup_with_min_lr）',
-  loss_gated_cosine: 'Loss 门控余弦（loss_gated_cosine）',
-  loss_weighted_annealed_cosine: 'Loss 加权退火余弦（loss_weighted_annealed_cosine）',
-  warmup_stable_decay: '预热-稳定-衰减（warmup_stable_decay）',
-  piecewise_constant: '分段恒定（piecewise_constant）',
+  linear: '线性衰减',
+  cosine: '余弦退火',
+  cosine_with_restarts: '余弦重启',
+  polynomial: '多项式衰减',
+  constant: '恒定学习率',
+  constant_with_warmup: '预热后恒定',
+  adafactor: 'Adafactor 内置调度',
+  inverse_sqrt: '反平方根衰减',
+  reduce_lr_on_plateau: '平台期降学习率',
+  cosine_with_min_lr: '带最小值余弦',
+  cosine_warmup_with_min_lr: '预热 + 最小值余弦',
+  loss_gated_cosine: 'Loss 门控余弦',
+  loss_weighted_annealed_cosine: 'Loss 加权退火余弦',
+  warmup_stable_decay: '预热-稳定-衰减',
+  piecewise_constant: '分段恒定',
 });
 
 export function schedulerOption(value) {

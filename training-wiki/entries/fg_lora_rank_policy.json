@@ -16,7 +16,13 @@
     "summary": "细粒度 LoRA rank 策略：对不同层分配不同的 rank，而非全局使用同一 rank，可在相同参数预算下提升学习效率。",
     "effect": "coupled-prune = 根据层重要性自动剪枝分配 rank（重要层高 rank，次要层低 rank）；orthogonal-redistribute = 正交重分配（保持总参数量，优化各层 rank 分布）。",
     "whenToUse": "实验性功能。想在固定参数预算下最大化学习效率时尝试。",
-    "avoidWhen": "不了解各层重要性时保持默认（全局统一 rank），不确定性更小。"
+    "avoidWhen": "不了解各层重要性时保持默认（全局统一 rank），不确定性更小。",
+    "optionDescriptions": {
+      "uniform": "每层同一个 rank。",
+      "coupled_prune": "弱层砍/降，强层加 rank。",
+      "orthogonal_redistribute": "层都留着，只重分 rank。",
+      "fim_profile": "按 FIM/重要性表分 rank。"
+    }
   },
   "advanced": {
     "principle": "通过分析各层梯度 stable rank 或权重奇异值分布，动态调整各层的 LoRA rank 分配。fg_lora_rank_map_json 允许手动指定每层的 rank，提供最大灵活性。",

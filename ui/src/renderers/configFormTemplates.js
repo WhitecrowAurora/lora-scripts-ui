@@ -1,4 +1,7 @@
+import { resolveFieldDesc } from '../schemaFieldI18n.js';
 import { escapeHtml } from '../utils/dom.js';
+import { getAdapterEntityConflict } from '../schemaCommon.js';
+import { renderSemanticRegionCurveEditor } from './semanticRegionCurveEditor.js';
 
 export function renderGhostReplayHelperCard(recorderState = {}) {
   const statusText = recorderState.running
@@ -63,46 +66,146 @@ export function getPreviewGroupsForRender(config = {}) {
   }));
 }
 
-export function renderPreviewGroupsField({ field, groups, disabledAttr, disabledCls, modCls, conflictWith, renderHeader, renderFieldDescription, renderConflictHint }) {
-  const modeOptions = [
-    ['lora', 'LoRA 对照'],
-    ['base', '底模对照'],
-    ['fit', '拟合测试'],
-    ['overfit', '过拟合测试'],
-  ];
+export function renderPreviewGroupsField({ field, groups, disabledAttr, disabledCls, modCls, conflictWith, renderHeader, renderFieldDescription, renderConflictHint, lang = 'zh' }) {
+  const en = String(lang || 'zh').toLowerCase().startsWith('en');
+  const modeOptions = en
+    ? [
+      ['lora', 'LoRA compare'],
+      ['base', 'Base model'],
+      ['fit', 'Fit test'],
+      ['overfit', 'Overfit test'],
+    ]
+    : [
+      ['lora', 'LoRA 对照'],
+      ['base', '底模对照'],
+      ['fit', '拟合测试'],
+      ['overfit', '过拟合测试'],
+    ];
   const cards = groups.map((group, index) => `
     <div class="preview-test-card" style="border:1px solid var(--line, rgba(148,163,184,.35)); border-radius:14px; padding:12px; margin:10px 0; background:rgba(15,23,42,.03);">
       <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:10px;">
-        <strong>测试组 ${index + 1}</strong>
-        <button class="btn btn-outline btn-sm" type="button"${disabledAttr} onclick="removePreviewGroup(${index})">删除</button>
+        <strong>${en ? `Test group ${index + 1}` : `测试组 ${index + 1}`}</strong>
+        <button class="btn btn-outline btn-sm" type="button"${disabledAttr} onclick="removePreviewGroup(${index})">${en ? 'Remove' : '删除'}</button>
       </div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; align-items:end;">
-        <label class="mini-field"><span>名称</span><input class="text-input" type="text" value="${escapeHtml(group.name)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'name', this.value)"></label>
-        <label class="mini-field"><span>模式</span><select${disabledAttr} onchange="updatePreviewGroup(${index}, 'mode', this.value)">${modeOptions.map(([value, label]) => `<option value="${value}" ${group.mode === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+        <label class="mini-field"><span>${en ? 'Name' : '名称'}</span><input class="text-input" type="text" value="${escapeHtml(group.name)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'name', this.value)"></label>
+        <label class="mini-field"><span>${en ? 'Mode' : '模式'}</span><select${disabledAttr} onchange="updatePreviewGroup(${index}, 'mode', this.value)">${modeOptions.map(([value, label]) => `<option value="${value}" ${group.mode === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <label class="mini-field"><span>Seed</span><input class="text-input" type="number" value="${escapeHtml(group.seed)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'seed', this.value)"></label>
-        <label class="mini-field"><span>LoRA 权重</span><input class="text-input" type="number" step="0.1" value="${escapeHtml(group.lora_weight)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'lora_weight', this.value)"></label>
-        <label class="mini-field"><span>从第 N 轮开始</span><input class="text-input" type="number" min="0" step="1" value="${escapeHtml(group.start_epoch)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'start_epoch', this.value)"></label>
-        <label class="mini-field"><span>N 轮后开始</span><input class="text-input" type="number" min="0" step="1" value="${escapeHtml(group.start_after_epochs)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'start_after_epochs', this.value)"></label>
+        <label class="mini-field"><span>${en ? 'LoRA weight' : 'LoRA 权重'}</span><input class="text-input" type="number" step="0.1" value="${escapeHtml(group.lora_weight)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'lora_weight', this.value)"></label>
+        <label class="mini-field"><span>${en ? 'Start epoch N' : '从第 N 轮开始'}</span><input class="text-input" type="number" min="0" step="1" value="${escapeHtml(group.start_epoch)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'start_epoch', this.value)"></label>
+        <label class="mini-field"><span>${en ? 'After N epochs' : 'N 轮后开始'}</span><input class="text-input" type="number" min="0" step="1" value="${escapeHtml(group.start_after_epochs)}"${disabledAttr} oninput="updatePreviewGroup(${index}, 'start_after_epochs', this.value)"></label>
       </div>
-      <label class="mini-field" style="display:block; margin-top:10px;"><span>正向提示词</span><textarea class="text-area" rows="3"${disabledAttr} oninput="updatePreviewGroup(${index}, 'prompt', this.value)">${escapeHtml(group.prompt)}</textarea></label>
-      <label class="mini-field" style="display:block; margin-top:10px;"><span>反向提示词</span><textarea class="text-area" rows="2"${disabledAttr} oninput="updatePreviewGroup(${index}, 'negative_prompt', this.value)">${escapeHtml(group.negative_prompt)}</textarea></label>
+      <label class="mini-field" style="display:block; margin-top:10px;"><span>${en ? 'Positive prompt' : '正向提示词'}</span><textarea class="text-area" rows="3"${disabledAttr} oninput="updatePreviewGroup(${index}, 'prompt', this.value)">${escapeHtml(group.prompt)}</textarea></label>
+      <label class="mini-field" style="display:block; margin-top:10px;"><span>${en ? 'Negative prompt' : '反向提示词'}</span><textarea class="text-area" rows="2"${disabledAttr} oninput="updatePreviewGroup(${index}, 'negative_prompt', this.value)">${escapeHtml(group.negative_prompt)}</textarea></label>
     </div>
   `).join('');
   return `
     <div class="config-group${modCls}${disabledCls}" data-field-key="${field.key}">
       ${renderHeader()}
-      ${renderFieldDescription(field)}
+      ${renderFieldDescription(field, lang)}
       ${renderConflictHint(conflictWith)}
       <div class="preview-test-groups">
         ${cards}
-        <button class="btn btn-outline" type="button"${disabledAttr} onclick="addPreviewGroup()">+ 添加测试组</button>
+        <button class="btn btn-outline" type="button"${disabledAttr} onclick="addPreviewGroup()">${en ? '+ Add test group' : '+ 添加测试组'}</button>
       </div>
     </div>
   `;
 }
 
-export function renderFieldDescription(field) {
-  const normal = field.desc ? `<p class="field-desc">${escapeHtml(field.desc || '')}</p>` : '';
+const SEMANTIC_REGION_OPTIONS = [
+  ['face', '面部'], ['head', '头部'], ['hair', '头发'], ['upper_body', '上半身'],
+  ['body', '身体'], ['arm', '手臂'], ['hand', '手'], ['leg', '腿'], ['foot', '脚'],
+  ['clothing', '服装'], ['subject', '主体'], ['background', '背景'], ['other', '其他'],
+];
+const SEMANTIC_REGION_SCHEDULE_OPTIONS = [
+  ['linear', '线性'], ['ease_in', '后期加速'], ['ease_out', '前期加速'],
+  ['smoothstep', '平滑 S 曲线'], ['hold_ramp_hold', '保持-回归-稳定'], ['custom', '自定义曲线'],
+];
+
+function semanticRowsForRender(raw) {
+  let rows = raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try { rows = JSON.parse(raw); } catch (_error) { rows = []; }
+  }
+  if (!Array.isArray(rows) || !rows.length) {
+    rows = [{ region: 'face', start_weight: 0.3, schedule: 'linear', end_weight: 1, custom_curve: null }];
+  }
+  return rows.map((row) => ({
+    region: String(row?.region || 'face'),
+    start_weight: Number.isFinite(Number(row?.start_weight)) ? Number(row.start_weight) : 0.3,
+    schedule: String(row?.schedule || 'linear'),
+    end_weight: Number.isFinite(Number(row?.end_weight)) ? Number(row.end_weight) : 1,
+    custom_curve: row?.custom_curve || null,
+  }));
+}
+
+function renderSemanticCoverage(coverage = {}) {
+  const entries = Object.entries(coverage || {})
+    .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) > 0)
+    .sort((left, right) => Number(right[1]) - Number(left[1]));
+  if (!entries.length) return '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${entries.map(([region, ratio]) => `<span style="padding:3px 7px;border-radius:999px;background:rgba(56,189,248,.12);font-size:11px">${escapeHtml(region)} ${(Number(ratio) * 100).toFixed(1)}%</span>`).join('')}</div>`;
+}
+
+function renderSemanticSegmentationTools(config = {}, ui = {}, disabledAttr = '') {
+  const busy = Boolean(ui.busyAction);
+  const buttonDisabled = disabledAttr || busy ? ' disabled' : '';
+  const statusColor = ui.error ? '#fca5a5' : 'var(--text-muted,#94a3b8)';
+  const overlay = ui.overlayUrl ? `
+    <figure style="margin:12px 0 0;display:grid;gap:7px">
+      <img src="${escapeHtml(ui.overlayUrl)}" alt="随机样本语义分割覆盖图" style="display:block;max-width:100%;max-height:460px;object-fit:contain;border-radius:10px;border:1px solid rgba(148,163,184,.3);background:#0f172a">
+      <figcaption style="font-size:11px;color:var(--text-muted,#94a3b8)">${ui.sourceName ? `样本：${escapeHtml(ui.sourceName)}` : '随机数据集样本覆盖图'}</figcaption>
+      ${renderSemanticCoverage(ui.coverage)}
+    </figure>` : '';
+  const cacheId = String(config.semantic_segmentation_cache_id || '').trim();
+  return `
+    <div data-semantic-segmentation-tools style="margin:10px 0 14px;padding:12px;border:1px solid rgba(56,189,248,.25);border-radius:12px;background:rgba(15,23,42,.18)">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button class="btn btn-outline btn-sm" type="button"${buttonDisabled} onclick="probeSemanticSegmentation()">${ui.busyAction === 'probe' ? '检查中…' : '检查分割模型'}</button>
+        <button class="btn btn-outline btn-sm" type="button"${buttonDisabled} onclick="previewSemanticSegmentation()">${ui.busyAction === 'preview' ? '预览中…' : '随机预览'}</button>
+        <button class="btn btn-outline btn-sm" type="button"${buttonDisabled} onclick="buildSemanticSegmentationCache()">${ui.busyAction === 'build-cache' ? '构建中…' : '构建缓存'}</button>
+        ${cacheId ? `<code title="semantic_segmentation_cache_id" style="font-size:11px;overflow-wrap:anywhere">缓存：${escapeHtml(cacheId)}</code>` : ''}
+      </div>
+      <div data-semantic-segmentation-status role="status" aria-live="polite" style="margin-top:8px;font-size:12px;color:${statusColor}">${escapeHtml(ui.status || '尚未检查分割模型。')}</div>
+      ${overlay}
+    </div>`;
+}
+
+export function renderSemanticRegionWeightsField({ field, value, config = {}, segmentationUi = {}, disabledAttr = '', disabledCls = '', modCls = '', conflictWith = '', renderHeader, renderFieldDescription, renderConflictHint }) {
+  const rows = semanticRowsForRender(value);
+  const usedRegions = new Set(rows.map((row) => row.region));
+  const rowBlocks = rows.map((row, rowIndex) => {
+    const regionOptions = SEMANTIC_REGION_OPTIONS.map(([optionValue, optionLabel]) => {
+      const duplicate = optionValue !== row.region && usedRegions.has(optionValue);
+      return `<option value="${optionValue}"${row.region === optionValue ? ' selected' : ''}${duplicate ? ' disabled title="该区域已配置"' : ''}>${optionLabel}</option>`;
+    }).join('');
+    const scheduleOptions = SEMANTIC_REGION_SCHEDULE_OPTIONS.map(([optionValue, optionLabel]) => `<option value="${optionValue}"${row.schedule === optionValue ? ' selected' : ''}>${optionLabel}</option>`).join('');
+    const curve = row.schedule === 'custom' ? renderSemanticRegionCurveEditor({ row, rowIndex, disabled: Boolean(disabledAttr) }) : '';
+    const startValue = Number(row.start_weight).toFixed(2);
+    const endValue = Number(row.end_weight).toFixed(2);
+    return `
+      <div class="semantic-region-weight-row-block" data-semantic-region-row-block="${rowIndex}" style="min-width:820px;margin-top:${rowIndex ? '10px' : '0'};padding:${curve ? '0 0 2px' : '0'}">
+        <div data-semantic-region-row="${rowIndex}" style="display:grid;grid-template-columns:minmax(150px,1.2fr) minmax(150px,1fr) minmax(180px,1.2fr) minmax(150px,1fr) auto auto;gap:8px;align-items:end">
+          <label class="mini-field"><span>区域</span><select${disabledAttr} onchange="updateSemanticRegionWeight(${rowIndex}, 'region', this.value)">${regionOptions}</select></label>
+          <label class="mini-field"><span style="display:flex;justify-content:space-between;gap:8px">起始权重 <output id="semantic-start-value-${rowIndex}">${startValue}</output></span><input type="range" min="0" max="3" step="0.05" value="${escapeHtml(row.start_weight)}"${disabledAttr} oninput="document.getElementById('semantic-start-value-${rowIndex}').textContent=Number(this.value).toFixed(2);updateSemanticRegionWeight(${rowIndex}, 'start_weight', this.value)" style="width:100%"></label>
+          <label class="mini-field"><span>调度策略</span><select${disabledAttr} onchange="updateSemanticRegionWeight(${rowIndex}, 'schedule', this.value)">${scheduleOptions}</select></label>
+          <label class="mini-field"><span style="display:flex;justify-content:space-between;gap:8px">终止权重 <output id="semantic-end-value-${rowIndex}">${endValue}</output></span><input type="range" min="0" max="3" step="0.05" value="${escapeHtml(row.end_weight)}"${disabledAttr} oninput="document.getElementById('semantic-end-value-${rowIndex}').textContent=Number(this.value).toFixed(2);updateSemanticRegionWeight(${rowIndex}, 'end_weight', this.value)" style="width:100%"></label>
+          <button class="btn btn-outline btn-sm" type="button"${disabledAttr}${usedRegions.size >= SEMANTIC_REGION_OPTIONS.length ? ' disabled' : ''} title="添加区域" aria-label="添加区域" onclick="addSemanticRegionWeight(${rowIndex})" style="min-width:38px">+</button>
+          ${rows.length > 1 ? `<button class="btn btn-outline btn-sm" type="button"${disabledAttr} title="删除区域" aria-label="删除区域" onclick="removeSemanticRegionWeight(${rowIndex})" style="min-width:38px">−</button>` : '<span aria-hidden="true" style="width:38px"></span>'}
+        </div>
+        ${curve}
+      </div>`;
+  }).join('');
+  return `
+    <div class="config-group semantic-region-weights-field${modCls}${disabledCls}" data-field-key="${escapeHtml(field.key)}">
+      ${renderHeader()}${renderFieldDescription(field)}${renderConflictHint(conflictWith)}
+      ${renderSemanticSegmentationTools(config, segmentationUi, disabledAttr)}
+      <div data-semantic-region-weights style="overflow-x:auto;padding-bottom:4px">${rowBlocks}</div>
+    </div>`;
+}
+export function renderFieldDescription(field, lang = 'zh') {
+  const desc = resolveFieldDesc(field, lang) || field.desc || '';
+  const normal = desc ? `<p class="field-desc">${escapeHtml(desc)}</p>` : '';
   const important = field.importantDesc ? `<p class="field-desc field-desc-strong">${escapeHtml(field.importantDesc || '')}</p>` : '';
   return normal + important;
 }
@@ -127,6 +230,22 @@ export function getFieldConflict(field, config = {}) {
       : (field.type === 'number' || field.type === 'slider')
         ? toNum(value) > 0
         : Boolean(String(value ?? '').trim());
+
+  // 适配器实体硬互斥（已开字段可关；未开且被压制则 disabled + 提示）
+  const adapterConflict = getAdapterEntityConflict(key, config);
+  if (adapterConflict) return adapterConflict;
+
+  // BlockSkip 固定计划 vs Adaptive Caching：禁止再开 Adaptive；已开可关
+  if (key === 'adaptive_caching_enabled' && !isActive) {
+    const reducer = String(config.dit_compute_reducer_strategy || 'none').trim().toLowerCase();
+    if (reducer === 'blockskip') return 'DiT BlockSkip';
+  }
+
+  // TurboCore CUDA 顶栏 vs Triton optimizer step：顶栏开时锁定 Triton 为 off
+  if (key === 'turbocore_optimizer_mode' && toBool(config.turbocore_enabled)) {
+    return 'TurboCore（顶栏 CUDA）';
+  }
+
   if (isActive) return '';
 
   const cacheText = toBool(config.cache_text_encoder_outputs);
@@ -331,3 +450,5 @@ export function renderRegularizationFieldGroup({ regField, priorField, config = 
     </details>
   `;
 }
+
+

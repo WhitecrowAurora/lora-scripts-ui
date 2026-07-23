@@ -33,7 +33,7 @@ export function createTagEditorPanel({ api, $, showToast }) {
       const payload = data?.data || data || {};
       const labels = {
         ready: '✅ 标签编辑器已就绪',
-        cleanroom: '✅ 集成式标签编辑器已就绪',
+        native: '✅ 集成式标签编辑器已就绪',
         starting: '⏳ 标签编辑器正在启动...',
         queued: '⏳ 标签编辑器即将启动...',
         disabled: '⛔ 标签编辑器已禁用（启动时添加了 --disable-tageditor）',
@@ -44,7 +44,7 @@ export function createTagEditorPanel({ api, $, showToast }) {
       const status = payload.status || 'unknown';
       const text = labels[status] || `状态: ${status}`;
       statusEl.textContent = text + (payload.detail ? ` — ${payload.detail}` : '');
-      if (!['ready', 'cleanroom', 'disabled', 'failed', 'missing_dependencies', 'missing_launcher'].includes(status)) {
+      if (!['ready', 'native', 'disabled', 'failed', 'missing_dependencies', 'missing_launcher'].includes(status)) {
         setTimeout(pollTagEditorStatus, 2000);
       }
     } catch (error) {

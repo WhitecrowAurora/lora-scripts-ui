@@ -1,6 +1,7 @@
 import {
   clearLocalTaskHistoryFile,
   postJson,
+  rawRequest,
   request,
   syncLocalTaskHistoryRemoval,
 } from './apiTransport.js';
@@ -24,6 +25,26 @@ export const api = {
 
   getExecutionProfiles() {
     return request('/api/train/execution-profiles');
+  },
+
+  previewWeightComposer(config, points = 65) {
+    return postJson('/api/train/weight-composer/preview', { config, points });
+  },
+
+  previewTrainingIntentProfile(config, intent, explicitFields = []) {
+    return postJson('/api/train/training-intent/preview', { config, intent, explicit_fields: explicitFields });
+  },
+
+  startSampleDifficultyScoring(payload) {
+    return postJson('/api/train/sample-difficulty/score', payload);
+  },
+
+  getSampleDifficultyScoring(jobId) {
+    return request(`/api/train/sample-difficulty/score/${encodeURIComponent(jobId)}`);
+  },
+
+  cancelSampleDifficultyScoring(jobId) {
+    return postJson(`/api/train/sample-difficulty/score/${encodeURIComponent(jobId)}/cancel`, {});
   },
 
   getTasks() {
@@ -65,10 +86,60 @@ export const api = {
     return syncLocalTaskHistoryRemoval(taskId);
   },
 
-  pickFile(type, context = '') {
+  async pickFile(type, context = '') {
+    // 非阻塞版本：/pick_file_async 立即返回 session_id，对话框在后台线程打开，
+    // 前端轮询 /pick_file_result。后端信封：{status:'success',data} / {status:'error',message}
+    //
+    // 轮询走 rawRequest（不经 globalConcurrencyLimit）：picker 的长轮询不能和页面
+    // 健康检查/任务轮询抢同一批并发槽，否则冷启动 + --dev reload 期间会堵死浏览器
+    // 连接池，连 /ui/ 静态资源都 Stalled 一两分钟。
     const params = [`picker_type=${encodeURIComponent(type)}`];
     if (context) params.push(`context=${encodeURIComponent(context)}`);
-    return request(`/api/pick_file?${params.join('&')}`);
+
+    // 1. 启动对话框（20s 超时，reload 期间也不无限挂起）
+    const initResp = await rawRequest(`/api/pick_file_async?${params.join('&')}`, { timeoutMs: 20000 });
+    if (!initResp || initResp.status !== 'success') {
+      throw new Error(initResp?.message || '启动文件选择器失败');
+    }
+
+    const sessionId = initResp.data?.session_id;
+    if (!sessionId) {
+      throw new Error('未收到有效的 session_id');
+    }
+
+    // 2. 轮询结果：间隔从 600ms 退避到 1500ms 封顶，最多等 5 分钟。
+    //    单次轮询失败（后端 reload/超时）不致命，继续重试直到总 deadline。
+    const deadline = Date.now() + 5 * 60 * 1000;
+    let interval = 600;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, interval));
+      if (interval < 1500) interval += 150;
+
+      let resultResp;
+      try {
+        resultResp = await rawRequest(
+          `/api/pick_file_result?session_id=${encodeURIComponent(sessionId)}`,
+          { timeoutMs: 20000 },
+        );
+      } catch (_err) {
+        continue; // reload/网络抖动：重试而非直接失败
+      }
+
+      if (!resultResp || resultResp.status === 'error') {
+        throw new Error(resultResp?.message || '获取文件选择结果失败');
+      }
+
+      const data = resultResp.data || {};
+      if (data.status === 'completed') {
+        // 返回结构与旧版 /pick_file 一致：{status:'success', data:{path}}
+        return {
+          status: 'success',
+          data: data.result || { path: '' },
+        };
+      }
+      // data.status === 'opening' 继续等待
+    }
+    throw new Error('文件选择超时，请重试');
   },
 
   getBuiltinPicker(type, context = '') {
@@ -131,8 +202,49 @@ export const api = {
     return getJson(`/api/dataset/quality_scan_status/${taskId}`);
   },
 
+  probeSemanticSegmentation(params = {}) {
+    return postJson('/api/dataset/semantic-segmentation/probe', params);
+  },
+
+  previewSemanticSegmentation(params = {}) {
+    return postJson('/api/dataset/semantic-segmentation/preview', params);
+  },
+
+  buildSemanticSegmentationCache(params = {}) {
+    return postJson('/api/dataset/semantic-segmentation/build-cache', params);
+  },
+  async listResourceCatalog() {
+    const response = await request('/api/dataset/semantic-segmentation/providers');
+    if (response?.status === 'error') throw new Error(response.message || '资源目录加载失败');
+    return response;
+  },
+
+  async downloadResourceFromCatalog(payload = {}) {
+    const response = await postJson('/api/dataset/semantic-segmentation/download', payload);
+    if (response?.status === 'error') throw new Error(response.message || '资源下载失败');
+    const result = response?.data || response;
+    if (!['completed', 'reused'].includes(result?.status)) throw new Error(result?.error || '资源下载未完成');
+    return response;
+  },
+
+  async listLocalResources(opts = {}) {
+    const response = await postJson('/api/dataset/semantic-segmentation/local-scan', {
+      limit: opts.limit ?? 1000,
+      include_hash: Boolean(opts.include_hash),
+      roots: opts.roots ?? [],
+    });
+    if (response?.status === 'error') throw new Error(response.message || '本地资源扫描失败');
+    return response;
+  },
   saveConfig(name, config) {
     return postJson('/api/saved_configs/save', { name, config });
+  },
+
+  /** Kohya TOML / ai-toolkit YAML → lulynx flat fields + migration notes */
+  importExternalConfig(file) {
+    const form = new FormData();
+    form.append('file', file, file?.name || 'config.bin');
+    return request('/api/import_external_config', { method: 'POST', body: form });
   },
 
   listSavedConfigs() {
@@ -477,6 +589,26 @@ export const api = {
     return postJson('/api/tageditor/near_duplicates', params);
   },
 
+  /** P5 近重复一键隔离（plan / quarantine / delete） */
+  nearDuplicatesCull(params) {
+    return postJson('/api/tageditor/near_duplicates/cull', params);
+  },
+
+  /** P5 本地内容扫描（opt-in；非合规保证） */
+  contentScan(params) {
+    return postJson('/api/dataset/content_scan', params);
+  },
+
+  /** P5 离群一键隔离 */
+  outliersCull(params) {
+    return postJson('/api/dataset/outliers/cull', params);
+  },
+
+  /** 缓存健康：report / repair_plan / quarantine_bad（只动 cache 产物） */
+  cacheHealth(params) {
+    return postJson('/api/dataset/cache_health', params);
+  },
+
   /** P1.4 频率/类别批量 - 预览 */
   frequencyBatchPreview(params) {
     return postJson('/api/tageditor/frequency_batch/preview', params);
@@ -590,6 +722,11 @@ export const api = {
   /** BBox 标注 - 图片预览地址 */
   getBBoxImageUrl(path) {
     return `/api/dataset/bbox/image?path=${encodeURIComponent(path || '')}`;
+  },
+
+  /** Caption 训练 mutate 预览（不写盘） */
+  captionMutatePreview(params) {
+    return postJson('/api/captions/mutate/preview', params);
   },
 
   /** Caption 清洗 - 预览 */

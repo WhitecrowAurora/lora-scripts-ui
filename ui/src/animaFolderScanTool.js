@@ -145,6 +145,12 @@ export function createAnimaFolderScanTool({ state: _state, api, showToast }) {
         COMP_ORDER.forEach((compKey) => {
           const comp = components[compKey];
           if (!comp?.found) return;
+
+          // 如果已经有 auto_selected，优先使用它（即使没有显示在冲突解决器中）
+          if (comp.auto_selected && !_selections[compKey]) {
+            _selections[compKey] = comp.auto_selected;
+          }
+
           const radios = root.querySelectorAll(`input[name="${compKey}"]`);
           for (const r of radios) {
             if (r.checked) { _selections[compKey] = r.value; break; }

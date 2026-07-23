@@ -72,9 +72,9 @@ async function switchPerfMode(api, showToast, buttons, newMode) {
       updateUI(buttons, perfMode);
 
       if (newMode === 'lulynx') {
-        showToast('⚡ Lulynx 高性能优化已启用 (+20-30% 训练加速)');
+        showToast('⚡ 成功切换到 Lulynx 高性能优化');
       } else {
-        showToast('🔧 已切换到经典兼容模式 (PyTorch 标准实现)');
+        showToast('🔧 成功切换到经典兼容模式');
       }
     } else {
       throw new Error('切换失败');

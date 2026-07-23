@@ -25,7 +25,7 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
     defaultValue: 0.99, min: 0, max: 1, step: 0.001,
     visibleWhen: isOpt('adan', 'pytorch_optimizer.adan') },
   { key: 'opt_adan_no_prox', type: 'boolean', label: 'Adan no_prox',
-    desc: '禁用近端更新（weight decay 的处理方式）。通常保持默认 False。',
+    desc: '禁用近端更新（weight decay',
     defaultValue: false,
     visibleWhen: isOpt('adan', 'pytorch_optimizer.adan') },
 
@@ -36,17 +36,17 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
     visibleWhen: isOpt('bitsandbytes.optim.ademamix8bit', 'bitsandbytes.optim.pagedademamix8bit',
       'pytorch_optimizer.ademamix', 'pytorch_optimizer.simplifiedademamix') },
   { key: 'opt_ademamix_beta3', type: 'number', label: 'AdEMAMix beta3',
-    desc: '慢速 EMA 系数。推荐 0.9999（比 beta2 更接近 1）。',
+    desc: '慢速 EMA 系数',
     defaultValue: 0.9999, min: 0, max: 1, step: 0.0001,
     visibleWhen: isOpt('bitsandbytes.optim.ademamix8bit', 'bitsandbytes.optim.pagedademamix8bit') },
   { key: 'opt_ademamix_t_alpha_beta3', type: 'number', label: 'AdEMAMix T_alpha_beta3',
-    desc: '预热步数，在此步数内 alpha/beta3 从初始值线性增大到目标值。0 = 无预热。',
+    desc: '预热步数，在此步数内 alpha/beta3',
     defaultValue: 0, min: 0, step: 100,
     visibleWhen: isOpt('bitsandbytes.optim.ademamix8bit', 'bitsandbytes.optim.pagedademamix8bit') },
 
   // ── Schedule-Free ─────────────────────────────────────────────────────────
   { key: 'opt_sf_warmup_steps', type: 'number', label: 'Schedule-Free warmup_steps',
-    desc: 'Schedule-Free 内置预热步数（与外部 lr_warmup_steps 叠加）。推荐与 lr_warmup_steps 保持一致。',
+    desc: 'Schedule-Free 内置预热步数（与外部',
     defaultValue: 0, min: 0, step: 10,
     visibleWhen: isOpt('adamwschedulefree', 'radamschedulefree', 'sgdschedulefree') },
   { key: 'opt_sf_beta', type: 'number', label: 'Schedule-Free β (beta)',
@@ -56,27 +56,27 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── SOAP ──────────────────────────────────────────────────────────────────
   { key: 'opt_soap_precondition_frequency', type: 'number', label: 'SOAP precondition_frequency',
-    desc: '预条件矩阵更新频率（每 N 步更新一次）。推荐 10，越小越精确但越慢。',
+    desc: '预条件矩阵更新频率（每 N 步更新一次）。',
     defaultValue: 10, min: 1, step: 1,
     visibleWhen: isOpt('soap', 'pytorch_optimizer.soap') },
   { key: 'opt_soap_shampoo_beta', type: 'number', label: 'SOAP shampoo_beta',
-    desc: 'Shampoo 因子的指数平均系数。-1 = 使用 beta2。推荐 -1 或 0.99。',
+    desc: 'Shampoo 因子的指数平均系数。',
     defaultValue: -1, min: -1, max: 1, step: 0.01,
     visibleWhen: isOpt('soap', 'pytorch_optimizer.soap') },
 
   // ── Lion ──────────────────────────────────────────────────────────────────
   { key: 'opt_lion_use_triton', type: 'boolean', label: 'Lion use_triton',
-    desc: '启用 Triton fused kernel，加速 Lion 更新步（需要 Triton 支持）。',
+    desc: '启用 Triton fused kernel，加速 Lion',
     defaultValue: false,
     visibleWhen: isOpt('lion', 'lion8bit', 'pagedlion8bit') },
 
   // ── ADOPT / KahanAdamW（frontier 候选）───────────────────────────────────
   { key: 'opt_adopt_clip_lambda', type: 'number', label: 'ADOPT clip_lambda',
-    desc: '梯度裁剪系数 λ，防止早期步的梯度爆炸。推荐 0.1 ~ 1.0，0 = 关闭。',
+    desc: '梯度裁剪系数 λ，防止早期步的梯度爆炸。',
     defaultValue: 0.1, min: 0, step: 0.01,
     visibleWhen: isOpt('adopt', 'kahanadamw', 'kahanadamw8bit') },
   { key: 'opt_adopt_eps', type: 'number', label: 'ADOPT eps',
-    desc: 'ADOPT 数值稳定 epsilon。推荐 1e-6（比 AdamW 大一阶）。',
+    desc: 'ADOPT 数值稳定 epsilon。',
     defaultValue: 1e-6, min: 0, step: 1e-8,
     visibleWhen: isOpt('adopt', 'kahanadamw', 'kahanadamw8bit') },
 
@@ -97,7 +97,7 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
     defaultValue: false,
     visibleWhen: isOpt('adafactor', 'adafactor') },
   { key: 'opt_adafactor_relative_step', type: 'boolean', label: 'Adafactor relative_step',
-    desc: '使用相对步长（自适应 lr），关闭后须手动指定 lr。建议训练时关闭。',
+    desc: '使用相对步长（自适应 lr），关闭后须手动指定',
     defaultValue: false,
     visibleWhen: isOpt('adafactor', 'adafactor') },
   { key: 'opt_adafactor_warmup_init', type: 'boolean', label: 'Adafactor warmup_init',
@@ -107,7 +107,7 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── GrokFastAdamW ─────────────────────────────────────────────────────────
   { key: 'opt_grok_alpha', type: 'number', label: 'GrokFast alpha',
-    desc: '梯度 EMA 系数，控制 grokking 加速强度。推荐 0.98。',
+    desc: '梯度 EMA 系数，控制 grokking',
     defaultValue: 0.98, min: 0, max: 1, step: 0.01,
     visibleWhen: isOpt('pytorch_optimizer.grokfastadamw') },
   { key: 'opt_grok_lamb', type: 'number', label: 'GrokFast lamb',
@@ -133,7 +133,7 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── SPAM ──────────────────────────────────────────────────────────────────
   { key: 'opt_spam_gamma', type: 'number', label: 'SPAM gamma',
-    desc: '动量重置阈值，梯度范数超过 gamma * 历史均值时重置动量。推荐 2.0。',
+    desc: '动量重置阈值，梯度范数超过 gamma *',
     defaultValue: 2.0, min: 0, step: 0.1,
     visibleWhen: isOpt('pytorch_optimizer.spam', 'pytorch_optimizer.stablespam') },
   { key: 'opt_spam_density', type: 'number', label: 'SPAM density',
@@ -149,12 +149,12 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── DAdapt 系列 ───────────────────────────────────────────────────────────
   { key: 'opt_dadapt_growth_rate', type: 'number', label: 'DAdapt growth_rate',
-    desc: '学习率自动增长上界（D-Adapt 步长估计允许每步最多增长多少倍）。推荐 inf（不限制）。',
+    desc: '学习率自动增长上界（D-Adapt',
     defaultValue: '', step: 0.1,
     visibleWhen: isOpt('dadaptation', 'dadaptadam', 'dadaptadampreprint', 'dadaptlion', 'dadaptsgd',
       'dadaptadagrad', 'dadaptadan', 'dadaptadanip') },
   { key: 'opt_dadapt_d0', type: 'number', label: 'DAdapt d0',
-    desc: '初始步长估计 d0，推荐 1e-6（小值让 D-Adapt 从保守开始自适应）。',
+    desc: '初始步长估计 d0，推荐 1e-6（小值让 D-Adapt',
     defaultValue: 1e-6, min: 0, step: 1e-7,
     visibleWhen: isOpt('dadaptation', 'dadaptadam', 'dadaptadampreprint', 'dadaptlion', 'dadaptsgd',
       'dadaptadagrad', 'dadaptadan', 'dadaptadanip') },

@@ -23,7 +23,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_lora_analyze',
         title: 'LoRA Analyzer / XRay',
-        desc: '读取 LoRA 权重结构、rank、RMS、稀疏度、异常层和 block 分布。',
+        desc: 'OUT',
         group: 'LoRA XRay',
         icon: '🔎',
         endpoint: '/api/tools/lora/analyze',
@@ -34,7 +34,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_lora_block_analyze',
         title: 'LoRA Block XRay',
-        desc: '按 IN/MID/OUT/TE 区块统计 LoRA 作用强度，适合做剪枝和 block weight 判断。',
+        desc: '按 IN/MID/OUT/TE 区块统计 LoRA 作用强度',
         group: 'LoRA XRay',
         icon: '📊',
         endpoint: '/api/tools/lora/block-analyze',
@@ -45,7 +45,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_lora_prune',
         title: 'LoRA Pruner',
-        desc: '按区块保留或移除 LoRA 张量，生成新的 safetensors。默认不覆盖源文件。',
+        desc: 'LoRA 文件路径',
         group: 'LoRA XRay',
         icon: '✂',
         endpoint: '/api/tools/lora/prune',
@@ -66,7 +66,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_lora_svd_merge',
         title: 'LoRA SVD Merger',
-        desc: '把两个 LoRA 重建到 dense delta 后按比例融合，再 SVD 回目标 rank。',
+        desc: '把两个 LoRA 重建到 dense delta 后按比例融合',
         group: 'LoRA Surgery',
         icon: '🧬',
         endpoint: '/api/merger/merge-lora',
@@ -81,7 +81,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_lora_extract',
         title: 'LoRA Extractor',
-        desc: '从底模和微调模型的差分中提取 LoRA。大模型会比较慢，建议先小 rank 测试。',
+        desc: '从底模和微调模型的差分中提取 LoRA。',
         group: 'LoRA Surgery',
         icon: '🧲',
         endpoint: '/api/merger/extract',
@@ -95,7 +95,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_diagnostic_card',
         title: 'Diagnostic Card',
-        desc: '生成训练/LoRA 诊断分享卡。可先用 Analyzer 得到指标，再填入这里。',
+        desc: '生成训练/LoRA 诊断分享卡',
         group: 'Reports',
         icon: '▣',
         endpoint: '/api/tools/diagnostic-card',
@@ -108,7 +108,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_qpissa_convert',
         title: 'QPiSSA Converter',
-        desc: '手动把模型中的 2D 主体权重拆成 residual checkpoint + PiSSA/LoRA 初始化文件。',
+        desc: '手动把模型中的 2D 主体权重拆成 residual',
         group: 'Advanced',
         icon: 'Σ',
         endpoint: '/api/tools/qpissa/convert',
@@ -123,7 +123,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_model_merge',
         title: 'Model Merger',
-        desc: '手动合并 safetensors 模型：weighted_sum 或 add_difference，不进入训练链路。',
+        desc: '保存精度',
         group: 'Model Tools',
         icon: '⇄',
         endpoint: '/api/tools/model/merge',
@@ -140,7 +140,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_model_tensor_convert',
         title: 'Model Converter',
-        desc: '在 safetensors 与 PyTorch pt/pth tensor 容器之间转换。',
+        desc: '在 safetensors 与 PyTorch pt/pth',
         group: 'Model Tools',
         icon: '⇆',
         endpoint: '/api/tools/model/convert-tensors',
@@ -153,7 +153,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'core_diffusers_convert',
         title: 'Checkpoint 转 Diffusers',
-        desc: '手动把单文件 checkpoint/safetensors 转成 Diffusers 目录，依赖 diffusers 环境。',
+        desc: '手动把单文件 checkpoint/safetensors 转成',
         group: 'Model Tools',
         icon: '◫',
         endpoint: '/api/tools/model/convert-diffusers',
@@ -275,7 +275,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'convert_flux_lora',
         title: '转换 FLUX LoRA 格式',
-        desc: '在 ai-toolkit 和 sd-scripts 格式之间转换 FLUX LoRA。',
+        desc: '在 ai-toolkit 和 sd-scripts',
         script: 'networks/convert_flux_lora.py',
         fields: [
           { key: 'src_path', label: '源文件路径',type: 'text', placeholder: './output/source_lora.safetensors' },
@@ -317,7 +317,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'merge_models',
         title: '合并模型',
-        desc: '按指定比例合并多个 Stable Diffusion 模型。多个模型/比例用空格分隔。',
+        desc: '按指定比例合并多个 Stable Diffusion',
         script: 'tools/merge_models.py',
         fields: [
           { key: 'models', label: '模型路径（空格分隔）', type: 'text', placeholder: './sd-models/a.safetensors ./sd-models/b.safetensors' },
@@ -339,7 +339,7 @@ export function createToolsRenderer({ state, renderSlot }) {
       {
         id: 'lora_interrogator',
         title: 'LoRA 识别器',
-        desc: '检测 LoRA 网络的训练信息。⚠️ 仅支持 SD 1.5 的LoRA，不支持 SDXL/FLUX。底模必须是对应的 SD 1.5 模型。',
+        desc: '检测 LoRA 网络的训练信息',
         script: 'networks/lora_interrogator.py',
         fields: [
           { key: 'sd_model', label: '基础 SD 1.5模型路径', type: 'text', placeholder: './sd-models/sd15_model.safetensors' },

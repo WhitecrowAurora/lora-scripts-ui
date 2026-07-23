@@ -18,5 +18,8 @@
   "relatedConfigs": [
     "advanced_stats_enabled",
     "wandb_api_key"
-  ]
+  ],
+  "advanced": {
+    "principle": "一次授权无人值守：设定目标阈值（loss / 验证 loss / L2）+ 预算护栏 + 超参搜索空间，Copilot 自动发射训练试验、用只读预测器评估趋势、爬山调参（带回退护栏：变差则回滚到历史最优再换方向），直到达标即停或预算触顶兜底停。每个试验走既有训练队列通道，不新增训练入口。"
+  }
 }

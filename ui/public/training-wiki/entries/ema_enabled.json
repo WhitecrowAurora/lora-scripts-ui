@@ -2,8 +2,15 @@
   "key": "ema_enabled",
   "title": "EMA（指数滑动平均）",
   "category": "训练 / 平滑",
-  "appliesTo": ["anima-lora", "sdxl-lora", "sd-lora", "newbie-lora"],
-  "layers": ["训练控制层"],
+  "appliesTo": [
+    "anima-lora",
+    "sdxl-lora",
+    "sd-lora",
+    "newbie-lora"
+  ],
+  "layers": [
+    "训练控制层"
+  ],
   "standard": {
     "summary": "训练过程中维护一份模型参数的指数滑动平均副本。保存时额外写出 EMA 权重，推理效果通常比最后一步权重更稳定。",
     "effect": "减少训练末期随机波动对最终权重的影响。ema_decay=0.999 时相当于对最近约 1000 步取加权平均。loss 曲线不变，但保存的权重更平滑。",
@@ -17,5 +24,9 @@
     "tradeoffs": "EMA 权重滞后于真实权重，若训练末期需要快速适应某方向，EMA 可能不如最后一步权重激进。",
     "codePath": "core/lulynx_trainer/training_loop.py → EMA 更新 hook → 保存时写出 ema state"
   },
-  "relatedConfigs": ["ema_decay", "ema_update_every", "ema_update_after_step"]
+  "relatedConfigs": [
+    "ema_decay",
+    "ema_update_every",
+    "ema_update_after_step"
+  ]
 }

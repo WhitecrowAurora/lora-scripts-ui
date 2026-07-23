@@ -13,6 +13,16 @@
 //     依赖 window.* 全局函数，Stage 5 才转事件委托。
 
 import { escapeHtml } from '../utils/dom.js';
+import {
+  resolveFieldLabel,
+  resolveFieldDesc,
+  resolveOptionLabel,
+  resolveSectionTitle,
+} from '../schemaFieldI18n.js';
+import { api } from '../api.js';
+import { createWeightComposerActions, renderWeightComposerPreview, scheduleWeightComposerPreview } from './weightComposerPreview.js';
+import { createTrainingIntentProfileActions, renderTrainingIntentProfilePreview } from './trainingIntentProfilePreview.js';
+import { renderProgressivePhaseEditorField } from './progressivePhaseEditor.js';
 import { isAttentionBackendAvailable, makeAttentionOptions } from '../features/attentionCapabilities.js';
 import {
   renderCaptionSettingsContentLayout,
@@ -31,6 +41,7 @@ import {
   renderNetworkOptionGroup as renderNetworkOptionGroupTemplate,
   renderPreviewGroupsField as renderPreviewGroupsFieldTemplate,
   renderRegularizationFieldGroup as renderRegularizationFieldGroupTemplate,
+  renderSemanticRegionWeightsField,
   toBool,
 } from './configFormTemplates.js';
 
@@ -57,6 +68,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       renderHeader,
       renderFieldDescription,
       renderConflictHint,
+      lang: state.lang,
     });
   }
 
@@ -91,13 +103,13 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
 
   function renderField(field) {
     const value = state.config[field.key];
-    const label = field.label;
+    const label = resolveFieldLabel(field, state.lang);
     const defaultValue = field.defaultValue ?? '';
     if (field.type === 'ui_group') {
       return `
         <div class="config-group group-heading" data-field-key="${field.key}">
           <div class="group-heading-title">${escapeHtml(label || '')}</div>
-          ${field.desc ? `<p class="group-heading-desc">${escapeHtml(field.desc)}</p>` : ''}
+          ${(resolveFieldDesc(field, state.lang) || field.desc) ? `<p class="group-heading-desc">${escapeHtml(resolveFieldDesc(field, state.lang) || field.desc)}</p>` : ''}
         </div>
       `;
     }
@@ -106,15 +118,19 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       const summary = summaryRaw ? String(summaryRaw) : '';
       const handler = String(field.handler || '').replace(/'/g, "\\'");
       return `
-        <div class="config-group config-action-field" data-field-key="${field.key}">
-          <div class="field-header-row">
-            <label><span>${escapeHtml(label || '')}</span></label>
+        <div class="config-group config-action-field-compact" data-field-key="${field.key}">
+          <div class="action-field-content">
+            <div class="action-field-header">
+              <label><span>${escapeHtml(label || '')}</span></label>
+            </div>
+            ${resolveFieldDesc(field, state.lang) ? `<p class="action-field-desc">${escapeHtml(resolveFieldDesc(field, state.lang))}</p>` : ''}
           </div>
-          ${field.desc ? `<p class="field-desc">${escapeHtml(field.desc)}</p>` : ''}
-          <button class="btn btn-outline config-action-btn" type="button" onclick="${handler ? `window['${handler}'] && window['${handler}']()` : ''}">
-            ${escapeHtml(field.buttonLabel || '打开')}
-          </button>
-          ${summary ? `<p class="field-desc config-action-summary">${escapeHtml(summary)}</p>` : ''}
+          <div class="action-field-button-wrapper">
+            <button class="btn btn-outline config-action-btn-full" type="button" onclick="${handler ? `window['${handler}'] && window['${handler}']()` : ''}">
+              ${escapeHtml(field.buttonLabel || '打开')}
+            </button>
+          </div>
+          ${summary ? `<p class="action-field-summary">${escapeHtml(summary)}</p>` : ''}
         </div>
       `;
     }
@@ -156,7 +172,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
             <span class="collapsible-field-value${summaryClass}">${escapeHtml(summaryValue)}</span>
             <span class="collapsible-caret" aria-hidden="true">⌄</span>
           </summary>
-          ${field.desc ? `<p class="field-desc collapsible-field-desc">${escapeHtml(field.desc || '')}</p>` : ''}
+          ${resolveFieldDesc(field, state.lang) ? `<p class="field-desc collapsible-field-desc">${escapeHtml(resolveFieldDesc(field, state.lang))}</p>` : ''}
           <div class="collapsible-field-body">
             ${bodyHtml}
           </div>
@@ -169,7 +185,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
         <div class="config-group row boolean-card${modCls}${disabledCls}" data-field-key="${field.key}">
           <div class="label-col">
             ${renderHeader()}
-            ${renderFieldDescription(field)}
+            ${renderFieldDescription(field, state.lang)}
             ${renderConflictHint(conflictWith)}
           </div>
           <label class="switch switch-compact">
@@ -183,6 +199,8 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     if (field.type === 'select') {
       const optionValue = (option) => (option && typeof option === 'object') ? option.value : option;
       const optionLabel = (option) => {
+        const resolved = resolveOptionLabel(field.key, option, state.lang);
+        if (resolved != null && String(resolved).trim()) return resolved;
         if (option && typeof option === 'object') return option.label ?? option.value ?? '默认';
         return option || '默认';
       };
@@ -204,7 +222,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
         return renderCollapsibleField(`
           ${renderHeader()}
-          ${renderFieldDescription(field)}
+          ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <select${disabledAttr} onchange="updateConfigValue('${field.key}', this.value)">
             ${filteredOptions.map(renderOption).join('')}
@@ -214,7 +232,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       return `
         <div class="config-group${modCls}${disabledCls}" data-field-key="${field.key}">
           ${renderHeader()}
-          ${renderFieldDescription(field)}
+          ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <select${disabledAttr} onchange="updateConfigValue('${field.key}', this.value)">
             ${filteredOptions.map(renderOption).join('')}
@@ -227,11 +245,40 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       return renderPreviewGroupsField(field, disabledAttr, disabledCls, modCls, conflictWith, renderHeader);
     }
 
+    if (field.type === 'semantic_region_weights') {
+      return renderSemanticRegionWeightsField({
+        field,
+        value,
+        disabledAttr,
+        disabledCls,
+        modCls,
+        conflictWith,
+        config: state.config,
+        segmentationUi: state.semanticSegmentationUi,
+        renderHeader,
+        renderFieldDescription,
+        renderConflictHint,
+      });
+    }
+    if (field.type === 'progressive_phase_editor') {
+      return renderProgressivePhaseEditorField({
+        field,
+        value,
+        editorUi: state.progressivePhaseEditorUi,
+        disabledAttr,
+        disabledCls,
+        modCls,
+        conflictWith,
+        renderHeader,
+        renderFieldDescription,
+        renderConflictHint,
+      });
+    }
     if (field.type === 'textarea') {
       if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
         return renderCollapsibleField(`
           ${renderHeader()}
-          ${renderFieldDescription(field)}
+          ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <textarea class="text-area"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(value || '')}</textarea>
         `);
@@ -239,7 +286,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       return `
         <div class="config-group${modCls}${disabledCls}" data-field-key="${field.key}">
           ${renderHeader()}
-          ${renderFieldDescription(field)}
+          ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <textarea class="text-area"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(value || '')}</textarea>
         </div>
@@ -253,7 +300,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
         return renderCollapsibleField(`
           ${renderHeader()}
-          ${renderFieldDescription(field)}
+          ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <div class="input-picker">
             <button class="picker-icon" type="button"${disabledAttr} onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
@@ -266,7 +313,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       return `
         <div class="config-group${modCls}${disabledCls}" data-field-key="${field.key}">
           ${renderHeader()}
-          ${renderFieldDescription(field)}
+          ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <div class="input-picker">
             <button class="picker-icon" type="button"${disabledAttr} onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
@@ -283,7 +330,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
       return renderCollapsibleField(`
         ${renderHeader()}
-        ${renderFieldDescription(field)}
+        ${renderFieldDescription(field, state.lang)}
         ${renderConflictHint(conflictWith)}
         <input class="text-input" type="${inputType}" value="${escapeHtml(inputValue)}"${disabledAttr} ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} oninput="updateConfigValue('${field.key}', this.value)">
       `);
@@ -292,7 +339,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     return `
       <div class="config-group${modCls}${disabledCls}" data-field-key="${field.key}">
         ${renderHeader()}
-        ${renderFieldDescription(field)}
+        ${renderFieldDescription(field, state.lang)}
         ${renderConflictHint(conflictWith)}
         <input class="text-input" type="${inputType}" value="${escapeHtml(inputValue)}"${disabledAttr} ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} oninput="updateConfigValue('${field.key}', this.value)">
       </div>
@@ -334,8 +381,11 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
   function renderSection(section) {
     const fields = section.fields.filter((field) => field.type !== 'hidden' && isFieldVisible(field, state.config));
     const realFieldCount = fields.filter((field) => field.type !== 'ui_group').length;
+    const sectionTitle = resolveSectionTitle(section, state.lang);
     const sectionDescription = section.id === 'noise-settings'
-      ? `改善lora明暗度 ${section.description || ''}`.trim()
+      ? (state.lang === 'en'
+        ? `Improves LoRA brightness balance ${section.description || ''}`.trim()
+        : `改善lora明暗度 ${section.description || ''}`.trim())
       : section.description;
     const content = section.id === 'dataset-settings'
       ? renderDatasetSettingsContent(fields)
@@ -352,7 +402,11 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       state.config.lulynx_ghost_replay
       && fields.some((field) => String(field.key || '').startsWith('lulynx_ghost_'))
     );
-    const contentWithHelpers = content + (showGhostReplayHelper ? renderGhostReplayHelperCard() : '');
+    const contentWithHelpers = content
+      + (showGhostReplayHelper ? renderGhostReplayHelperCard() : '')
+      + (section.id === 'weight-composer' ? renderWeightComposerPreview() : '')
+      + (section.id === 'training-intent-profile' ? renderTrainingIntentProfilePreview() : '');
+    if (section.id === 'weight-composer') scheduleWeightComposerPreview(state.config || {}, api);
 
     if (section.id === 'data-aug-settings' || section.id === 'noise-settings' || section.id === 'validation-settings') {
       const panelClass = section.id === 'noise-settings'
@@ -374,15 +428,15 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
         <details class="form-section collapsible-panel ${panelClass}" id="${escapeHtml(section.id)}">
           <summary class="section-header collapsible-summary ${summaryClass}">
             <span class="collapsible-summary-main">
-              <span class="collapsible-title">${escapeHtml(section.title)}</span>
+              <span class="collapsible-title">${escapeHtml(sectionTitle)}</span>
               ${summaryDesc ? `<span class="collapsible-desc">${escapeHtml(summaryDesc)}</span>` : ''}
             </span>
             <span class="collapsible-actions">
-              <span class="section-meta">${realFieldCount} 项参数</span>
+              <span class="section-meta">${realFieldCount} ${state.lang === 'en' ? 'fields' : '项参数'}</span>
               <span class="collapsible-caret" aria-hidden="true">⌄</span>
             </span>
           </summary>
-          <div class="section-summary">${escapeHtml(sectionDescription)}</div>
+          <div class="section-summary">${escapeHtml(sectionDescription || '')}</div>
           <div class="section-content">${contentWithHelpers}</div>
         </details>
       `;
@@ -391,8 +445,8 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     return `
       <section class="form-section" id="${escapeHtml(section.id)}">
         <header class="section-header">
-          <h3>${escapeHtml(section.title)}</h3>
-          <span class="section-meta">${realFieldCount} 项参数</span>
+          <h3>${escapeHtml(sectionTitle)}</h3>
+          <span class="section-meta">${realFieldCount} ${state.lang === 'en' ? 'fields' : '项参数'}</span>
         </header>
         <div class="section-summary">${escapeHtml(sectionDescription)}</div>
         <div class="section-content">${contentWithHelpers}</div>
@@ -400,7 +454,22 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     `;
   }
 
+  const weightComposerActions = createWeightComposerActions({
+    state,
+    api,
+    updateConfigValue: (key, value) => window.updateConfigValue?.(key, value),
+    showToast: (message) => window.showToast?.(message),
+  });
+
+  const trainingIntentProfileActions = createTrainingIntentProfileActions({
+    state,
+    api,
+    updateConfigValue: (key, value, options) => window.updateConfigValue?.(key, value, options),
+    showToast: (message) => window.showToast?.(message),
+  });
   return {
+    ...weightComposerActions,
+    ...trainingIntentProfileActions,
     renderField,
     renderFieldDescription,
     renderSection,
@@ -414,4 +483,5 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     renderRegularizationFieldGroup,
   };
 }
+
 

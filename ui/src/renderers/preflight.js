@@ -127,10 +127,10 @@ export function createPreflightRenderer({ state, deps }) {
     var value = '未启用';
     var tone = '';
     if (requested && status === 'manual_experimental') {
-      value = '实验启用';
+      value = '已启用';
       tone = 'warn';
     } else if (requested && status === 'partial_experimental') {
-      value = '实验请求';
+      value = '请求已发出';
       tone = 'warn';
     } else if (requested) {
       value = '研究请求';

@@ -18,6 +18,11 @@ import {
 } from '../utils/trainingMetrics.js';
 import { getMultiBatchEvidenceFromTask } from '../utils/multiBatchEvidence.js';
 import { getTrainingRuntimeSummaryFromTask } from '../utils/trainingRuntimeSummary.js';
+import {
+  getCanonicalRunId,
+  loadTrainingQualityReport,
+  renderTrainingSummaryWithQuality,
+} from '../utils/trainingQualityReport.js';
 
 export function createTrainingMetadataActions({
   state,
@@ -260,52 +265,62 @@ await saveLocalTaskHistory();
     } catch (e) { /* ignore */ }
   }
 
-  /** Click handler: show/togglesummary for a historical task */
+  /** First expansion loads both the legacy Loss summary and canonical P6 report. */
   async function showTaskSummary(taskId) {
     var panel = document.getElementById('task-summary-' + taskId);
     if (!panel) return;
-    var task = state.tasks.find(function(t) { return t.id === taskId; });
- if (task && !['FINISHED', 'COMPLETED'].includes(String(task.status || '').toUpperCase())) {
-      panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">失败或终止的任务不生成训练总结，请直接查看上方控制台日志。</span>';
+
+    // A fully loaded panel only toggles; no repeated report request on re-open.
+    if (panel.dataset.loaded === 'true' && panel.dataset.qualityLoaded === 'true') {
       panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
       return;
     }
-
-    // Toggle: if already showing, collapse
-    if(panel.dataset.loaded === 'true') {
-      if (panel.style.display=== 'none') {
-    panel.style.display = 'block';
-      } else {
-        panel.style.display = 'none';
-      }
+    if (panel.style.display !== 'none') {
+      panel.style.display = 'none';
       return;
     }
 
-  // Check cache first
-    if (state.taskSummaries[taskId] && state.taskSummaries[taskId]._v >= 2) {
-      panel.innerHTML = renderSummaryCard(state.taskSummaries[taskId], summaryRenderOptionsForTask(taskId));
+    var task = state.tasks.find(function(t) { return getTaskId(t) === taskId; }) || null;
+    var terminalStatuses = ['FINISHED', 'COMPLETED', 'FAILED', 'TERMINATED', 'STOPPED', 'CANCELLED', 'CANCELED'];
+    if (task && !terminalStatuses.includes(String(task.status || '').toUpperCase())) {
+      panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">任务尚未结束，请在实时监控页查看当前质量报告。</span>';
       panel.style.display = 'block';
-      panel.dataset.loaded = 'true';
       return;
     }
 
-    // Fetch log and generate on-the-fly
-    panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">\u2693 \u6b63\u5728\u5206\u6790\u8bad\u7ec3\u65e5\u5fd7...</span>';
+    panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">⚓ 正在加载训练质量报告与旧版 Loss 摘要...</span>';
     panel.style.display = 'block';
-    try {
- var summary = await buildAndSaveSummaryFromTaskLog(taskId);
-      if (!summary) {
-        panel.innerHTML = '<span style="color:var(--text-dim);font-size:0.82rem;">\u65e0\u8bad\u7ec3\u8f93\u51fa\u6570\u636e\uff0c\u65e0\u6cd5\u8bc4\u5206\u3002</span>';
-        panel.dataset.loaded = 'true';
-        return;
-      }
-      panel.innerHTML = renderSummaryCard(summary, summaryRenderOptionsForTask(taskId));
-      panel.dataset.loaded = 'true';
-  } catch (e) {
-      panel.innerHTML= '<span style="color:var(--danger);font-size:0.82rem;">\u65e5\u5fd7\u83b7\u53d6\u5931\u8d25</span>';
-    }
-  }
 
+    const runId = getCanonicalRunId(task);
+    const cachedSummary = state.taskSummaries[taskId] && state.taskSummaries[taskId]._v >= 2
+      ? state.taskSummaries[taskId]
+      : null;
+    const legacyPromise = cachedSummary
+      ? Promise.resolve(cachedSummary)
+      : buildAndSaveSummaryFromTaskLog(taskId);
+    const qualityPromise = runId
+      ? loadTrainingQualityReport(runId)
+      : Promise.resolve(null);
+
+    const [legacyResult, qualityResult] = await Promise.allSettled([legacyPromise, qualityPromise]);
+    const summary = legacyResult.status === 'fulfilled' ? legacyResult.value : null;
+    const legacyHtml = summary
+      ? renderSummaryCard(summary, summaryRenderOptionsForTask(taskId))
+      : '<span style="color:var(--text-muted);font-size:0.72rem;">无训练输出数据，旧版 Loss 摘要不可用。</span>';
+    const report = qualityResult.status === 'fulfilled' ? qualityResult.value : null;
+    const qualityError = qualityResult.status === 'rejected'
+      ? (qualityResult.reason?.message || '报告加载失败')
+      : '';
+
+    panel.innerHTML = renderTrainingSummaryWithQuality({
+      legacyHtml,
+      report,
+      runId,
+      error: qualityError,
+    });
+    panel.dataset.loaded = 'true';
+    panel.dataset.qualityLoaded = 'true';
+  }
   return {
     collectTrainingMetrics,
    buildTaskMetadataFromConfig,
