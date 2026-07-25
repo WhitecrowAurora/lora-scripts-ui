@@ -418,7 +418,7 @@ const NEWBIE_BLOCK_RESIDENCY_FIELDS = [
   { key: 'lora_activation_recompute_mode', type: 'select', label: 'LoRA 分支重算', title: 'lora_activation_recompute_mode', desc: '降低原生 DiT LoRA 反传激活峰值。', defaultValue: 'auto', options: LORA_RECOMPUTE_OPTIONS },
   { key: 'newbie_block_residency', type: 'select', label: 'Newbie Block Offload', title: 'newbie_block_residency', desc: '控制原生 Newbie 冻结 DiT 权重的驻留策略。', defaultValue: 'block_cpu_pinned', options: DIT_BLOCK_RESIDENCY_OPTIONS },
   { key: 'newbie_block_residency_min_params', type: 'number', label: 'Newbie Offload 最小参数量', title: 'newbie_block_residency_min_params', desc: '只托管参数量达到该阈值的冻结 Linear。0 表示不过滤。', defaultValue: 0, min: 0, visibleWhen: nonResidentBlockMode('newbie_block_residency') },
-  { key: 'newbie_block_checkpointing', type: 'boolean', label: 'Newbie DiT Block Checkpointing', title: 'newbie_block_checkpointing', desc: '训练时重算 DiT block 以降低反传激活峰值。', defaultValue: false, visibleWhen: nonResidentBlockMode('newbie_block_residency') },
+  { key: 'newbie_block_checkpointing', type: 'boolean', label: 'Newbie 梯度检查点（分块重算）', title: 'newbie_block_checkpointing', desc: 'Newbie DiT 族的梯度检查点主力：训练时重算 DiT block 以降低反传激活峰值，比通用检查点更省显存（会增加重算时间）。', defaultValue: false, visibleWhen: nonResidentBlockMode('newbie_block_residency') },
   { key: 'newbie_block_checkpointing_mode', type: 'select', label: 'Newbie Checkpointing 模式', title: 'newbie_block_checkpointing_mode', desc: 'block 整块重算；selective 可选（与 Anima 对齐）。', defaultValue: 'block', options: [
     { value: 'block', label: 'block（整块重算）' },
     { value: 'selective', label: 'selective' }

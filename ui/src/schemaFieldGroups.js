@@ -41,6 +41,11 @@ const executionBackendIs = (value) => (config) => (
 );
 const LEGACY_BACKEND_FIELD_HIDDEN = () => false;
 
+// quant_train_mode 已从下拉(dequant/keep_w8)改为布尔开关(开=keep_w8)。
+// 兼容老草稿里的字符串值,布尔 true 或 legacy 'keep_w8' 均视为开启。
+const isKeepW8Mode = (value) => value === true
+  || String(value ?? '').trim().toLowerCase() === 'keep_w8';
+
 export const EXECUTION_BACKEND_OPTIONS = [
   { value: 'optimized', label: '优化运行时' }
 ];
@@ -219,7 +224,7 @@ export const ANIMA_BLOCK_RESIDENCY_FIELDS = [
   { key: 'lora_activation_recompute_mode', type: 'select', label: 'LoRA 分支重算', title: 'lora_activation_recompute_mode', desc: '降低原生 DiT LoRA 反传激活峰值。', defaultValue: 'auto', options: LORA_RECOMPUTE_OPTIONS },
   { key: 'anima_block_residency', type: 'select', label: 'Anima Block Offload', title: 'anima_block_residency', desc: '冻结 DiT 权重放 CPU 内存降低显存；resident 优先速度。', defaultValue: 'resident', options: DIT_BLOCK_RESIDENCY_OPTIONS },
   { key: 'anima_block_residency_min_params', type: 'number', label: 'Anima Offload 最小参数量', title: 'anima_block_residency_min_params', desc: '只托管参数量达到该阈值的冻结 Linear。0 表示不过滤。', defaultValue: 0, min: 0, visibleWhen: nonResidentBlockMode('anima_block_residency') },
-  { key: 'anima_block_checkpointing', type: 'boolean', label: 'Anima DiT Block Checkpointing', title: 'anima_block_checkpointing', desc: '降低反传激活显存占用；会增加重算时间。', defaultValue: false },
+  { key: 'anima_block_checkpointing', type: 'boolean', label: 'Anima 梯度检查点（分块重算）', title: 'anima_block_checkpointing', desc: 'Anima 的梯度检查点主力：反传时按 DiT block 重算激活以降低显存峰值。比通用梯度检查点更省显存，会增加重算时间。', defaultValue: false },
   { key: 'anima_block_checkpointing_mode', type: 'select', label: 'Checkpointing 模式', title: 'anima_block_checkpointing_mode', desc: 'block 整块重算最省显存；selective 显存略高但重算更快。', defaultValue: 'block', options: ['block', 'selective'], visibleWhen: when('anima_block_checkpointing', true) },
   { key: 'anima_block_checkpointing_interval', type: 'number', label: 'Checkpointing 间隔', title: 'anima_block_checkpointing_interval', desc: '每 N 个 DiT block 设一个检查点。', defaultValue: 1, min: 1, max: 8, step: 1, visibleWhen: when('anima_block_checkpointing', true) },
   { key: 'anima_block_prefetch', type: 'boolean', label: 'Anima Block 预取', title: 'anima_block_prefetch', desc: 'Anima Block 预取', defaultValue: false, visibleWhen: nonResidentBlockMode('anima_block_residency') },
@@ -790,12 +795,9 @@ export const S_SPEED_FLOW = [
     return preset !== 'off' || c.weight_compression_enabled === true;
   } },
   // keep_w8 训时路径（与 weight_compression 底座压缩不同；非 lulynx 顶部加速）
-  { key: 'quant_train_mode', type: 'select', label: '训练量化方式', title: 'quant_train_mode', desc: '默认 dequant：加载后反量化再训。keep_w8：主干权重保持 INT8 冻结，仅训高精度 LoRA。与 vendor keep_storage（部分 FP8）互斥。', defaultValue: 'dequant', options: [
-    { value: 'dequant', label: '默认：反量化后训练' },
-    { value: 'keep_w8', label: 'keep_w8：保持 INT8 冻结' }
-  ] },
-  { key: 'keep_w8_vram_prefer', type: 'boolean', label: 'keep_w8 显存优先', title: 'keep_w8_vram_prefer', desc: '降低训练步峰值显存，训练步通常变慢约 20%–40% 或更多。需先选 keep_w8。', defaultValue: false, visibleWhen: (c) => String(c.quant_train_mode || 'dequant').trim().toLowerCase() === 'keep_w8' },
-  { key: 'quant_train_convrot', type: 'boolean', label: 'keep_w8 ConvRot 真旋转', title: 'quant_train_convrot', desc: 'keep_w8 时对匹配层做真 group-RHT（与 Comfy convrot 导出一致）。', defaultValue: false, visibleWhen: (c) => String(c.quant_train_mode || 'dequant').trim().toLowerCase() === 'keep_w8' },
+  { key: 'quant_train_mode', type: 'boolean', label: '保持 INT8 冻结训练', title: 'quant_train_mode', desc: '关闭（默认）=正常训练：若加载的是量化模型，先反量化再训。开启=主干权重保持 INT8 冻结、仅训高精度 LoRA（省显存，仅对量化模型包有意义）。与 vendor keep_storage（部分 FP8）互斥。', defaultValue: false },
+  { key: 'keep_w8_vram_prefer', type: 'boolean', label: 'keep_w8 显存优先', title: 'keep_w8_vram_prefer', desc: '降低训练步峰值显存，训练步通常变慢约 20%–40% 或更多。需先开启「保持 INT8 冻结训练」。', defaultValue: false, visibleWhen: (c) => isKeepW8Mode(c.quant_train_mode) },
+  { key: 'quant_train_convrot', type: 'boolean', label: 'keep_w8 ConvRot 真旋转', title: 'quant_train_convrot', desc: 'keep_w8 时对匹配层做真 group-RHT（与 Comfy convrot 导出一致）。', defaultValue: false, visibleWhen: (c) => isKeepW8Mode(c.quant_train_mode) },
   { key: 'fp8_base', type: 'boolean', label: '基础模型使用 FP8（旧）', title: 'fp8_base', desc: '【已弃用】请使用上方的「权重压缩预设」。此字段保留用于向后兼容旧配置', defaultValue: false },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', title: 'sdpa', desc: '高级覆盖：强制 SDPA', defaultValue: false, visibleWhen: when('performance_expert_mode', true) },
   { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', title: 'sageattn', desc: '高级覆盖：强制 SageAttention。默认跟随启动环境。', defaultValue: false, requiresAttentionBackend: 'sageattn', visibleWhen: when('performance_expert_mode', true) },

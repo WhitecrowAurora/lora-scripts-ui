@@ -205,9 +205,9 @@ const S_CACHE_SYSTEM = [
   { key: 'cache_latents_to_disk', type: 'boolean', label: 'Latent 缓存到磁盘', desc: '将 latent 缓存持久化到磁盘，跨训练 run', defaultValue: false },
   { key: 'cache_text_encoder_outputs_to_disk', type: 'boolean', label: '文本编码器输出缓存到磁盘', desc: '将文本编码器输出缓存到磁盘。适合长文本或大数据集。', defaultValue: false },
   // ── 缓存引擎后端（任一磁盘缓存开启时显示）──
-  { key: 'lossless_cache_replacement_mode', type: 'select', label: '磁盘缓存引擎', desc: '布局/引擎：默认 anima_lynx_manifest_probe=整片 shard（少文件，HDD 友好）；off=每文件 per_file（npz/safetensors，SSD/调试）；LXFS/SQLite 仅研究。已有 per_file 缓存不会静默删改，缺 shard 时 prepare 旁路生成或 fallback 读源。', defaultValue: 'anima_lynx_manifest_probe', options: [
-    { value: 'anima_lynx_manifest_probe', label: 'LYNX 整片 shard（产品默认 / HDD）' },
+  { key: 'lossless_cache_replacement_mode', type: 'select', label: '磁盘缓存引擎', desc: '布局/引擎：默认 off=每文件 per_file（npz/safetensors，原版稳定路径）；anima_lynx_manifest_probe=整片 shard（少文件，HDD 友好，实验）；LXFS/SQLite 仅研究。已有 per_file 缓存不会静默删改，缺 shard 时 prepare 旁路生成或 fallback 读源。', defaultValue: 'off', options: [
     { value: 'off', label: '原版 per_file（npz / safetensors / pt）' },
+    { value: 'anima_lynx_manifest_probe', label: 'LYNX 整片 shard（HDD / 实验）' },
     { value: 'anima_lxfs_probe', label: 'LXFS 扁片 sidecar（实验）' },
     { value: 'anima_sqlite_bin_probe', label: 'SQLite manifest 索引（实验）' },
   ], visibleWhen: _diskEnabled },
@@ -234,7 +234,7 @@ const S_CACHE_SYSTEM = [
   ], visibleWhen: (c) => _losslessOff(c) && c.cache_text_encoder_outputs_to_disk },
   { key: 'disable_mmap_load_safetensors', type: 'boolean', label: '禁用 mmap 加载', desc: '禁用 mmap 方式加载 safetensors', defaultValue: false, visibleWhen: (c) => _losslessOff(c) && c.latent_cache_disk_format === 'safetensors' },
   // ── Lossless 引擎分支（引擎!=原版时显示）──
-  { key: 'lossless_cache_replacement_codecs', type: 'select', label: '压缩编码', desc: '默认单 codec zstd1（写路径卫生）。fast-cache=多 codec 研究矩阵，显式选择才会试探。', defaultValue: 'zstd1', options: [{ value: 'zstd1', label: 'zstd1（推荐默认）' }, { value: 'lz4fast', label: 'lz4fast' }, { value: 'raw', label: 'raw' }, { value: 'fast-cache', label: 'fast-cache（多 codec 研究）' }], visibleWhen: _losslessOn },
+  { key: 'lossless_cache_replacement_codecs', type: 'select', label: '压缩编码', desc: '默认单 codec lz4fast（速度优先，写路径卫生）。zstd1=压缩率优先；fast-cache=多 codec 研究矩阵，显式选择才会试探。', defaultValue: 'lz4fast', options: [{ value: 'lz4fast', label: 'lz4fast（推荐默认）' }, { value: 'zstd1', label: 'zstd1' }, { value: 'raw', label: 'raw' }, { value: 'fast-cache', label: 'fast-cache（多 codec 研究）' }], visibleWhen: _losslessOn },
   { key: 'lossless_cache_replacement_prefetch_depth', type: 'number', label: '预取深度', desc: 'prefetch_thread 预取队列深度。', defaultValue: 2, min: 1, step: 1, visibleWhen: _losslessOn },
   { key: 'lossless_cache_replacement_read_mode', type: 'select', label: '读取模式', desc: 'prefetch_thread=后台线程预取（默认）', defaultValue: 'prefetch_thread', options: [{ value: 'prefetch_thread', label: 'prefetch_thread' }, { value: 'sync', label: 'sync' }], visibleWhen: _losslessOn },
   { key: 'lossless_cache_replacement_fallback_to_raw', type: 'boolean', label: '损坏自动回退', desc: 'sidecar 缺失/损坏时回退原版 npz', defaultValue: true, visibleWhen: _losslessOn },
