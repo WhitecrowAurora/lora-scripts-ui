@@ -10,10 +10,7 @@
     "effect": "枚举切换会改变算法或资源行为。",
     "whenToUse": "默认优先，短测后再换。",
     "avoidWhen": "未理解影响前不要叠多个激进档。",
-    "optionDescriptions": {
-      "simple": "预取深度固定。",
-      "adaptive": "按负载调预取。"
-    }
+    "optionDescriptions": {}
   },
   "advanced": {},
   "relatedConfigs": []

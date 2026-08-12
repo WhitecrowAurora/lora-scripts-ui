@@ -12,7 +12,6 @@
     "avoidWhen": "不了解各方案差异时，保持默认（logit_normal）即可，已经过调优。",
     "optionDescriptions": {
       "不加权 (none)": "各时间步一样重。",
-      "none": "不加权。",
       "sigma_sqrt": "偏高噪声，结构多、细节可能少。",
       "logit_normal": "中噪声多一点，结构和细节比较匀。",
       "mode": "mode 分布配套。",

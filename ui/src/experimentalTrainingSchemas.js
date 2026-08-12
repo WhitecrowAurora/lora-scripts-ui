@@ -9,7 +9,7 @@ const when = (key, expected) => (config) => config[key] === expected;
 export const LAB_DISTILLER_SECTIONS = [
   sec('lab-model-settings', 'model', '蒸馏输入', '从传统 LoRA teacher 蒸馏出 Lulynx LAB sidecar。', [
     { key: 'model_train_type', type: 'hidden', defaultValue: 'lab-distiller' },
-    { key: 'unet_path', type: 'file', pickerType: 'model-file', label: 'UNet / SDXL 基础模型', title: 'unet_path', desc: 'SDXL UNet、checkpoint 或 diffusers 模型路径。', defaultValue: '' },
+    { key: 'unet_path', type: 'file', pickerType: 'model-file', allowModelDirectory: true, label: 'UNet / SDXL 基础模型', title: 'unet_path', desc: 'SDXL UNet、checkpoint 或 diffusers 模型路径。', defaultValue: '' },
     { key: 'lora_path', type: 'file', pickerType: 'model-file', label: 'Teacher LoRA', title: 'lora_path', desc: '传统 LoRA teacher，通常对应 LoRA 架构模型。', defaultValue: '' },
     { key: 'teacher_path', type: 'file', pickerType: 'model-file', label: '可选 Teacher 模型', title: 'teacher_path', desc: '可选，用于显式指定 teacher 模型资源。', defaultValue: '' },
     { key: 'llm_path', type: 'folder', pickerType: 'folder', label: '文本/语义模型路径', title: 'llm_path', desc: '可填本地 Gemma/Jina CLIP/文本模型目录', defaultValue: 'Qwen/Qwen2.5-0.5B' },
@@ -35,7 +35,7 @@ export const LAB_DISTILLER_SECTIONS = [
 export const SDXL_TURBO_LORA_SECTIONS = [
   sec('turbo-model-settings', 'model', 'SDXL 教师与数据', 'few-step LoRA 蒸馏入口。当前重点是 LCM-LoRA/短测链路。', [
     { key: 'model_train_type', type: 'hidden', defaultValue: 'sdxl-turbo-lora' },
-    { key: 'base_model_path', type: 'file', pickerType: 'model-file', label: 'SDXL 基础模型', title: 'base_model_path', desc: 'SDXL checkpoint 或 diffusers 模型目录。', defaultValue: '' },
+    { key: 'base_model_path', type: 'file', pickerType: 'model-file', allowModelDirectory: true, label: 'SDXL 基础模型', title: 'base_model_path', desc: 'SDXL checkpoint 或 diffusers 模型目录。', defaultValue: '' },
     { key: 'train_data_dir', type: 'folder', pickerType: 'folder', label: '训练数据目录', title: 'train_data_dir', desc: '用于短测/蒸馏的图像与 caption 目录。', defaultValue: './output/lulynx' },
     { key: 'teacher_lora_path', type: 'file', pickerType: 'model-file', label: 'Teacher LoRA', title: 'teacher_lora_path', desc: '可选，从已有风格/角色 LoRA 蒸馏 few-step 版本。', defaultValue: '' },
     { key: 'teacher_lora_scope', type: 'select', label: 'Teacher LoRA 加载范围', title: 'teacher_lora_scope', desc: '默认 UNet-only', defaultValue: 'unet_only', options: ['unet_only', 'unet_and_text_encoder_experimental'] },

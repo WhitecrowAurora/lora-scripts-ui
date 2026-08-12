@@ -4,7 +4,7 @@
 // 依赖较多，均通过工厂注入。保持零行为变更。
 
 import { getTaskId, isTaskActive, isTaskQueued } from '../utils/taskStatus.js';
-import { attachBubbleClosedLoopActionHistory } from '../utils/bubbleClosedLoopEvidence.js';
+import { getMiniMaxH3ConfigErrors } from '../features/minimaxH3Config.js';
 
 export function createTrainingActions({
   state,
@@ -25,6 +25,8 @@ export function createTrainingActions({
   refreshTrainingLog,
   startTrainingLogPolling,
   startSysMonitorPolling,
+  configTransaction,
+  recordTrainingProjectRun,
   }) {
   const placeholderTrainingTypes = new Map([
     ['lumina-lora', 'Lumina LoRA'],
@@ -42,9 +44,9 @@ export function createTrainingActions({
     });
   }
 
-  function validateConfigConflicts() {
-    const c = state.config;
-    const tt = state.activeTrainingType;
+  function validateConfigConflicts(config = state.config, trainingType = state.activeTrainingType) {
+    const c = config || {};
+    const tt = trainingType;
     const errors = [];
     const warnings = [];
     const isSageEnv = (state.runtime?.runtime?.environment || '').includes('sageattention');
@@ -55,6 +57,7 @@ export function createTrainingActions({
     const loraType = String(c.lora_type || '').trim().toLowerCase();
     const optimizerText = `${c.optimizer_type || ''} ${c.optimizer || ''}`.toLowerCase();
     const routeText = String((tt || '') + ' ' + (c.model_train_type || '')).toLowerCase();
+    errors.push(...getMiniMaxH3ConfigErrors(c, tt));
     const isAnimaRoute = routeText.includes('anima');
     const isKrea2Route = routeText.includes('krea2');
     const isNativeDitSelectiveRoute = routeText.includes('anima') || routeText.includes('newbie');
@@ -316,16 +319,29 @@ export function createTrainingActions({
     return null;
   }
 
-  async function executeTraining() {
+  let submitPromise = null;
+
+  async function executeTrainingOnce() {
     state.loading.run = true;
-    const runConfig = buildRunConfig(state.config, state.activeTrainingType);
-    attachBubbleClosedLoopActionHistory(runConfig, state.tasks, state.taskSummaries, 3);
-    const launchMetadata = buildTaskMetadataFromConfig(runConfig, state.activeTrainingType);
-    const labLaunchApi = getLabLaunchApi(state.activeTrainingType);
     syncFooterAction();
+    let launchSnapshot;
+    try {
+      launchSnapshot = await configTransaction.prepareSubmitSnapshot();
+    } catch (error) {
+      showToast(error.message || '配置保存失败，已阻止提交训练。');
+      state.loading.run = false;
+      syncFooterAction();
+      return;
+    }
+    state._lastLaunchConfigSnapshot = launchSnapshot;
+    const runConfig = buildRunConfig(launchSnapshot.config, launchSnapshot.typeId);
+    runConfig.ui_config_revision = launchSnapshot.savedRevision;
+    runConfig.idempotency_key = launchSnapshot.idempotencyKey;
+    const launchMetadata = buildTaskMetadataFromConfig(runConfig, launchSnapshot.typeId);
+    const labLaunchApi = getLabLaunchApi(launchSnapshot.typeId);
     resetTrainingMetrics();
     let trainingLaunched = false;
-    const clientCheck = validateConfigConflicts();
+    const clientCheck = validateConfigConflicts(launchSnapshot.config, launchSnapshot.typeId);
     if (clientCheck.errors.length > 0) {
       showToast(clientCheck.errors[0]);
       state.preflight = { can_start: false, errors: clientCheck.errors, warnings: clientCheck.warnings };
@@ -348,8 +364,8 @@ export function createTrainingActions({
     if (api.checkOutputConflict) {
       try {
         const conflictResp = await api.checkOutputConflict(
-          state.config.output_dir || '',
-          state.config.output_name || '',
+          runConfig.output_dir || '',
+          runConfig.output_name || '',
         );
         const conflictData = conflictResp?.data;
         if (conflictData?.conflict && conflictData.existing_files?.length > 0) {
@@ -435,14 +451,26 @@ export function createTrainingActions({
         };
       }
 
+      if (!configTransaction.isSnapshotCurrent(launchSnapshot)) {
+        throw new Error('配置在预检期间发生变化，请重新提交训练。');
+      }
+
       // Feature 4：训练前参数摘要确认卡
       if (window.openTrainingSummary) {
-        const confirmed = await window.openTrainingSummary(state.config, state.activeTrainingType, runConfig);
+        const confirmed = await window.openTrainingSummary(
+          launchSnapshot.config,
+          launchSnapshot.typeId,
+          runConfig,
+        );
         if (!confirmed) {
           state.loading.run = false;
           syncFooterAction();
           return;
         }
+      }
+
+      if (!configTransaction.isSnapshotCurrent(launchSnapshot)) {
+        throw new Error('配置在确认期间发生变化，请重新提交训练。');
       }
 
       state._pendingTrainingMetadata = launchMetadata;
@@ -476,6 +504,19 @@ export function createTrainingActions({
       }
       if (responseTaskId) state.activeTrainingTaskId = responseTaskId;
       if (responseTaskId) rememberTrainingTaskMetadata(responseTaskId, launchMetadata);
+      if (responseTaskId && typeof recordTrainingProjectRun === 'function') {
+        const projectId = String(
+          launchSnapshot.config?.training_project_id
+            || runConfig.training_project_id
+            || '',
+        ).trim();
+        const versionId = String(
+          launchSnapshot.config?.training_version_id
+            || runConfig.training_version_id
+            || '',
+        ).trim();
+        await recordTrainingProjectRun(responseTaskId, projectId, versionId);
+      }
       switchToTrainingMonitor();
       renderView('training');
       const tasksResponse = await api.getTasks();
@@ -515,6 +556,14 @@ export function createTrainingActions({
         updateJSONPreview();
       }
     }
+  }
+
+  function executeTraining() {
+    if (submitPromise) return submitPromise;
+    submitPromise = executeTrainingOnce().finally(() => {
+      submitPromise = null;
+    });
+    return submitPromise;
   }
 
   return { validateConfigConflicts, executeTraining };

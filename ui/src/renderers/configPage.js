@@ -8,6 +8,7 @@ export function createConfigPageRenderer({
   renderPreflightReport,
   renderSlot,
   renderExperimentalTrainingPanel,
+  renderTrainingProjectBar,
   renderConfigSections,
   renderFloatingTrainingAssistant,
   renderNavigator,
@@ -29,6 +30,7 @@ export function createConfigPageRenderer({
           <h2>${escapeHtml(typeLabel)} LoRA 模式</h2>
           <p>${waterfall ? '<span style="color:var(--text-muted);font-size:0.82rem;">📜 瀑布流模式：所有参数在同一页展示，可通过顶部标签栏快速跳转。</span>' : ''}</p>
         </header>
+        ${renderTrainingProjectBar()}
         ${renderPreflightOverviewPanel()}
         ${renderPreflightReport()}
         ${renderSlot('training.preflight_panel')}

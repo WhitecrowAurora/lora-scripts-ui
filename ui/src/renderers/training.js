@@ -15,11 +15,10 @@
 
 import { escapeHtml, _ico } from '../utils/dom.js';
 import { schedulerOption } from '../features/settingsOptions.js';
-import { formatDuration, renderBubbleAdvisorAbEvidenceBadge, renderSummaryCard } from '../utils/trainingMetrics.js';
-import { getBubbleClosedLoopHistoryBucket, renderBubbleClosedLoopBadge } from '../utils/bubbleClosedLoopEvidence.js';
+import { formatDuration, renderSummaryCard } from '../utils/trainingMetrics.js';
 import { getMultiBatchEvidenceFromTask, renderMultiBatchEvidenceBadge } from '../utils/multiBatchEvidence.js';
 import { getTrainingRuntimeSummaryFromTask } from '../utils/trainingRuntimeSummary.js';
-import { canDeleteTask, getQueueMetaText, getQueuedTasks, getRunningTasks, getTaskId, isTaskQueued, isTaskRunning, isTaskFailed, isTaskSuccessful } from '../utils/taskStatus.js';
+import { canDeleteTask, getQueueMetaText, getQueuedTasks, getRunningTasks, getTaskId, isTaskQueued, isTaskRunning, isTaskPaused, isTaskFailed, isTaskSuccessful } from '../utils/taskStatus.js';
 import { tweenNumber, clearNumberCache } from '../utils/numberTween.js';
 import {
   renderCompileRuntimeCard,
@@ -32,21 +31,46 @@ import {
   renderSmartSensingRuntimeCard,
 } from './trainingRuntimeCards.js';
 
-const BUBBLE_CLOSED_LOOP_FILTERS = [
-  { id: 'all', label: '全部' },
-  { id: 'kept', label: '已保留' },
-  { id: 'rollback', label: '已回滚' },
-  { id: 'blocked', label: '阻断/待证据' },
-  { id: 'active', label: '进行中' },
-  { id: 'none', label: '无 Bubble Auto' },
-];
-
 export function createTrainingRenderer({ state, renderSlot, deps }) {
   function _renderPreflightPanel() {
     return deps && typeof deps.renderPreflightPanel === 'function' ? deps.renderPreflightPanel() : '';
   }
   function _renderSamplesPanel() {
-    return deps && typeof deps.renderSamplesPanel === 'function' ? deps.renderSamplesPanel() : '';
+    const fallback = deps && typeof deps.renderSamplesPanel === 'function' ? deps.renderSamplesPanel() : '';
+    const view = state.trainingObservability || {};
+    const taskId = String(state.activeTrainingTaskId || view.taskId || '');
+    const stale = view.taskId && taskId && view.taskId !== taskId;
+    let body = '';
+    if (!taskId) {
+      body = '<div class="train-preview-state">请选择一个训练任务查看预览。</div>';
+    } else if (stale || view.previewState === 'loading' || view.previewState === 'idle') {
+      body = '<div class="train-preview-state">正在加载当前任务预览...</div>';
+    } else if (view.previewState === 'error') {
+      body = '<div class="train-preview-state is-error">' + escapeHtml(view.previewError || '预览加载失败') + '</div>';
+    } else if (!Array.isArray(view.previews) || !view.previews.length) {
+      body = '<div class="train-preview-state">当前任务尚未生成预览。</div>';
+    } else {
+      body = '<div class="train-preview-grid">' + view.previews.map(function(item) {
+        const name = String(item.name || '');
+        const url = '/api/task_preview/' + encodeURIComponent(taskId)
+          + '/file?name=' + encodeURIComponent(name);
+        const meta = [
+          item.step >= 0 ? 'Step ' + item.step : '',
+          item.epoch >= 0 ? 'Epoch ' + item.epoch : '',
+          item.sample >= 0 ? 'Sample ' + item.sample : '',
+        ].filter(Boolean).join(' · ');
+        return '<a class="train-preview-item" href="' + url + '" target="_blank" rel="noopener">'
+          + '<img src="' + url + '" loading="lazy" alt="' + escapeHtml(name) + '">'
+          + '<span>' + escapeHtml(name) + '</span>'
+          + (meta ? '<small>' + escapeHtml(meta) + '</small>' : '')
+          + '</a>';
+      }).join('') + '</div>';
+    }
+    return '<section class="train-preview-run">'
+      + '<header><strong>当前任务预览</strong>'
+      + '<button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingPreviews(\''
+      + String(taskId).replace(/'/g, '') + '\')">刷新</button></header>'
+      + body + '</section>' + fallback;
   }
   function _buildSysMonitorHTML() {
     return deps && typeof deps._buildSysMonitorHTML === 'function' ? deps._buildSysMonitorHTML() : '';
@@ -87,75 +111,12 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
     return summary && typeof summary === 'object' ? summary : null;
   }
 
-  function getBubbleAdvisorAbEvidence(task) {
-    var metadata = task && task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
-    var taskId = getTaskId(task);
-    var summary = taskId && state.taskSummaries ? state.taskSummaries[taskId] : null;
-    summary = summary && typeof summary === 'object' ? summary : {};
-    var embeddedSummary = task && task._summary && typeof task._summary === 'object' ? task._summary : {};
-    var evidence = metadata.bubble_advisor_ab_evidence
-      || task.bubble_advisor_ab_evidence
-      || summary.bubbleAdvisorAbEvidence
-      || summary.bubble_advisor_ab_evidence
-      || embeddedSummary.bubbleAdvisorAbEvidence
-      || embeddedSummary.bubble_advisor_ab_evidence
-      || null;
-    return evidence && typeof evidence === 'object' ? evidence : null;
-  }
-
-  function getBubbleClosedLoopState(task) {
-    var metadata = task && task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
-    var taskId = getTaskId(task);
-    var summary = taskId && state.taskSummaries ? state.taskSummaries[taskId] : null;
-    summary = summary && typeof summary === 'object' ? summary : {};
-    var embeddedSummary = task && task._summary && typeof task._summary === 'object' ? task._summary : {};
-    var closedLoop = metadata.bubble_closed_loop_state
-      || task.bubble_closed_loop_state
-      || summary.bubbleClosedLoopState
-      || summary.bubble_closed_loop_state
-      || embeddedSummary.bubbleClosedLoopState
-      || embeddedSummary.bubble_closed_loop_state
-      || null;
-    return closedLoop && typeof closedLoop === 'object' ? closedLoop : null;
-  }
-
   function getMultiBatchEvidence(task) {
     return getMultiBatchEvidenceFromTask(task, state.taskSummaries);
   }
 
   function getTrainingRuntimeSummary(task) {
     return getTrainingRuntimeSummaryFromTask(task, state.taskSummaries);
-  }
-
-  function getTaskBubbleClosedLoopBucket(task) {
-    return getBubbleClosedLoopHistoryBucket(getBubbleClosedLoopState(task));
-  }
-
-  function matchesBubbleClosedLoopHistoryFilter(task, filter) {
-    var normalized = BUBBLE_CLOSED_LOOP_FILTERS.some(function(item) { return item.id === filter; }) ? filter : 'all';
-    if (normalized === 'all') return true;
-    return getTaskBubbleClosedLoopBucket(task) === normalized;
-  }
-
-  function renderBubbleClosedLoopHistoryFilterBar(tasks) {
-    if (!tasks.length) return '';
-    var activeFilter = BUBBLE_CLOSED_LOOP_FILTERS.some(function(item) { return item.id === state.bubbleClosedLoopHistoryFilter; })
-      ? state.bubbleClosedLoopHistoryFilter
-      : 'all';
-    var counts = { all: tasks.length, kept: 0, rollback: 0, blocked: 0, active: 0, none: 0 };
-    for (var i = 0; i < tasks.length; i++) {
-      var bucket = getTaskBubbleClosedLoopBucket(tasks[i]);
-      if (counts[bucket] !== undefined) counts[bucket] += 1;
-    }
-    return '<div class="bubble-history-filter-bar" role="group" aria-label="Bubble Auto history filter">'
-      + BUBBLE_CLOSED_LOOP_FILTERS.map(function(item) {
-        var isActive = activeFilter === item.id;
-        var count = counts[item.id] || 0;
-        return '<button type="button" class="bubble-history-filter' + (isActive ? ' active' : '') + '" onclick="setBubbleClosedLoopHistoryFilter(\'' + item.id + '\')">'
-          + escapeHtml(item.label) + '<span>' + String(count) + '</span>'
-          + '</button>';
-      }).join('')
-      + '</div>';
   }
 
   function renderPluginSdkTaskSummary(task) {
@@ -194,6 +155,7 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
   }
 
   function _queueStatusMeta(task) {
+    if (isTaskPaused(task)) return { key: 'paused', label: '已暂停', color: 'var(--accent)' };
     if (isTaskRunning(task)) return { key: 'running', label: '运行中', color: 'var(--warning)' };
     if (isTaskQueued(task)) return { key: 'queued', label: '排队中', color: 'var(--info)' };
     if (isTaskSuccessful(task)) return { key: 'done', label: '已完成', color: 'var(--success)' };
@@ -203,21 +165,47 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
 
   function renderTrainingQueueRail(activeId, queueItems) {
     var followLatest = state.trainingLogFollowLatest !== false;
+    var currentRunId = String(state.trainingQueue?.current_run_id || '');
+    var currentStatus = String(state.trainingQueue?.current_status || '').toUpperCase();
     var itemsHtml = !queueItems.length
       ? '<div class="train-queue-empty">暂无任务<br><span class="train-queue-empty-hint">启动训练后会出现在此列表</span></div>'
       : queueItems.map(function(task) {
         var id = getTaskId(task);
+        if (id && id === currentRunId && currentStatus) {
+          task = Object.assign({}, task, { status: currentStatus });
+        }
         var selected = id && id === activeId;
         var meta = _queueStatusMeta(task);
         var label = _queueTaskLabel(task);
         var typeTag = task.training_type_label || task.model_train_type || '';
         var queueMeta = getQueueMetaText(task);
+        var etaText = task.eta?.available
+          ? ('预计等待约 ' + (task.eta.wait_seconds < 60
+            ? Math.round(task.eta.wait_seconds) + ' 秒'
+            : Math.round(task.eta.wait_seconds / 60) + ' 分钟'))
+          : (isTaskQueued(task) ? '预计等待：不可用' : '');
         var shortId = id ? id.slice(0, 8) : '--------';
+        var rowControls = id === currentRunId && isTaskPaused(task)
+          ? '<div class="train-queue-actions"><button type="button" title="恢复训练" onclick="event.stopPropagation();resumeTrainingRun(\'' + id + '\')">' + _ico('play', 12) + '</button></div>'
+          : (id === currentRunId && isTaskRunning(task)
+            ? '<div class="train-queue-actions"><button type="button" title="暂停训练" onclick="event.stopPropagation();pauseTrainingRun(\'' + id + '\')">' + _ico('pause', 12) + '</button></div>'
+            : (isTaskQueued(task) ? ''
+              + '<div class="train-queue-actions">'
+              +   '<button type="button" title="编辑排队参数" onclick="event.stopPropagation();openQueuedRunEditor(\'' + id + '\')">' + _ico('edit', 12) + '</button>'
+              +   '<button type="button" title="上移" onclick="event.stopPropagation();moveQueuedRun(\'' + id + '\',-1)">' + _ico('arrow-up', 12) + '</button>'
+              +   '<button type="button" title="下移" onclick="event.stopPropagation();moveQueuedRun(\'' + id + '\',1)">' + _ico('arrow-down', 12) + '</button>'
+              + '</div>'
+              : (isTaskFailed(task)
+                ? '<div class="train-queue-actions"><button type="button" title="重新排队" onclick="event.stopPropagation();replayTrainingRun(\'' + id + '\',\'requeue\')">' + _ico('refresh-cw', 12) + '</button></div>'
+                : (isTaskSuccessful(task)
+                  ? '<div class="train-queue-actions"><button type="button" title="重新训练" onclick="event.stopPropagation();replayTrainingRun(\'' + id + '\',\'rerun\')">' + _ico('play', 12) + '</button></div>'
+                  : ''))));
         return ''
-          + '<button type="button" class="train-queue-item' + (selected ? ' is-selected' : '') + ' status-' + meta.key + '"'
+          + '<div class="train-queue-item' + (selected ? ' is-selected' : '') + ' status-' + meta.key + '"'
           + ' data-task-id="' + escapeHtml(id) + '"'
-          + ' onclick="selectTrainingLogTask(\'' + String(id).replace(/'/g, '') + '\',{pin:true})"'
+          + (isTaskQueued(task) ? ' draggable="true" ondragstart="queueDragStart(event,\'' + id + '\')" ondragover="queueDragOver(event)" ondrop="queueDrop(event,\'' + id + '\')"' : '')
           + ' title="' + escapeHtml(label + ' · ' + shortId) + '">'
+          + '<button type="button" class="train-queue-item-main" onclick="selectTrainingLogTask(\'' + String(id).replace(/'/g, '') + '\',{pin:true})">'
           +   '<div class="train-queue-item-top">'
           +     '<span class="train-queue-dot" style="background:' + meta.color + ';"></span>'
           +     '<span class="train-queue-name">' + escapeHtml(label) + '</span>'
@@ -228,7 +216,10 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
           +     '<span class="train-queue-id">' + escapeHtml(shortId) + '</span>'
           +   '</div>'
           +   (queueMeta ? '<div class="train-queue-extra">' + escapeHtml(queueMeta) + '</div>' : '')
-          + '</button>';
+          +   (etaText ? '<div class="train-queue-eta">' + escapeHtml(etaText) + (task.eta?.available ? '（估算）' : '') + '</div>' : '')
+          + '</button>'
+          + rowControls
+          + '</div>';
       }).join('');
 
     return ''
@@ -248,7 +239,17 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
 
   function renderTraining(container) {
     var running = getRunningTasks(state.tasks);
-    var queued = getQueuedTasks(state.tasks);
+    var queueProjection = Array.isArray(state.trainingQueue?.queued_runs) ? state.trainingQueue.queued_runs : [];
+    var projectedById = new Map(queueProjection.map(function(item) { return [String(item.run_id || ''), item]; }));
+    var queued = getQueuedTasks(state.tasks).map(function(task) {
+      return Object.assign({}, task, projectedById.get(getTaskId(task)) || {});
+    });
+    queueProjection.forEach(function(item) {
+      if (!queued.some(function(task) { return getTaskId(task) === String(item.run_id || ''); })) {
+        queued.push(Object.assign({ id: item.run_id, status: 'QUEUED' }, item));
+      }
+    });
+    queued.sort(function(a, b) { return Number(a.queue_position || 0) - Number(b.queue_position || 0); });
     var finished = state.tasks.filter(function(t) { return ['FINISHED', 'COMPLETED'].includes(String(t.status || '').toUpperCase()); });
     var terminated = state.tasks.filter(function(t) { return ['TERMINATED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(String(t.status || '').toUpperCase()); });
     var lastTask = state.tasks[state.tasks.length - 1];
@@ -475,12 +476,6 @@ var statusDot = '', statusText = '';
         + '</div>';
     }).join('');
     var historyTasks = state.tasks.slice().reverse();
-    var bubbleHistoryFilter = BUBBLE_CLOSED_LOOP_FILTERS.some(function(item) { return item.id === state.bubbleClosedLoopHistoryFilter; })
-      ? state.bubbleClosedLoopHistoryFilter
-      : 'all';
-    var visibleHistoryTasks = historyTasks.filter(function(task) {
-      return matchesBubbleClosedLoopHistoryFilter(task, bubbleHistoryFilter);
-    });
 
     container.innerHTML = ''
     + '<div class="train-dashboard">'
@@ -520,10 +515,15 @@ var statusDot = '', statusText = '';
     +       '</span>'
     +       '<div style="display:flex;gap:8px;align-items:center;">'
    +         '<label style="display:flex;align-items:center;gap:4px;font-size:0.7rem;color:var(--text-muted);cursor:pointer;">'
+    +         '<input id="training-log-search-input" class="train-log-search-input" type="search" placeholder="搜索当前日志">'
+    +         '<button class="btn btn-outline btn-sm" type="button" title="搜索"'
+    +           ' onclick="searchTrainingLog(document.getElementById(\'training-log-search-input\').value)">'
+    +           _ico('search', 12) + '</button>'
     +           '<input type="checkbox" id="training-log-autoscroll" checked style="width:13px;height:13px;"> 自动滚动'
     +         '</label>'
     +         '<button class="btn btn-outline btn-sm" type="button" onclick="refreshTrainingLog(\'' + String(taskId || '').replace(/'/g, '') + '\')" style="font-size:0.68rem;padding:2px 10px;">\u5237\u65b0</button>'
     +       '</div>'
+    +     '<div id="training-log-search-results" class="train-log-search-results"></div>'
     +     '</div>'
     +     '<div id="training-log-container" class="train-terminal">'
    +       (isTaskRunning(curTask)
@@ -610,12 +610,9 @@ var statusDot = '', statusText = '';
     +     '<div class="train-panel-title">' + _ico('clock', 14) + ' \u4efb\u52a1\u5386\u53f2</div>'
     +     (state.tasks.length > 0 ? '<button class="btn btn-outline btn-sm" style="font-size:0.7rem;padding:2px 8px;" type="button"onclick="clearAllTaskHistory()">' + _ico('trash-2', 12) + ' \u6e05\u7a7a\u5386\u53f2</button>' : '')
     +   '</div>'
-    +   renderBubbleClosedLoopHistoryFilterBar(historyTasks)
     +   (state.tasks.length === 0
-        ? '<p style="color:var(--text-muted);font-size:0.78rem;">\u6682\u65e0\u4efb\u52a1\u8bb0\u5f55</p>'
-        : (visibleHistoryTasks.length === 0
-          ? '<p style="color:var(--text-muted);font-size:0.78rem;margin:8px 0 0;">当前筛选没有任务记录</p>'
-          : visibleHistoryTasks.map(function(task) {
+        ? '<p style="color:var(--text-muted);font-size:0.78rem;">暂无任务记录</p>'
+        : historyTasks.map(function(task) {
       var statusMap = { QUEUED: _ico('clock') + ' 排队中', RUNNING: _ico('loader') + ' \u8fd0\u884c\u4e2d', FINISHED: _ico('check-circle')+ ' \u5df2\u5b8c\u6210', COMPLETED: _ico('check-circle') + ' \u5df2\u5b8c\u6210', TERMINATED: _ico('stop-circle') + ' \u5df2\u7ec8\u6b62', FAILED: _ico('x-circle') + ' \u5931\u8d25', CANCELLED: _ico('stop-circle') + ' \u5df2\u53d6\u6d88', CANCELED: _ico('stop-circle') + ' 已取消', CREATED: _ico('clock') + ' \u5df2\u521b\u5efa' };
       var statusColor = { QUEUED: 'var(--info)', RUNNING: 'var(--warning)', FINISHED: 'var(--success)', COMPLETED: 'var(--success)', TERMINATED: 'var(--danger)', FAILED: 'var(--danger)', CANCELLED: 'var(--danger)', CANCELED: 'var(--danger)', CREATED: 'var(--text-dim)' };
       var taskStatus = String(task.status || '').toUpperCase();
@@ -626,8 +623,6 @@ var statusDot = '', statusText = '';
       var canDelete = canDeleteTask(task);
       var badge = hasCached ? _ico('bar-chart', 14) : (canInspectQuality && !task._recentlyFinished ? (canScore ? '\u70b9\u51fb\u8bc4\u5206' : '点击查看报告') : '');
       var sdkSummary = getPluginSdkSummary(task);
-      var bubbleEvidence = getBubbleAdvisorAbEvidence(task);
-      var bubbleClosedLoop = getBubbleClosedLoopState(task);
       var multiBatchEvidence = getMultiBatchEvidence(task);
       var trainingRuntimeSummary = getTrainingRuntimeSummary(task);
       var taskLabel= task.output_name || task.name || (sdkSummary && sdkSummary.runner_id) || taskId.substring(0, 8);
@@ -642,8 +637,6 @@ var statusDot = '', statusText = '';
         + '<span style="font-size:0.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(taskLabel) + '</span>'
         + (typeTag ? '<span style="font-size:0.65rem;color:var(--text-muted);background:var(--bg-hover);padding:1px 5px;border-radius:3px;">' + escapeHtml(typeTag) + '</span>' : '')
         + (badge ? '<span style="font-size:0.68rem;color:var(--accent);opacity:0.7;">' + badge + '</span>' : '')
-        + (bubbleEvidence ? renderBubbleAdvisorAbEvidenceBadge(bubbleEvidence) : '')
-        + (bubbleClosedLoop ? renderBubbleClosedLoopBadge(bubbleClosedLoop) : '')
         + (multiBatchEvidence ? renderMultiBatchEvidenceBadge(multiBatchEvidence) : '')
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
@@ -660,15 +653,13 @@ var statusDot = '', statusText = '';
           ? renderSummaryCard(state.taskSummaries[taskId], {
             pcieTransferBenchmark: state.pcieTransferBenchmark,
             showCompileRuntime: true,
-            bubbleAdvisorAbEvidence: bubbleEvidence,
-            bubbleClosedLoopState: bubbleClosedLoop,
             multiBatchEvidence,
             trainingRuntimeSummary,
           })
           : '')
         + '</div>'
         + '</div>';
-    }).join('')))
+    }).join(''))
     + '</div>'
 
     + '</div>'

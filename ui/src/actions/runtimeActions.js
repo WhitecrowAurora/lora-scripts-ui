@@ -4,7 +4,6 @@
 // 依赖（工厂注入）：state, api, showToast, renderView, updateJSONPreview, buildRunConfig, mergeConfigPatch, saveDraft
 
 import { collectPreflightRecommendedConfigPatch } from '../utils/preflightRecommendedPatch.js';
-import { normalizeBubbleAdvisorReport } from '../utils/bubbleAdvisorNarrative.js';
 
 export function createRuntimeActions({ state, api, showToast, renderView, updateJSONPreview, buildRunConfig, mergeConfigPatch, saveDraft }) {
   function _cloneBenchmarkParams(options) {
@@ -196,79 +195,7 @@ export function createRuntimeActions({ state, api, showToast, renderView, update
     return collectPreflightRecommendedConfigPatch(state.preflight);
   }
 
-  function _object(value) {
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  }
-
-  function _collectBubbleAdvisorReport() {
-    const preflight = _object(state.preflight);
-    const advisor = _object(preflight.training_advisor);
-    const candidates = [
-      preflight.bubble_controller,
-      preflight.bubble_runtime_controller,
-      advisor.bubble_controller,
-      advisor.bubble_runtime_controller,
-      _object(preflight.runtime).bubble_controller,
-    ];
-    return candidates.find((item) => item && typeof item === 'object' && !Array.isArray(item)) || null;
-  }
-
-  function _isBubbleAdvisorPatchReady(report) {
-    const plan = _object(report?.action_plan || report);
-    return plan.status === 'advisor_patch_ready'
-      && plan.apply_mode === 'advisor_patch'
-      && plan.can_apply_to_next_request === true;
-  }
-
-  async function _applyBubbleAdvisorPatch(report) {
-    const plan = _object(report?.action_plan || report);
-    const info = normalizeBubbleAdvisorReport(report);
-    const overlay = _object(plan.config_overlay);
-    const keys = Object.keys(overlay);
-    const previewKeys = keys.length ? keys : (Array.isArray(plan.mutations) ? plan.mutations.map((item) => item?.path).filter(Boolean) : []);
-    const preview = previewKeys.slice(0, 8).join(', ') + (previewKeys.length > 8 ? '...' : '');
-    const reason = info
-      ? '\n\n空泡来源: ' + info.diagnosisLabel
-        + '\n建议动作: ' + info.actionLabel
-        + (info.maxRegressionRatio !== null ? '\n回滚阈值: 吞吐回退超过 ' + (info.maxRegressionRatio * 100).toFixed(1) + '%' : '')
-      : '';
-    const ok = window.confirm('应用 Bubble Advisor 建议到下一次训练配置草稿？\n\n将修改: ' + (preview || 'next-run request') + reason + '\n\n不会修改当前正在运行的训练。');
-    if (!ok) return;
-    const baseRequest = buildRunConfig(state.config, state.activeTrainingType);
-    const response = await api.applyBubbleAdvisorPatch(baseRequest, report);
-    const payload = response?.data || response;
-    if (!payload?.ok) {
-      const blocked = Array.isArray(payload?.blocked_reasons) ? payload.blocked_reasons.join(', ') : '';
-      showToast(payload?.reason || blocked || 'Bubble Advisor 建议暂不能应用。');
-      return;
-    }
-    const patch = _object(payload.next_request_overlay || payload.config_patch);
-    const patchKeys = Object.keys(patch);
-    if (!patchKeys.length) {
-      showToast('当前配置已经符合 Bubble Advisor 建议。');
-      return;
-    }
-    mergeConfigPatch(patch);
-    state.hasLocalDraft = true;
-    saveDraft();
-    state.preflight = null;
-    updateJSONPreview();
-    showToast('已应用 Bubble Advisor 建议到下一次训练草稿。');
-    if (state.activeModule === 'config') {
-      renderView('config');
-    } else if (state.activeModule === 'training') {
-      state.trainSubTab = 'preflight';
-      renderView('training');
-    }
-  }
-
   async function applyTrainingAdvisorPatch() {
-    const bubbleReport = _collectBubbleAdvisorReport();
-    if (_isBubbleAdvisorPatchReady(bubbleReport)) {
-      await _applyBubbleAdvisorPatch(bubbleReport);
-      return;
-    }
-
     const patch = _collectAdvisorPatch();
     const keys = Object.keys(patch);
     if (!keys.length) {

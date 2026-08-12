@@ -17,5 +17,7 @@
     "tradeoffs": "",
     "codePath": "backend/core/configs_validators.py + preference_quality_integration.py"
   },
-  "relatedConfigs": ["preference_scoring_enabled"]
+  "relatedConfigs": [
+    "preference_scoring_enabled"
+  ]
 }

@@ -15,13 +15,6 @@ export function createTrainTabsActions({ state,renderView, scanDataset, refreshS
     }
   }
 
-  function setBubbleClosedLoopHistoryFilter(filter) {
-    const allowed = new Set(['all', 'kept', 'rollback', 'blocked', 'active', 'none']);
-    state.bubbleClosedLoopHistoryFilter = allowed.has(filter) ? filter : 'all';
-    if (state.activeModule === 'training') {
-      renderView('training');
-    }
-  }
 
-  return { switchTrainTab, setBubbleClosedLoopHistoryFilter };
+  return { switchTrainTab };
 }

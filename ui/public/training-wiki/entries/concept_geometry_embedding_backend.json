@@ -6,13 +6,12 @@
     "all"
   ],
   "standard": {
-    "summary": "Embedding 后端 可选值（含换档影响）。",
-    "effect": "枚举切换会改变算法或资源行为。",
-    "whenToUse": "默认优先，短测后再换。",
-    "avoidWhen": "未理解影响前不要叠多个激进档。",
+    "summary": "Concept Geometry 的文本 embedding 当前使用 PyTorch 后端。",
+    "effect": "该字段保留在配置中用于兼容，产品界面仅提供已实现的 PyTorch 路径。",
+    "whenToUse": "启用语义 embedding 增强时保持默认值。",
+    "avoidWhen": "不要在旧配置中手工指定尚未实现的 ONNX 后端。",
     "optionDescriptions": {
-      "pytorch": "PyTorch 算 embedding。",
-      "onnx": "ONNX Runtime。"
+      "pytorch": "使用 PyTorch 计算 embedding。"
     }
   },
   "advanced": {},

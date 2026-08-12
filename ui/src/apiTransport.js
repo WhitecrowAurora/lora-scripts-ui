@@ -73,6 +73,8 @@ export async function request(path, options = {}) {
 
     if (!response.ok) {
       const error = new Error(formatApiMessage(payload?.detail || payload?.message || payload) || `请求失败：${response.status}`);
+      error.status = response.status;
+      error.payload = payload;
       reportWebuiError('api_response_error', error, {
         path,
         status: response.status,

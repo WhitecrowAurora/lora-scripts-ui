@@ -25,11 +25,11 @@
       "glora": "GLoRA。",
       "glokr": "GLoKr。",
       "ia3": "几乎只学通道缩放，文件最小。",
-      "dora": "方向加幅度，常比纯 LoRA 贴底，一步稍慢。",
+      "dora": "方向加幅度，常比纯 LoRA 贴底，一步稍慢。（本选择器里没有：DoRA 走的是独立入口 network_module='networks.lora' + use_dora 开关，不是本字段的取值。）",
       "oft": "正交约束着改，块和秩设错会学不动。",
       "diag-oft": "对角版 OFT，更轻一点。",
       "full": "几乎按全参那档上，最能改也最吃显存、最好过拟合。",
-      "hydralora": "多专家路由，路由不稳算力就白扔。"
+      "hydralora": "多专家路由，路由不稳算力就白扔。（本选择器里没有：HydraLoRA 由独立开关 hydralora_enabled 驱动，配套 hydralora_num_experts / hydralora_top_k 等字段。）"
     }
   },
   "advanced": {

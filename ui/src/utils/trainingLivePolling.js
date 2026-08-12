@@ -27,8 +27,28 @@ export function createTrainingLivePolling({
   let sysMonitorTimer = null;
   let gpuPollCooldown = false;
 
+  function observabilityState() {
+    if (!state.trainingObservability) {
+      state.trainingObservability = {
+        taskId: '', generation: 0, cursor: null, logState: 'idle',
+        previewState: 'idle', previews: [], resynced: false, error: '',
+      };
+    }
+    return state.trainingObservability;
+  }
+
   function resetTrainingLogCursor(taskId = '') {
     trainingLogCursor = createTrainingLogCursor(taskId);
+    const view = observabilityState();
+    view.taskId = String(taskId || '');
+    view.generation = Number(view.generation || 0) + 1;
+    view.cursor = null;
+    view.logLines = [];
+    view.previews = [];
+    view.logState = 'idle';
+    view.previewState = 'idle';
+    view.resynced = false;
+    view.error = '';
   }
 
   function collectIncrementalLines(taskId, lines, total, liveLine) {
@@ -80,6 +100,7 @@ export function createTrainingLivePolling({
     }
     if (!isTaskQueued(state.tasks.find((task) => task.id === id || task.task_id === id) || {})) {
       refreshTrainingLog(id);
+      refreshTrainingPreviews(id);
       startTrainingLogPolling();
     }
   }
@@ -92,6 +113,7 @@ export function createTrainingLivePolling({
       if (latestId) {
         state.activeTrainingTaskId = latestId;
         refreshTrainingLog(latestId);
+        refreshTrainingPreviews(latestId);
         startTrainingLogPolling();
       }
     }
@@ -149,91 +171,160 @@ export function createTrainingLivePolling({
     el.innerHTML = buildSysMonitorHTML();
   }
 
+  async function searchTrainingLog(query = '') {
+    const targetId = String(state.activeTrainingTaskId || '').trim();
+    const needle = String(query || '').trim();
+    const resultEl = $('#training-log-search-results');
+    if (!targetId || !needle) {
+      if (resultEl) resultEl.innerHTML = '';
+      return null;
+    }
+    const view = observabilityState();
+    if (view.taskId !== targetId) resetTrainingLogCursor(targetId);
+    const generation = view.generation;
+    view.searchState = 'loading';
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--text-muted);">正在搜索当前任务日志...</span>';
+    try {
+      const response = await api.getTaskOutput(targetId, 100, {
+        cursor: 0, limit: 100, search: needle,
+      });
+      if (view.taskId !== targetId || view.generation !== generation
+          || state.activeTrainingTaskId !== targetId) return { stale: true };
+      const payload = response?.data || {};
+      const matches = Array.isArray(payload.matches) ? payload.matches.slice(0, 100) : [];
+      view.searchMatches = matches;
+      view.searchState = matches.length ? 'ready' : 'empty';
+      if (resultEl) {
+        const note = payload.search_truncated
+          ? '<div class="train-log-search-note">结果达到上限，可继续缩小关键词。</div>' : '';
+        resultEl.innerHTML = note + (matches.length
+          ? renderLogLines(matches.map((item) => `[${item.offset}] ${item.snippet}`))
+          : '<span style="color:var(--text-muted);">当前扫描页没有匹配项。</span>');
+      }
+      return payload;
+    } catch (error) {
+      if (view.taskId !== targetId || view.generation !== generation) return { stale: true };
+      view.searchState = 'error';
+      const message = String(error?.message || error || '搜索失败');
+      if (resultEl) resultEl.innerHTML = `<span style="color:var(--danger);">${message}</span>`;
+      return null;
+    }
+  }
+
+  async function refreshTrainingPreviews(taskId = '') {
+    const targetId = String(taskId || state.activeTrainingTaskId || '').trim();
+    if (!targetId) return null;
+    const view = observabilityState();
+    if (view.taskId !== targetId) resetTrainingLogCursor(targetId);
+    const generation = view.generation;
+    view.previewState = 'loading';
+    try {
+      const response = await api.getTaskPreviews(targetId, { cursor: 0, limit: 60 });
+      if (view.taskId !== targetId || view.generation !== generation) return { stale: true };
+      const payload = response?.data || {};
+      if (String(payload.resolved_run_id || targetId) && state.activeTrainingTaskId !== targetId) {
+        return { stale: true };
+      }
+      view.previews = Array.isArray(payload.items) ? payload.items.slice(0, 60) : [];
+      view.previewState = view.previews.length ? 'ready' : 'empty';
+      view.previewError = '';
+      return payload;
+    } catch (error) {
+      if (view.taskId !== targetId || view.generation !== generation) return { stale: true };
+      view.previewState = 'error';
+      view.previewError = String(error?.message || error || '预览请求失败');
+      return null;
+    }
+  }
+
   async function refreshTrainingLog(taskId = '') {
     const running = getRunningTasks(state.tasks);
     const explicitTarget = taskId
       ? state.tasks.find((task) => task.id === taskId || task.task_id === taskId) || { id: taskId, task_id: taskId, status: 'FINISHED' }
       : null;
-    const cursorTarget = trainingLogCursor.taskId
-      ? state.tasks.find((task) => task.id === trainingLogCursor.taskId || task.task_id === trainingLogCursor.taskId)
-      : null;
     const activeTarget = getActiveTrainingLogTask();
-    const target = explicitTarget || activeTarget || running[0] || cursorTarget || state.tasks[state.tasks.length - 1];
-    if (!target) return;
+    const target = explicitTarget || activeTarget || running[0] || state.tasks[state.tasks.length - 1];
+    if (!target || isTaskQueued(target)) return;
 
-    const targetId = target.id || target.task_id;
+    const targetId = getTaskId(target);
     if (!targetId) return;
-    if (trainingLogCursor.taskId && trainingLogCursor.taskId !== targetId) {
+    const view = observabilityState();
+    if (view.taskId !== targetId) {
       resetTrainingMetrics({ keepLogSnapshot: !isTaskRunning(target) });
+      resetTrainingLogCursor(targetId);
     }
-    if (isTaskQueued(target)) return;
+    const generation = view.generation;
+    const requestCursor = view.cursor;
+    view.logState = 'loading';
+    view.error = '';
 
     try {
-      const resp = await api.getTaskOutput(targetId, 1000);
+      const resp = await api.getTaskOutput(targetId, 500, {
+        cursor: requestCursor,
+        limit: 500,
+      });
+      if (view.taskId !== targetId || view.generation !== generation) return { stale: true };
+      const activeNow = getActiveTrainingLogTask();
+      const activeId = activeNow ? getTaskId(activeNow) : state.activeTrainingTaskId;
+      if (activeId && activeId !== targetId) return { stale: true };
+
       const data = resp?.data || {};
-      const lines = data.lines || [];
-      const total = Number(data.total || 0) || 0;
+      const pageLines = Array.isArray(data.lines) ? data.lines.map(String) : [];
+      const resynced = data.resynced === true;
+      if (requestCursor == null || resynced) view.logLines = pageLines;
+      else view.logLines = (Array.isArray(view.logLines) ? view.logLines : []).concat(pageLines).slice(-1000);
+      view.cursor = Number(data.next_cursor ?? data.offset ?? 0) || 0;
+      view.resynced = resynced;
+      view.logState = view.logLines.length ? 'ready' : 'empty';
+
       const liveLine = data.live_line || '';
-      const resolvedId = String(data.resolved_run_id || targetId || '');
       const status = String(data.status || '').toLowerCase();
-      const renderedLines = mergeTrainingLogLines(lines, liveLine);
-      const incrementalLines = collectIncrementalLines(targetId, lines, total, liveLine);
-      const logEl = $('#training-log-container');
-      const isRunningTarget = isTaskRunning(target) || state.tasks.some((task) => isTaskRunning(task) && getTaskId(task) === targetId);
+      const resolvedId = String(data.resolved_run_id || targetId || '');
+      const isRunningTarget = isTaskRunning(target)
+        || state.tasks.some((task) => isTaskRunning(task) && getTaskId(task) === targetId);
+      if (pageLines.length && isRunningTarget) collectTrainingMetrics(pageLines);
 
-      if (incrementalLines.length > 0 && isRunningTarget) {
-        collectTrainingMetrics(incrementalLines);
+      const renderedLines = mergeTrainingLogLines(view.logLines, liveLine);
+      let nextLogHtml = renderedLines.length
+        ? renderLogLines(renderedLines)
+        : (isRunningTarget
+          ? '<span style="color:var(--text-dim);">等待训练输出...</span>'
+          : (status === 'missing'
+            ? '<span style="color:var(--text-muted);">该任务没有可读取的 output.log。</span>'
+            : '<span style="color:var(--text-muted);">暂无日志输出。</span>'));
+      if (resynced) {
+        nextLogHtml = '<div class="train-log-resync">日志文件已轮转或截断，已从新文件重新同步。</div>' + nextLogHtml;
       }
-
-      let nextLogHtml;
-      if (renderedLines.length > 0) {
-        nextLogHtml = renderLogLines(renderedLines);
-      } else if (isRunningTarget) {
-        nextLogHtml = '<span style="color:var(--text-dim);">等待训练输出...</span>';
-      } else if (status === 'missing') {
-        nextLogHtml = '<span style="color:var(--text-muted);">该任务没有可读取的 output.log（目录可能已清理）。请选择运行中的任务，或开启「自动跟随最新」。</span>';
-      } else {
-        nextLogHtml = '<span style="color:var(--text-muted);">暂无日志输出。</span>';
-      }
-      // Snapshot key must match the id used by the renderer (requested task id).
       state.trainingLogSnapshot = {
         taskId: targetId,
         resolvedRunId: resolvedId,
         html: nextLogHtml,
         updatedAt: Date.now(),
         status,
+        resynced,
       };
-
-      if (!logEl) {
-        updateTrainingLiveMetrics();
-        return;
-      }
-      // Only paint when this target is still the active selection/follow target.
-      const activeNow = getActiveTrainingLogTask();
-      const activeId = activeNow ? getTaskId(activeNow) : '';
-      if (!activeId || activeId === targetId || state.activeTrainingTaskId === targetId) {
+      const logEl = $('#training-log-container');
+      if (logEl) {
         logEl.innerHTML = nextLogHtml;
         const autoScroll = $('#training-log-autoscroll');
-        if (autoScroll?.checked) {
-          logEl.scrollTop = logEl.scrollHeight;
-        }
+        if (autoScroll?.checked) logEl.scrollTop = logEl.scrollHeight;
       }
-
       updateTrainingLiveMetrics();
+      return data;
     } catch (error) {
+      if (view.taskId !== targetId || view.generation !== generation) return { stale: true };
       const message = String(error?.message || error || '日志请求失败');
       const errHtml = `<span style="color:var(--danger);">加载任务日志失败：${message}</span>`;
+      view.logState = 'error';
+      view.error = message;
       state.trainingLogSnapshot = {
-        taskId: targetId,
-        html: errHtml,
-        updatedAt: Date.now(),
-        status: 'error',
+        taskId: targetId, html: errHtml, updatedAt: Date.now(), status: 'error',
       };
       const logEl = $('#training-log-container');
       if (logEl) logEl.innerHTML = errHtml;
+      return null;
     }
   }
-
   function updateTrainingLiveMetrics() {
     const metrics = state.trainingMetrics;
     if (!metrics) return;
@@ -318,6 +409,8 @@ export function createTrainingLivePolling({
   return {
     resetTrainingLogCursor,
     refreshTrainingLog,
+    refreshTrainingPreviews,
+    searchTrainingLog,
     selectTrainingLogTask,
     setTrainingLogFollowLatest,
     getActiveTrainingLogTask,

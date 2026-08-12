@@ -20,7 +20,6 @@ import {
   renderSmartSensingRecommendationList,
   renderUnifiedRecommendationCard,
 } from './trainingMetricRecommendations.js';
-import { renderBubbleClosedLoopCard } from './bubbleClosedLoopEvidence.js';
 import { renderMultiBatchEvidenceCard } from './multiBatchEvidence.js';
 import { renderTrainingRuntimeSummaryCard } from './trainingRuntimeSummary.js';
 
@@ -272,98 +271,6 @@ function _reasonLabel(reason) {
   return labels[reason] || reason;
 }
 
-export function normalizeBubbleAdvisorAbEvidence(evidence) {
-  const source = _asObject(evidence);
-  if (!source.report && !source.decision && !source.comparison) return null;
-  const decision = _asObject(source.decision);
-  const comparison = _asObject(source.comparison);
-  const action = _asObject(source.action);
-  const before = _asObject(source.before);
-  const after = _asObject(source.after);
-  const beforeMetrics = _asObject(before.metrics);
-  const afterMetrics = _asObject(after.metrics);
-  const status = String(source.status || decision.status || 'needs_review');
-  const recommendedAction = String(decision.recommended_action || '');
-  const statusMap = {
-    keep_recommended: { label: '建议保留', color: 'var(--success)', icon: 'check-circle' },
-    rollback_recommended: { label: '建议回滚', color: 'var(--danger)', icon: 'rotate-ccw' },
-    needs_review: { label: '需要复核', color: 'var(--warning)', icon: 'alert-tri' },
-    insufficient_evidence: { label: '证据不足', color: 'var(--text-dim)', icon: 'alert-tri' },
-  };
-  const visual = statusMap[status] || statusMap.needs_review;
-  const reasons = Array.isArray(decision.reasons) ? decision.reasons.map(function(item) { return String(item); }).filter(Boolean) : [];
-  return {
-    status,
-    recommendedAction,
-    label: visual.label,
-    color: visual.color,
-    icon: visual.icon,
-    actionId: String(action.action_id || ''),
-    domain: String(action.domain || ''),
-    actionKind: String(action.action_kind || ''),
-    gainPct: _finiteNumber(comparison.steady_samples_per_second_gain_pct),
-    beforeSps: _finiteNumber(comparison.steady_samples_per_second_before),
-    afterSps: _finiteNumber(comparison.steady_samples_per_second_after),
-    gpuDelta: _finiteNumber(comparison.active_gpu_util_pct_delta),
-    vramDelta: _finiteNumber(comparison.peak_vram_mb_delta),
-    lossDelta: _finiteNumber(comparison.final_loss_delta),
-    beforeGpu: _finiteNumber(beforeMetrics.active_gpu_util_pct_mean),
-    afterGpu: _finiteNumber(afterMetrics.active_gpu_util_pct_mean),
-    beforeCase: String(before.case_id || ''),
-    afterCase: String(after.case_id || ''),
-    reasons,
-    autoPair: _asObject(source.auto_pair),
-  };
-}
-
-export function renderBubbleAdvisorAbEvidenceBadge(evidence) {
-  const info = normalizeBubbleAdvisorAbEvidence(evidence);
-  if (!info) return '';
-  const gain = info.gainPct === null ? '' : ' · 吞吐 ' + _formatSigned(info.gainPct, '%');
-  return '<span style="font-size:0.68rem;color:' + info.color + ';background:var(--bg-hover);border:1px solid var(--border);padding:1px 6px;border-radius:4px;white-space:nowrap;">'
-    + _ico(info.icon, 12) + ' Bubble A/B ' + escapeHtml(info.label + gain)
-    + '</span>';
-}
-
-export function renderBubbleAdvisorAbEvidenceCard(evidence) {
-  const info = normalizeBubbleAdvisorAbEvidence(evidence);
-  if (!info) return '';
-  const domain = [info.domain, info.actionKind].filter(Boolean).join(' / ') || 'advisor patch';
-  const reasonText = info.reasons.length
-    ? info.reasons.slice(0, 3).map(_reasonLabel).join('，')
-    : '暂无详细原因';
-  const autoPairText = info.autoPair && info.autoPair.baseline_found === false
-    ? '未自动找到基线证据'
-    : '已关联基线证据';
-  return '<div style="margin-top:8px;">'
-    + '<div class="status-card" style="border-left:3px solid ' + info.color + ';">'
-    + '<div class="status-label">Bubble Advisor A/B</div>'
-    + '<div style="font-size:0.95rem;font-weight:700;color:' + info.color + ';margin:4px 0;">'
-    + _ico(info.icon, 14) + ' ' + escapeHtml(info.label)
-    + (info.gainPct !== null ? ' / 吞吐 ' + escapeHtml(_formatSigned(info.gainPct, '%')) : '')
-    + '</div>'
-    + '<div class="status-sub">'
-    + '动作 ' + escapeHtml(domain)
-    + (info.actionId ? '，ID ' + escapeHtml(info.actionId) : '')
-    + '；' + escapeHtml(reasonText)
-    + '</div>'
-    + '<div class="status-sub" style="margin-top:4px;">'
-    + 'steady samples/s ' + escapeHtml(_formatPlain(info.beforeSps, '', 3))
-    + ' → ' + escapeHtml(_formatPlain(info.afterSps, '', 3))
-    + '；GPU active Δ ' + escapeHtml(_formatSigned(info.gpuDelta, '%'))
-    + '；VRAM Δ ' + escapeHtml(_formatSigned(info.vramDelta, ' MB'))
-    + '；Loss Δ ' + escapeHtml(_formatSigned(info.lossDelta, '', 4))
-    + '</div>'
-    + '<div class="status-sub" style="margin-top:4px;">'
-    + escapeHtml(autoPairText)
-    + (info.beforeGpu !== null || info.afterGpu !== null
-      ? '；GPU active ' + escapeHtml(_formatPlain(info.beforeGpu, '%')) + ' → ' + escapeHtml(_formatPlain(info.afterGpu, '%'))
-      : '')
-    + '</div>'
-    + '</div>'
-    + '</div>';
-}
-
 /**
  * 将 summary 对象渲染为 HTML 卡片。
  */
@@ -382,23 +289,10 @@ export function renderSummaryCard(s, extra = {}) {
   const compileRuntime = s.compileRuntime && typeof s.compileRuntime === 'object' ? s.compileRuntime : null;
   const lowVramProfile = s.sdxlLoraLowVramProfile && typeof s.sdxlLoraLowVramProfile === 'object' ? s.sdxlLoraLowVramProfile : null;
   const pcieTransferBenchmark = extra.pcieTransferBenchmark || null;
-  const bubbleAdvisorAbEvidence = extra.bubbleAdvisorAbEvidence
-    || extra.bubble_advisor_ab_evidence
-    || s.bubbleAdvisorAbEvidence
-    || s.bubble_advisor_ab_evidence
-    || null;
-  const bubbleAdvisorAbEvidenceCard = renderBubbleAdvisorAbEvidenceCard(bubbleAdvisorAbEvidence);
-  const bubbleClosedLoopState = extra.bubbleClosedLoopState
-    || extra.bubble_closed_loop_state
-    || s.bubbleClosedLoopState
-    || s.bubble_closed_loop_state
-    || null;
-  const bubbleClosedLoopCard = renderBubbleClosedLoopCard(bubbleClosedLoopState);
   const multiBatchEvidence = extra.multiBatchEvidence
     || extra.multi_batch_evidence
     || s.multiBatchEvidence
     || {
-      multi_batch_promotion_gate: extra.multiBatchPromotionGate || extra.multi_batch_promotion_gate || s.multiBatchPromotionGate || s.multi_batch_promotion_gate,
       multi_batch_dataloader: extra.multiBatchDataloader || extra.multi_batch_dataloader || s.multiBatchDataloader || s.multi_batch_dataloader,
       multi_batch_stability_candidate_evidence: extra.multiBatchStabilityCandidateEvidence || extra.multi_batch_stability_candidate_evidence || s.multiBatchStabilityCandidateEvidence || s.multi_batch_stability_candidate_evidence,
     };
@@ -564,8 +458,6 @@ export function renderSummaryCard(s, extra = {}) {
     + '<div class="status-sub">' + s.lossDetail + '</div>'
     + '</div>'
     + '</div>'
-    + bubbleAdvisorAbEvidenceCard
-    + bubbleClosedLoopCard
     + multiBatchEvidenceCard
     + trainingRuntimeSummaryCard
     + pcieCard

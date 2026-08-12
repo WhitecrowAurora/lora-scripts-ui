@@ -100,8 +100,14 @@ export function createTaskPolling({
       const hadRunning = getRunningTasks(state.tasks).length > 0;
       const prevRunningIds = getRunningTasks(state.tasks).map(getTaskId);
 
-      const response = await api.getTasks();
+      const [response, queueResponse] = await Promise.all([
+        api.getTasks(),
+        api.getTrainingQueue().catch(() => null),
+      ]);
       const backendTasks = response?.data?.tasks || [];
+      if (queueResponse && typeof queueResponse === 'object') {
+        state.trainingQueue = queueResponse;
+      }
       const localHistory = await loadLocalTaskHistory();
       state.tasks = mergeTaskHistory(backendTasks, localHistory, state.tasks);
       state._taskHistoryDirty = true;

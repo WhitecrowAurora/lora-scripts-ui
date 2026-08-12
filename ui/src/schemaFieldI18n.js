@@ -4,12 +4,13 @@
  * Reuses Evolution EN catalogs (labels/descs/options/tabs/groups) without a full i18n stack rewrite.
  * Chinese path keeps schema-inline label/desc as source of truth.
  */
-// Vite resolves bare JSON imports; keep attribute-free for the legacy Vite 5 pipeline.
-import labelsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldLabelsEn.json'
-import descsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldDescsEn.json'
-import optionsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldOptionsEn.json'
-import tabsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaTabsEn.json'
-import groupsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaGroupsEn.json'
+// 带 `with { type: 'json' }` 的标准写法:Vite 5.4/esbuild 0.21 与裸 node 都认。
+// 早先的无属性写法只有 vite 能解析,导致所有 node 跑的 smoke 一碰 i18n 就整条挂掉。
+import labelsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldLabelsEn.json' with { type: 'json' }
+import descsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldDescsEn.json' with { type: 'json' }
+import optionsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldOptionsEn.json' with { type: 'json' }
+import tabsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaTabsEn.json' with { type: 'json' }
+import groupsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaGroupsEn.json' with { type: 'json' }
 
 function langOf(lang) {
   const raw = String(lang || 'zh').toLowerCase()

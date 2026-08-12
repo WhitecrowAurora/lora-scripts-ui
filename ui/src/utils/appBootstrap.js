@@ -1,4 +1,4 @@
-import { readDraftFromStorage, writeDraftToStorage } from './storage.js';
+import { readDraftFromStorage, writeDraftToStorage, STORAGE_KEYS } from './storage.js';
 
 export function migrateLegacyDraftConfig(config) {
   if (!config || typeof config !== 'object') return config;
@@ -24,16 +24,21 @@ export function createAppBootstrap({
   renderView,
   loadLocalTaskHistory,
   mergeTaskHistory,
+  configTransaction,
 }) {
   function loadDraft() {
     const parsed = readDraftFromStorage();
-    if (!parsed) return;
+    if (!parsed) return false;
     mergeConfigPatch(migrateLegacyDraftConfig(parsed));
     state.hasLocalDraft = true;
+    return true;
   }
 
   function saveDraft() {
     writeDraftToStorage(state.config);
+    state.hasLocalDraft = true;
+    return true;
+    configTransaction.markDirty(state.activeTrainingType, state.config);
   }
 
   async function loadBootstrapData() {
@@ -51,6 +56,9 @@ export function createAppBootstrap({
     const [
       runtimeResult,
       presetsResult,
+      trainDraftsResult,
+      trainingProjectsResult,
+      trainingQueueResult,
       savedParamsResult,
       tasksResult,
       interrogatorsResult,
@@ -59,6 +67,9 @@ export function createAppBootstrap({
     ] = await Promise.allSettled([
       timedFetch('getGraphicCards', api.getGraphicCards()),
       timedFetch('getPresets', api.getPresets()),
+      timedFetch('getTrainDrafts', api.getTrainDrafts()),
+      timedFetch('getTrainingProjects', api.getTrainingProjects()),
+      timedFetch('getTrainingQueue', api.getTrainingQueue()),
       timedFetch('getSavedParams', api.getSavedParams()),
       timedFetch('getTasks', api.getTasks()),
       timedFetch('getInterrogators', api.getInterrogators()),
@@ -75,6 +86,49 @@ export function createAppBootstrap({
 
     if (presetsResult.status === 'fulfilled') {
       state.presets = presetsResult.value?.data?.presets || [];
+    }
+
+    if (trainDraftsResult.status === 'fulfilled') {
+      const payload = trainDraftsResult.value?.data || {};
+      configTransaction.initialize(payload);
+      const diskDraft = payload.drafts?.[state.activeTrainingType];
+      if (!state.hasLocalDraft && diskDraft && typeof diskDraft === 'object') {
+        mergeConfigPatch(migrateLegacyDraftConfig(diskDraft));
+        state.hasLocalDraft = true;
+    return true;
+        writeDraftToStorage(state.config);
+      } else if (state.hasLocalDraft) {
+        configTransaction.markDirty(state.activeTrainingType, state.config);
+      }
+    } else {
+      configTransaction.initialize();
+      if (state.hasLocalDraft) {
+        configTransaction.markDirty(state.activeTrainingType, state.config);
+      }
+    }
+
+    if (trainingProjectsResult.status === 'fulfilled') {
+      state.trainingWorkspace = trainingProjectsResult.value?.data || state.trainingWorkspace;
+      const activeProjectConfig = state.trainingWorkspace?.active_config;
+      if (!state.hasLocalDraft && activeProjectConfig && typeof activeProjectConfig === 'object') {
+        const projectType = String(activeProjectConfig.model_train_type || '').trim();
+        if (projectType) {
+          state.activeTrainingType = projectType;
+          localStorage.setItem(STORAGE_KEYS.trainingType, projectType);
+          if (typeof window !== 'undefined' && window.currentTrainingType !== undefined) {
+            window.currentTrainingType = projectType;
+          }
+        }
+        mergeConfigPatch(migrateLegacyDraftConfig(activeProjectConfig));
+        state.hasLocalDraft = true;
+    return true;
+        writeDraftToStorage(state.config);
+        configTransaction.markDirty(state.activeTrainingType, state.config);
+      }
+    }
+
+    if (trainingQueueResult.status === 'fulfilled' && trainingQueueResult.value) {
+      state.trainingQueue = trainingQueueResult.value;
     }
 
     if (savedParamsResult.status === 'fulfilled' && !state.hasLocalDraft) {

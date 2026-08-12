@@ -8,7 +8,7 @@ import {
 
 const summary = {
   report: 'training_runtime_task_summary_v0',
-  source: 'bubble_controller',
+  source: 'runtime_summary',
   controller_mode: 'advisor_patch',
   controller_status: 'advisor_patch_ready',
   diagnosis_kind: 'data_bound',

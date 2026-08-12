@@ -18,9 +18,9 @@
     "effect": "AdamW8bit（默认）维护一阶+二阶动量的 8-bit 量化版本，显存约为全精度 AdamW 的一半。Prodigy/AutoProdigy 通过 D-Adaptation 理论自动估算步长，基本不需要手动调学习率。ScheduleFree 系列（AdamWScheduleFree、ProdigyPlusScheduleFree）内置学习率衰减，不需要配合 lr_scheduler。",
     "recommendedValues": {
       "adamw_8bit": "最稳妥的默认选择，适合几乎所有 LoRA / finetune 场景",
-      "prodigy_plus_schedule_free": "新手友好，免 scheduler 免调学习率，推荐搭配 lr_scheduler=constant",
       "auto_prodigy": "自适应学习率 + 可选手动 scheduler，安全档 safe 模式适合小数据集",
-      "adamw_schedule_free": "Meta 提出的 Schedule-Free AdamW，不需要 scheduler 但有学习率上界"
+      "adamw_schedule_free": "Meta 提出的 Schedule-Free AdamW，不需要 scheduler 但有学习率上界",
+      "prodigyplus.ProdigyPlusScheduleFree": "新手友好，免 scheduler 免调学习率，推荐搭配 lr_scheduler=constant"
     },
     "whenToUse": "大多数场景 AdamW8bit + cosine scheduler 是黄金组合。不想调学习率时用 ProdigyPlusScheduleFree。显存紧张时用 PagedAdamW8bit（optimizer state 分页到 CPU）。",
     "avoidWhen": "不要给 Prodigy / ScheduleFree 优化器配 cosine scheduler——它们自带衰减逻辑，外部 scheduler 会冲突导致学习率异常。DAdaptation 系列在 < 50 张图的小数据集上可能不稳定。",
@@ -170,7 +170,15 @@
       "bitsandbytes.optim.PagedAdEMAMix8bit": "bnb 分页 AdEMAMix 8bit。",
       "PytorchOptimizer": "pytorch_optimizer 通用桥。",
       "GenericOptimizer": "通用工厂入口。",
-      "AnimaFactoredAdamW": "Anima 分解 AdamW。"
+      "AnimaFactoredAdamW": "Anima 分解 AdamW。",
+      "AdamWBF16": "bf16 权重 + fp32 一二阶矩，残差用补偿求和回填；只接受 bf16 参数，非 bf16 会直接报错。",
+      "KahanAdamW8bit": "KahanAdamW 的 8bit 矩版本，补偿量仍留 fp32；需要 bitsandbytes，缺库报错不静默回落。",
+      "AdaMuon": "Muon 的自适应步长变体；学习率按 Adam 档给（1e-4 量级），套 Muon 的 1e-2 会发散。",
+      "Riemannion": "在固定秩流形上做更新，配 Newton-Schulz 正交化稳定步长。",
+      "Rose": "梯度中心化 + 随机取整的 AdamW 变体，低精度权重下舍入偏置更小。",
+      "Aurora": "正交化 + 行范数均衡（leverage 校正）的动量优化器。",
+      "SOAP": "Shampoo 与 Adam 的合流，周期性更新预条件矩阵；单步开销约 AdamW 的 1.7 倍。",
+      "MARS": "用上一步梯度做方差缩减校正，单次 backward；1D 参数默认走内置 AdamW。"
     }
   },
   "advanced": {

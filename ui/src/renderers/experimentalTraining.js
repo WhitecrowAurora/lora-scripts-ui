@@ -1,9 +1,5 @@
 import { escapeHtml, _ico } from '../utils/dom.js';
 import {
-  buildBubbleAdvisorShortItems,
-  hasBubbleAdvisorPatch,
-} from '../utils/bubbleAdvisorNarrative.js';
-import {
   collectPreflightRecommendedConfigPatch,
   recommendedConfigPatchKeys,
 } from '../utils/preflightRecommendedPatch.js';
@@ -129,9 +125,6 @@ function collectAdvisorItems(typeId, config, preflight) {
   }
 
   const patchKeys = recommendedConfigPatchKeys(collectPreflightRecommendedConfigPatch(preflight));
-  buildBubbleAdvisorShortItems(preflight).slice(0, 4).forEach(function(item) {
-    items.push(item);
-  });
   if (patchKeys.length > 0) {
     items.push({ tone: 'ok', text: `后端预检提供了 ${patchKeys.length} 个可应用建议，可点击“应用建议”。` });
   }
@@ -234,8 +227,7 @@ export function createExperimentalTrainingRenderer({ state }) {
     const config = state.config || {};
     const items = collectAdvisorItems(state.activeTrainingType, config, state.preflight);
     const patchKeys = recommendedConfigPatchKeys(collectPreflightRecommendedConfigPatch(state.preflight));
-    const hasBubblePatch = hasBubbleAdvisorPatch(state.preflight);
-    const hasPatch = patchKeys.length > 0 || hasBubblePatch;
+    const hasPatch = patchKeys.length > 0;
     const status = state.preflight
       ? state.preflight.can_start
         ? '预检通过'
@@ -244,7 +236,7 @@ export function createExperimentalTrainingRenderer({ state }) {
     const collapsed = Boolean(state.trainingAdvisorCollapsed);
     const tone = advisorTone(state.preflight);
     const itemCount = items.length;
-    const patchCount = patchKeys.length + (hasBubblePatch ? 1 : 0);
+    const patchCount = patchKeys.length;
     const toggleLabel = collapsed ? '展开训练助手' : '收起训练助手';
     const pos = state.trainingAdvisorPosition;
     const positionStyle = pos

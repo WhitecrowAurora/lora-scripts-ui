@@ -16,6 +16,11 @@ export function isTaskRunning(taskOrStatus) {
   return RUNNING_STATUSES.has(normalizeTaskStatus(status));
 }
 
+export function isTaskPaused(taskOrStatus) {
+  const status = typeof taskOrStatus === 'string' ? taskOrStatus : taskOrStatus?.status;
+  return normalizeTaskStatus(status) === 'PAUSED';
+}
+
 export function isTaskQueued(taskOrStatus) {
   const status = typeof taskOrStatus === 'string' ? taskOrStatus : taskOrStatus?.status;
   return QUEUED_STATUSES.has(normalizeTaskStatus(status));

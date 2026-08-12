@@ -150,4 +150,5 @@ export const COLLAPSIBLE_FIELD_KEYS = new Set([
 
 // localStorage 键名（与 storage.js 配合使用）
 export const DRAFT_STORAGE_KEY = 'sd-rescripts:ui:sdxl-draft';
+export const DRAFT_BACKUP_STORAGE_KEY = 'sd-rescripts:ui:sdxl-draft-backup';
 export const DELETED_TASK_IDS_STORAGE_KEY = 'sd-rescripts:task-history:deleted-ids';

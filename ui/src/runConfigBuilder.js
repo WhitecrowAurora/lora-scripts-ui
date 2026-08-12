@@ -1,6 +1,9 @@
 import { SCHEDULER_VALUE_TO_TYPE } from './features/settingsOptions.js';
 import { OPT_FIELD_ARG_KEYS } from './features/optimizerParams.js';
-import { normalizeAdapterEntityMutex } from './schemaCommon.js';
+import {
+  normalizeAdapterEntityMutex,
+  SUPPORTED_LYCORIS_ALGOS as UI_LYCORIS_ALGOS
+} from './schemaCommon.js';
 import { getPerfMode } from './actions/perfModeToggle.js';
 
 const STANDARD_SCHEDULERS = [
@@ -24,7 +27,9 @@ const STANDARD_SCHEDULERS = [
 const LR_KEYS = new Set(['learning_rate', 'unet_lr', 'text_encoder_lr', 'control_net_lr']);
 const LYCORIS_MODULE_ALIASES = new Set(['lycoris.kohya', 'lycoris.locon', 'lycoris']);
 const OFT_MODULE_ALIASES = new Set(['networks.oft', 'oft', 'diag-oft', 'diag_oft']);
-const SUPPORTED_LYCORIS_ALGOS = new Set(['locon', 'loha', 'lokr', 'ia3', 'full', 'diag-oft']);
+// 单一来源：与 lycoris_algo 字段 options 用同一份白名单，避免 UI 能选、提交层却
+// 静默兜回 locon 的双源漂移（glora/glokr 后端是一等支持）。
+const SUPPORTED_LYCORIS_ALGOS = new Set(UI_LYCORIS_ALGOS);
 
 function argLines(raw) {
   return String(raw || '')
@@ -96,16 +101,11 @@ function normalizeScheduler(payload) {
 }
 
 function normalizeOptimizerArgs(payload) {
-  if (payload.frontier_optimizer_product_candidate_enabled && payload.frontier_optimizer_candidate) {
-    payload.optimizer_type = String(payload.frontier_optimizer_candidate || '').trim();
-    payload.frontier_optimizer_product_candidate_enabled = true;
-    delete payload.frontier_optimizer_candidate;
-  } else {
-    delete payload.frontier_optimizer_candidate;
-    if (!payload.frontier_optimizer_product_candidate_enabled) {
-      delete payload.frontier_optimizer_product_candidate_enabled;
-    }
-  }
+  // frontier_optimizer_candidate / _product_candidate_enabled / _allowlist 三个键
+  // 已随门闸从 schema 与后端一起删除。这里不留"兼容旧草稿"的搬运代码：payload 由
+  // collectVisiblePayload 严格按 schema section 生成，非 schema 键根本进不来；旧草稿
+  // 里的残值也在 mergeConfigPatch 的 `if (!field) continue` 处就被丢掉。写在这里的
+  // 迁移分支恒不执行，只会让人以为迁移做过了 —— 真要迁移得落在草稿加载那一层。
 
   const rawOptimizerType = String(payload.optimizer_type || '').trim();
   const pluginOptimizerMatch = rawOptimizerType.match(/^PytorchOptimizer[:/](.+)$/i)

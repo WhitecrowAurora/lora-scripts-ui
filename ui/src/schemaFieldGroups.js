@@ -17,7 +17,6 @@ import {
   when, all, oneOf, sec, netLora,
   swapEnabled, nonResidentBlockMode,
   schedulerOptions, ALL_SCHEDULERS, ALL_OPTIMIZERS, TARGET_LORA_OPTIMIZERS,
-  FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS,
   OPTIMIZER_BACKEND_OPTIONS, OPTIMIZER_BACKEND_OPTIONS_FINETUNE, ADVANCED_OPTIMIZER_STRATEGY_OPTIONS,
   ACCELERATION_PROFILE_OPTIONS, COMPILE_RUNTIME_OPTIONS, WINDOW_ATTENTION_BACKEND_OPTIONS,
   DATA_TRANSFER_PROFILE_MODE_OPTIONS, LOSS_PRECISION_OPTIONS,
@@ -40,15 +39,37 @@ const executionBackendIs = (value) => (config) => (
   String(config.execution_backend || 'optimized').trim().toLowerCase().replaceAll('-', '_') === value
 );
 const LEGACY_BACKEND_FIELD_HIDDEN = () => false;
+const qualityMetricEnabled = (name) => (config) => {
+  const raw = config.quality_evaluation_metrics;
+  const metrics = Array.isArray(raw) ? raw : String(raw || '').split(/[;,]/);
+  return Boolean(config.quality_evaluation_enabled)
+    && metrics.some((item) => String(item).trim().toLowerCase().replaceAll('-', '_') === name);
+};
 
 // quant_train_mode 已从下拉(dequant/keep_w8)改为布尔开关(开=keep_w8)。
 // 兼容老草稿里的字符串值,布尔 true 或 legacy 'keep_w8' 均视为开启。
 const isKeepW8Mode = (value) => value === true
   || String(value ?? '').trim().toLowerCase() === 'keep_w8';
 
+// value 必须与后端 core/contracts/execution_backend.py 的 EXECUTION_BACKENDS 逐字一致，
+// 否则 executionBackendIs() 门控的 compile/thunder 子字段会永久隐藏。
 export const EXECUTION_BACKEND_OPTIONS = [
-  { value: 'optimized', label: '优化运行时' }
+  { value: 'optimized', label: '优化运行时（默认）' },
+  { value: 'eager', label: 'eager（不做图编译）' },
+  { value: 'thunder', label: 'Thunder（推荐的编译后端）' },
+  { value: 'torch_compile', label: 'torch.compile' }
 ];
+// 开着模块级 Offload 时，两个编译后端不可选（后端 module_offload_contract 会拒）。
+// 只禁这两项、保留 optimized / eager，用户才有化解冲突的出路；整个下拉框不置灰。
+const COMPILE_BACKEND_VALUES = new Set(['thunder', 'torch_compile']);
+export const executionBackendOptionsFor = (config = {}) => {
+  if (!config.module_offload_enabled) return EXECUTION_BACKEND_OPTIONS;
+  return EXECUTION_BACKEND_OPTIONS.map((option) => (
+    COMPILE_BACKEND_VALUES.has(option.value)
+      ? { ...option, disabled: true, disabledReason: '与「模块级 Offload」互斥，请先关闭模块级 Offload' }
+      : option
+  ));
+};
 // torch.compile 子项：UI 用 dynamo_backend（后端 alias → torch_compile_backend），并补 mode。
 const TORCH_COMPILE_MODE_OPTIONS = [
   { value: 'default', label: 'default（推荐）' },
@@ -78,7 +99,7 @@ const torchCompileExtras = () => [
 ];
 
 export const S_EXECUTION_BACKEND = [
-  { key: 'execution_backend', type: 'select', label: '训练执行后端', title: 'execution_backend', desc: '默认优化运行时不做图编译；需要编译时优先选择 Thunder。', defaultValue: 'optimized', options: EXECUTION_BACKEND_OPTIONS },
+  { key: 'execution_backend', type: 'select', label: '训练执行后端', title: 'execution_backend', desc: '默认优化运行时不做图编译；需要编译时优先选择 Thunder。开启模块级 Offload 时两个编译后端不可用。', defaultValue: 'optimized', options: executionBackendOptionsFor },
   { key: 'execution_backend_allow_fallback', type: 'boolean', label: '执行后端失败自动回退', title: 'execution_backend_allow_fallback', desc: 'Thunder/torch.compile 不可用或不安全时回退到优化运行时。', defaultValue: true, visibleWhen: oneOf('execution_backend', ['thunder', 'torch_compile']) },
   { key: 'compile_runtime', type: 'select', label: 'Compile 运行策略', title: 'compile_runtime', desc: 'torch.compile 运行时路径。', defaultValue: 'off', options: COMPILE_RUNTIME_OPTIONS, visibleWhen: executionBackendIs('torch_compile') },
   { key: 'compile_cache_enabled', type: 'boolean', label: 'Compile 缓存', title: 'compile_cache_enabled', desc: '启用 torch.compile 图缓存，跨 run 复用编译结果。', defaultValue: true, visibleWhen: executionBackendIs('torch_compile') },
@@ -128,16 +149,32 @@ export const S_MODULE_OFFLOAD_EXPERT = [
   { key: 'module_offload_include_patterns', type: 'textarea', label: 'Offload 包含模式', desc: '要 offload 的模块名称模式（逗号分隔', defaultValue: '', visibleWhen: when('module_offload_enabled', true) },
   { key: 'module_offload_exclude_patterns', type: 'textarea', label: 'Offload 排除模式', desc: '不要 offload 的模块名称模式（逗号分隔）。', defaultValue: '', visibleWhen: when('module_offload_enabled', true) },
   { key: 'module_offload_prefetch_enabled', type: 'boolean', label: '启用 Offload 预取', desc: '提前预取下一个要用的模块（减少等待时间）。', defaultValue: true, visibleWhen: when('module_offload_enabled', true) },
-  { key: 'module_offload_prefetch_mode', type: 'select', label: 'Offload 预取模式', desc: 'simple=简单顺序预取；adaptive=自适应预取（根据历史模式）。', defaultValue: 'simple', options: [
-    { value: 'simple', label: 'Simple (简单顺序)' },
-    { value: 'adaptive', label: 'Adaptive (自适应)' }
+  { key: 'module_offload_prefetch_mode', type: 'select', label: 'Offload 预取模式', desc: 'experimental=实验性预取（当前唯一支持的模式）。', defaultValue: 'experimental', options: [
+    { value: 'experimental', label: 'Experimental (实验性)' }
 ], visibleWhen: all(when('module_offload_enabled', true), when('module_offload_prefetch_enabled', true)) },
   { key: 'module_offload_verify_state', type: 'boolean', label: '验证 Offload 状态', desc: '每次传输后验证模块状态正确性（会降低性能）。', defaultValue: false, visibleWhen: when('module_offload_enabled', true) }
+];
+
+// 极端内存模式：把冻结底座的权威副本放到磁盘 mmap，用 IO 换 RAM。
+// 挂在 module_offload_enabled 下，因为落盘层就是搭在模块 offload 上的，
+// 单开落盘而不开 module offload 没有任何东西可落。
+export const S_EXTREME_MEMORY = [
+  { key: 'tiered_residency_spill_enabled', type: 'boolean', label: '极端内存模式（磁盘换内存）', desc: '把冻结底座权重的权威副本放到磁盘，用 IO 换 RAM。给加不起内存条的小内存机器用；步时会变慢（实测 anima 约 1.9 倍）。', defaultValue: false, visibleWhen: when('module_offload_enabled', true) },
+  { key: 'tiered_residency_spill_root', type: 'text', label: '落盘目录', desc: '留空 = 系统临时目录。强烈建议指到 NVMe SSD；机械盘或 U 盘上这条路必然负收益。', defaultValue: '', visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_allow_backbone', type: 'boolean', label: '允许底座落盘', desc: '开启后 DiT 主干块才会真正落盘——这是省 RAM 的大头。关闭时只有 VAE / 文本编码器落盘，省不了多少。仅对冻结权重生效。', defaultValue: false, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_active_eviction', type: 'boolean', label: '主动踢出内存页', desc: '权重拷进显存后立刻把对应的内存页还给系统，而不是等系统自己回收。这是"宁可频繁读磁盘也不让系统写页面文件"的关键开关，也是保护 SSD 寿命的那一步。', defaultValue: false, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_page_lookahead', type: 'number', label: '预读提前块数', desc: '提前几个块开始把内存页读回来。缺页是 4KB 且同步的，不预读的话一个块要缺页几万次。', defaultValue: 2, min: 0, max: 8, step: 1, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true), when('tiered_residency_spill_active_eviction', true)) },
+  { key: 'tiered_residency_spill_allow_text_encoders', type: 'boolean', label: '允许文本编码器落盘', desc: '默认开。文本编码器读得少，落盘代价低。', defaultValue: true, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_allow_vae', type: 'boolean', label: '允许 VAE 落盘', desc: '默认开。VAE 只在编解码时用到，落盘代价低。', defaultValue: true, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_prefer_copy', type: 'boolean', label: '强制自写副本（慢盘模型）', desc: '默认关。关闭时优先直接映射原始模型文件里逐位相同的那段，省掉开场那次全量写盘。如果模型在慢盘、而落盘目录在快盘，打开它：宁可开场写一次到快盘，也别让每个块都从慢盘读。', defaultValue: false, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_min_free_gb', type: 'number', label: '磁盘保留空间（GB）', desc: '落盘后至少要留这么多空闲空间，不够就回落到内存而不是把盘写满。', defaultValue: 4, min: 0, max: 512, step: 1, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) },
+  { key: 'tiered_residency_spill_cleanup', type: 'boolean', label: '训练结束清理落盘文件', desc: '关掉会留下几 GB 落盘文件；只有排查问题时才需要关。', defaultValue: true, visibleWhen: all(when('module_offload_enabled', true), when('tiered_residency_spill_enabled', true)) }
 ];
 
 export const S_MEMORY_OFFLOAD = [
   { key: 'enable_sequential_cpu_offload', type: 'boolean', label: '启用顺序 CPU Offload', desc: '将模型组件顺序 offload 到 CPU，仅在需要时加载到', defaultValue: false },
   ...S_MODULE_OFFLOAD_EXPERT,
+  ...S_EXTREME_MEMORY,
   { key: 'cpu_offload_checkpointing_mode', type: 'select', label: 'CPU Offload Checkpointing 模式', desc: '梯度检查点与 CPU offload 结合模式', defaultValue: 'none', options: [
     { value: 'none', label: 'None (不结合)' },
     { value: 'auto', label: 'Auto (自动)' },
@@ -190,13 +227,20 @@ export const S_GRADIENT_RELEASE = [
   { key: 'gradient_release_mode', type: 'select', label: '梯度释放模式', title: 'gradient_release_mode', desc: '梯度释放模式', defaultValue: 'compatible', options: [
     { value: 'compatible', label: 'compatible' }
   ], visibleWhen: when('gradient_release_enabled', true) },
+  { key: 'gradient_release_grad_clip_mode', type: 'select', label: '梯度裁剪模式', title: 'gradient_release_grad_clip_mode', desc: 'exact=精确全局范数裁剪但会降低显存优化(gas=1时+183MB,gas=4时+91MB); per_param=按参数裁剪保留显存优化但为近似全局范数; report_only=仅报告范数不裁剪', defaultValue: 'exact', options: [
+    { value: 'exact', label: 'exact（精确，默认）' },
+    { value: 'per_param', label: 'per_param（省显存，近似）' },
+    { value: 'report_only', label: 'report_only（仅报告）' }
+  ], visibleWhen: when('gradient_release_enabled', true) },
   { key: 'gradient_release_downgrade_reason', type: 'string', label: '梯度释放降级原因', title: 'gradient_release_downgrade_reason', desc: '只读：后端自动降级时写入原因（通常为空）。', defaultValue: '', visibleWhen: when('gradient_release_enabled', true) }
 ];
 
 export const S_OPTIMIZER_STATE_PAGING = [
   { key: 'optimizer_state_paging_enabled', type: 'boolean', label: '优化器状态分页', title: 'optimizer_state_paging_enabled', desc: '大优化器状态张量在 step 间停泊到 CPU。', defaultValue: false },
   { key: 'optimizer_state_paging_min_tensor_mb', type: 'number', label: '分页最小张量 (MB)', title: 'optimizer_state_paging_min_tensor_mb', desc: '仅分页大于该体积的状态张量', defaultValue: 1.0, min: 0, step: 0.5, visibleWhen: when('optimizer_state_paging_enabled', true) },
-  { key: 'optimizer_state_paging_pin_memory', type: 'boolean', label: '分页 pin_memory', title: 'optimizer_state_paging_pin_memory', desc: '使用 pinned CPU 内存（更快但占系统内存）。', defaultValue: false, visibleWhen: when('optimizer_state_paging_enabled', true) }
+  { key: 'optimizer_state_paging_storage_device', type: 'select', label: '状态驻留设备', title: 'optimizer_state_paging_storage_device', desc: 'CPU=在 step 间释放状态显存；参数设备=保持原 optimizer 驻留。', defaultValue: 'cpu', options: [{ value: 'cpu', label: 'CPU' }, { value: 'param_device', label: '参数设备' }], visibleWhen: when('optimizer_state_paging_enabled', true) },
+  { key: 'optimizer_state_paging_storage_dtype', type: 'select', label: '状态驻留精度', title: 'optimizer_state_paging_storage_dtype', desc: '只压缩 CPU 驻留副本；step 前恢复原计算精度。', defaultValue: 'preserve', options: [{ value: 'preserve', label: '保持原精度' }, { value: 'bf16', label: 'BF16' }, { value: 'fp16', label: 'FP16' }, { value: 'fp32', label: 'FP32' }], visibleWhen: when('optimizer_state_paging_enabled', true) },
+  { key: 'optimizer_state_paging_pin_memory', type: 'boolean', label: '分页 pin_memory', title: 'optimizer_state_paging_pin_memory', desc: '使用持久 pinned CPU mirror 与独立 CUDA copy stream。', defaultValue: false, visibleWhen: when('optimizer_state_paging_enabled', true) }
 ];
 
 // AutoProdigy 子项：optimizer_type 选 AutoProdigy 时显示
@@ -258,7 +302,9 @@ export const ANIMA_BLOCK_RESIDENCY_FIELDS = [
 export const KREA2_OFFLOAD_FIELDS = [
   { key: 'krea2_block_residency', type: 'select', label: 'Krea2 Block 驻留', title: 'krea2_block_residency', desc: 'Krea2 Block 驻留', defaultValue: 'block_offload', options: [
     { value: 'resident', label: 'resident（全驻留 GPU）' },
-    { value: 'block_offload', label: 'block_offload（自适应卸载）' }
+    { value: 'block_offload', label: 'block_offload（自适应卸载）' },
+    // 下方 krea2_layer_offload_* 全组以此值为可见性锚点；缺了它那组字段永久隐藏。
+    { value: 'layer_offload', label: 'layer_offload（逐层卸载）' }
   ]},
   { key: 'krea2_block_offload_min_param_mb', type: 'number', label: 'Block Offload 最小参数 MB', title: 'krea2_block_offload_min_param_mb', desc: '小于该体积的 block 不 offload。', defaultValue: 100.0, min: 0, step: 1, visibleWhen: when('krea2_block_residency', 'block_offload') },
   { key: 'krea2_block_offload_gpu_slots', type: 'number', label: 'Block Offload GPU 槽位', title: 'krea2_block_offload_gpu_slots', desc: '同时保留在 GPU 的 block 数。', defaultValue: 4, min: 1, max: 32, step: 1, visibleWhen: when('krea2_block_residency', 'block_offload') },
@@ -341,28 +387,50 @@ export const S_CACHED_DATALOADER = [
   { key: 'cached_dataloader_auto_policy', type: 'boolean', label: '缓存 DataLoader 自动策略', title: 'cached_dataloader_auto_policy', desc: '缓存路线自动调 workers/prefetch', defaultValue: true },
   { key: 'cached_dataloader_workers', type: 'string', label: '缓存 DataLoader workers', title: 'cached_dataloader_workers', desc: 'auto 或显式整数', defaultValue: 'auto', visibleWhen: when('cached_dataloader_auto_policy', false) },
   { key: 'cached_dataloader_prefetch_factor', type: 'string', label: '缓存 prefetch_factor', title: 'cached_dataloader_prefetch_factor', desc: 'auto 或显式整数', defaultValue: 'auto', visibleWhen: when('cached_dataloader_auto_policy', false) },
-  { key: 'cached_dataloader_pin_memory', type: 'string', label: '缓存 pin_memory', title: 'cached_dataloader_pin_memory', desc: 'auto / true / false。', defaultValue: 'auto', visibleWhen: when('cached_dataloader_auto_policy', false) }
+  { key: 'cached_dataloader_pin_memory', type: 'select', label: '缓存 pin_memory', title: 'cached_dataloader_pin_memory', desc: 'auto / true / false。', defaultValue: 'auto', options: [
+    { value: 'auto', label: '自动（有 CUDA 就开）' },
+    { value: 'true', label: '强制开启' },
+    { value: 'false', label: '强制关闭' },
+  ], visibleWhen: when('cached_dataloader_auto_policy', false) }
 ];
 
 // 量化 / QLoRA / bitsandbytes
+// rank_comp 是量化的附属档：没有量化就没有可回补的残差。
+const RANK_COMP_ON = (c) => Boolean((c.quantization_enabled || c.training_quantization_enabled) && c.rank_comp_enabled)
+
 export const S_QUANTIZATION = [
   { key: 'quantization_enabled', type: 'boolean', label: '训练量化 (QLoRA 等)', title: 'quantization_enabled', desc: '对底模启用量化加载（如 qlora_nf4）。', defaultValue: false },
+  // 白名单见后端 quantization/quantization_config.py：{qlora_nf4,int8,fp8}。
+  // 真正的 FP4 开关是下方独立字段 bnb_4bit_quant_type，不是这里。
   { key: 'quantization_type', type: 'select', label: '量化类型', title: 'quantization_type', desc: '量化后端类型', defaultValue: 'qlora_nf4', options: [
     { value: 'qlora_nf4', label: 'qlora_nf4' },
-    { value: 'qlora_fp4', label: 'qlora_fp4' },
     { value: 'int8', label: 'int8' }
   ], visibleWhen: when('quantization_enabled', true) },
   { key: 'quantization_offload_optimizer_states', type: 'boolean', label: '量化时 offload 优化器状态', title: 'quantization_offload_optimizer_states', desc: '省显存，略慢', defaultValue: false, visibleWhen: when('quantization_enabled', true) },
   { key: 'quantization_target_suffixes', type: 'string', label: '量化目标后缀', title: 'quantization_target_suffixes', desc: '逗号分隔模块后缀；空=默认策略', defaultValue: '', visibleWhen: when('quantization_enabled', true) },
+  // 覆盖率修正把 anima 从 28.1% 提到 84.2%、newbie 从 0.0% 提到 89.3%。
+  // 这一档只给"要接着复现旧 NF4 产物"的人，默认关——旧行为是静默失效不是设计。
+  { key: 'quantization_legacy_target_tables', type: 'boolean', label: '沿用旧版量化目标表', title: 'quantization_legacy_target_tables', desc: '退回覆盖率修正之前的后缀表，只为复现旧产物；新训练不要开（anima 少量化 56 个百分点的参数，newbie 等于没量化）', defaultValue: false, visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled },
   { key: 'training_quantization_enabled', type: 'boolean', label: '训练量化别名开关', title: 'training_quantization_enabled', desc: '与 quantization_enabled', defaultValue: false },
   { key: 'training_quantization_type', type: 'select', label: '训练量化类型（别名）', title: 'training_quantization_type', desc: '兼容字段', defaultValue: 'qlora_nf4', options: [
-    { value: 'qlora_nf4', label: 'qlora_nf4' },
-    { value: 'qlora_fp4', label: 'qlora_fp4' }
+    { value: 'qlora_nf4', label: 'qlora_nf4' }
   ], visibleWhen: when('training_quantization_enabled', true) },
   { key: 'bnb_4bit_compute_dtype', type: 'select', label: 'bnb 4bit 计算精度', title: 'bnb_4bit_compute_dtype', desc: 'bitsandbytes 计算 dtype。', defaultValue: 'bfloat16', options: ['bfloat16', 'float16', 'float32'], visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled },
   { key: 'bnb_4bit_quant_type', type: 'select', label: 'bnb 4bit 量化类型', title: 'bnb_4bit_quant_type', desc: 'nf4 / fp4', defaultValue: 'nf4', options: ['nf4', 'fp4'], visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled },
   { key: 'bnb_4bit_use_double_quant', type: 'boolean', label: 'bnb 双重量化', title: 'bnb_4bit_use_double_quant', desc: '二次量化压缩量化常量', defaultValue: true, visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled },
-  { key: 'bnb_4bit_quant_storage', type: 'select', label: 'bnb 量化存储类型', title: 'bnb_4bit_quant_storage', desc: '量化权重存储 dtype', defaultValue: 'uint8', options: ['uint8', 'float16', 'bfloat16'], visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled }
+  { key: 'bnb_4bit_quant_storage', type: 'select', label: 'bnb 量化存储类型', title: 'bnb_4bit_quant_storage', desc: '量化权重存储 dtype', defaultValue: 'uint8', options: ['uint8', 'float16', 'bfloat16'], visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled },
+  // 低秩精度回补：4bit 基座存残差 W-up@down，前向由冻结低秩分支补回主奇异方向。
+  // 必须配合量化使用（单开无标的），所以整族都挂在量化开关下。
+  { key: 'rank_comp_enabled', type: 'boolean', label: '低秩精度回补', title: 'rank_comp_enabled', desc: '4bit 量化误差用冻结低秩分支补回；显存代价 r16 约 0.4% 主干', defaultValue: false, visibleWhen: (c) => c.quantization_enabled || c.training_quantization_enabled },
+  { key: 'rank_comp_rank', type: 'number', label: '回补秩', title: 'rank_comp_rank', desc: '越大越准也越占显存。r16 削误差约 32%，r64 约 65%', defaultValue: 16, min: 1, step: 1, visibleWhen: RANK_COMP_ON },
+  { key: 'rank_comp_refine_iters', type: 'number', label: '交替精化轮数', title: 'rank_comp_refine_iters', desc: '低秩与量化残差交替拟合的轮数；2 轮后收益递减', defaultValue: 2, min: 0, step: 1, visibleWhen: RANK_COMP_ON },
+  { key: 'rank_comp_oversample', type: 'number', label: 'rSVD 过采样', title: 'rank_comp_oversample', desc: '随机 SVD 的额外采样列数，提高小奇异值精度', defaultValue: 8, min: 0, step: 1, visibleWhen: RANK_COMP_ON },
+  { key: 'rank_comp_niter', type: 'number', label: 'rSVD 幂迭代', title: 'rank_comp_niter', desc: '随机 SVD 的子空间迭代次数', defaultValue: 4, min: 0, step: 1, visibleWhen: RANK_COMP_ON },
+  { key: 'rank_comp_activation_weighted', type: 'boolean', label: '激活加权回补', title: 'rank_comp_activation_weighted', desc: '按每通道激活能量加权分解，最小化输出误差而非权重误差；实测再削约 16 个百分点。需要训练缓存在场，取不到会自动降级', defaultValue: false, visibleWhen: RANK_COMP_ON },
+  { key: 'rank_comp_calibration_batches', type: 'number', label: '校准样本数', title: 'rank_comp_calibration_batches', desc: '激活加权用多少个缓存样本估通道能量', defaultValue: 8, min: 1, step: 1, visibleWhen: (c) => RANK_COMP_ON(c) && c.rank_comp_activation_weighted },
+  { key: 'rank_comp_calibration_ridge', type: 'number', label: '校准 ridge', title: 'rank_comp_calibration_ridge', desc: '相对平均能量的正则项，避免零方差通道把逆打成 inf', defaultValue: 0.001, min: 0, step: 0.001, visibleWhen: (c) => RANK_COMP_ON(c) && c.rank_comp_activation_weighted },
+  { key: 'rank_comp_target_suffixes', type: 'string', label: '回补目标后缀', title: 'rank_comp_target_suffixes', desc: '逗号分隔模块后缀；空=沿用该架构的量化目标表', defaultValue: '', visibleWhen: RANK_COMP_ON },
+  { key: 'rank_comp_export_sidecar', type: 'boolean', label: '导出回补 sidecar', title: 'rank_comp_export_sidecar', desc: '另存 *.rank_comp.safetensors；不写进 LoRA（否则加载到未量化基座上会画坏）', defaultValue: false, visibleWhen: RANK_COMP_ON }
 ];
 
 // UNet 条件适配器字段（仅 SD 系历史路径；Anima 请用 anima-controlnet）
@@ -421,8 +489,8 @@ export const S_SAVE = [
   { key: 'export_comfy_int8_engine', type: 'select', label: 'Comfy INT8 引擎', title: 'export_comfy_int8_engine', desc: '默认 convrot 真旋转（group-RHT）；rowwise 为 plain 无旋转', defaultValue: 'convrot', options: [
     { value: 'convrot', label: 'convrot 真旋转' }
   ], visibleWhen: when('export_comfy_int8_base', true) },
-  { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', desc: '每 N epoch（轮）自动保存一次模型', defaultValue: 1, min: 1 },
-  { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', desc: '每 N 步自动保存一次模型', defaultValue: '', min: 1 },
+  { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', desc: '每 N epoch（轮）自动保存一次模型。注意：save_every_n_epochs 和 save_every_n_steps 不能同时使用，否则可能导致存储爆炸', defaultValue: 1, min: 1 },
+  { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', desc: '每 N 步自动保存一次模型。注意：save_every_n_epochs 和 save_every_n_steps 不能同时使用，否则可能导致存储爆炸', defaultValue: '', min: 1 },
   { key: 'save_state', type: 'boolean', label: '保存训练状态', title: 'save_state', desc: '保存训练状态 配合 resume 参数可以继续从某个状态训练', defaultValue: false },
   { key: 'save_state_on_train_end', type: 'boolean', label: '结束时额外保存状态', title: 'save_state_on_train_end', desc: '训练结束时额外保存一次训练状态', defaultValue: false },
   { key: 'save_last_n_epochs_state', type: 'number', label: '保留最近 N 个 epoch 状态', title: 'save_last_n_epochs_state', desc: '仅保存最后 n epoch 的训练状态', defaultValue: '', min: 1, visibleWhen: when('save_state', true) },
@@ -444,7 +512,7 @@ export const S_CAPTION = [
   { key: 'shuffle_caption_tags_only', type: 'boolean', label: '仅打乱 Tag 部分', title: 'shuffle_caption_tags_only', desc: '结构化 JSON 标注时只打乱 tags，保持自然语言描述顺序不变', defaultValue: false },
   { key: 'weighted_captions', type: 'boolean', label: '使用带权重 token', title: 'weighted_captions', desc: '使用带权重 token', defaultValue: false },
   { key: 'keep_tokens', type: 'number', label: '保留前 N 个 token', title: 'keep_tokens', desc: '在随机打乱 tokens 时，保留前 N 个不变', defaultValue: 0, min: 0, max: 255 },
-  { key: 'max_token_length', type: 'number', label: '最大 token 长度', title: 'max_token_length', desc: '最大 token 长度', defaultValue: 255, min: 1 },
+  { key: 'max_token_length', type: 'number', label: '最大 token 长度', title: 'max_token_length', desc: '最大 token 长度', defaultValue: 225, min: 1 },
   { key: 'caption_dropout_rate', type: 'number', label: '全部标签丢弃概率', title: 'caption_dropout_rate', desc: '全部标签丢弃概率', defaultValue: '', min: 0, step: 0.01 },
   { key: 'keep_tokens_separator', type: 'string', label: '保留 token 分隔符', title: 'keep_tokens_separator', desc: '保留 tokens 时使用的分隔符', defaultValue: '' },
   { key: 'caption_dropout_every_n_epochs', type: 'number', label: '每 N 轮丢弃标签', title: 'caption_dropout_every_n_epochs', desc: '每 N 个 epoch 丢弃全部标签', defaultValue: '', min: 0, max: 100, step: 1 },
@@ -510,8 +578,6 @@ export const S_LR = [
   // (separator for TypeScript parser)
   { key: 'optimizer_type', type: 'select', label: '优化器', title: 'optimizer_type', desc: '优化器设置。pytorch_optimizer.', defaultValue: 'AdamW8bit', options: ALL_OPTIMIZERS },
   // Frontier 双开关：已并入 optimizer_type，主路径隐藏（键保留兼容旧配置/API）
-  { key: 'frontier_optimizer_product_candidate_enabled', type: 'boolean', label: '候选优化器', title: 'frontier_optimizer_product_candidate_enabled', desc: '兼容保留。已验证候选请直接在「优化器」列表选择。', defaultValue: false, visibleWhen: () => false },
-  { key: 'frontier_optimizer_candidate', type: 'select', label: '候选优化器', title: 'frontier_optimizer_candidate', desc: '兼容保留。已验证候选请直接在「优化器」列表选择。', defaultValue: 'ADOPT', options: FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS, visibleWhen: () => false },
   { key: 'optimizer_backend', type: 'select', label: '优化器后端', title: 'optimizer_backend', desc: 'AdamW 后端档位；compiled_step 可包装 step', defaultValue: 'auto', options: OPTIMIZER_BACKEND_OPTIONS, visibleWhen: expertAndNotTurboCore },
   { key: 'turbocore_optimizer_mode', type: 'select', label: 'Lulynx Triton 优化器', title: 'turbocore_optimizer_mode', desc: 'Lulynx Triton 优化器', defaultValue: 'off', options: [
     { value: 'off', label: 'PyTorch 原生 step' },
@@ -632,23 +698,29 @@ export const S_PREVIEW = [
   { key: 'sample_steps', type: 'number', label: '采样步数', title: 'sample_steps', desc: '迭代步数', defaultValue: 24, min: 1, max: 300, visibleWhen: when('enable_preview', true) },
   { key: 'sample_seed', type: 'number', label: '预览图种子', title: 'sample_seed', desc: '预览图随机种子。0 或留空表示每次随机', defaultValue: '', min: 0, visibleWhen: when('enable_preview', true) },
   { key: 'sample_sampler', type: 'select', label: '采样器', title: 'sample_sampler', desc: '生成预览图所用采样器', defaultValue: 'euler_a', options: ['ddim', 'pndm', 'lms', 'euler', 'euler_a', 'heun', 'dpm_2', 'dpm_2_a', 'dpmsolver', 'dpmsolver++'], visibleWhen: when('enable_preview', true) },
-  { key: 'sample_scheduler', type: 'string', label: '采样调度器覆盖（sample_scheduler）', title: 'sample_scheduler', desc: '后端 sampler scheduler 覆盖；空=默认。', defaultValue: '', visibleWhen: when('enable_preview', true) }
+  { key: 'sample_scheduler', type: 'string', label: '采样调度器覆盖（sample_scheduler）', title: 'sample_scheduler', desc: '后端目前未消费该字段（仅随请求透传），预览采样器由上面的 sample_sampler 决定。', defaultValue: '', visibleWhen: when('enable_preview', true) }
 ];
 
 export const S_QUALITY_EVAL = [
-  { key: 'quality_evaluation_enabled', type: 'boolean', label: '训练结束质量评估', title: 'quality_evaluation_enabled', desc: '训练完成后计算 FID / CLIP Score /', defaultValue: false },
+  { key: 'quality_evaluation_enabled', type: 'boolean', label: '训练结束质量评估', title: 'quality_evaluation_enabled', desc: '训练完成后计算配置的图像质量指标。', defaultValue: false },
   { key: 'quality_evaluation_xy_grid', type: 'boolean', label: '生成质量评估 XY 网格', title: 'quality_evaluation_xy_grid', desc: '生成质量评估 XY 网格', defaultValue: false, visibleWhen: when('quality_evaluation_enabled', true) },
   { key: 'quality_evaluation_num_samples', type: 'number', label: '评估采样数', title: 'quality_evaluation_num_samples', desc: '指标评估生成样本数（与 XY 网格 Y 轴组数独立）。', defaultValue: 10, min: 1, max: 64, visibleWhen: when('quality_evaluation_enabled', true) },
   { key: 'quality_evaluation_suite_id', type: 'string', label: '验证套件 ID', title: 'quality_evaluation_suite_id', desc: '固定验证清单的稳定标识，用于跨 checkpoint 对比。', defaultValue: 'default', visibleWhen: when('quality_evaluation_enabled', true) },
   { key: 'quality_evaluation_validation_seeds', type: 'string', label: '固定验证 Seeds', title: 'quality_evaluation_validation_seeds', desc: '逗号分隔。相同 prompt/seed 会同时用于基础模型与当前 LoRA。', defaultValue: '', visibleWhen: when('quality_evaluation_enabled', true) },
   { key: 'quality_evaluation_compare_base', type: 'boolean', label: '对比基础模型', title: 'quality_evaluation_compare_base', desc: '使用 LoRA 权重 0 与 1 的成对样本生成增量证据。', defaultValue: true, visibleWhen: when('quality_evaluation_enabled', true) },
   { key: 'quality_evaluation_metric_weights', type: 'textarea', label: '多目标指标权重', title: 'quality_evaluation_metric_weights', desc: 'JSON 对象，例如 {"clip_score":1,"fid":0.5}。缺失指标不会被伪造为 0 分。', defaultValue: '', visibleWhen: when('quality_evaluation_enabled', true) },
-  { key: 'quality_evaluation_metrics', type: 'string', label: '评估指标', title: 'quality_evaluation_metrics', desc: '逗号分隔：fid,clip_score,lpips。', defaultValue: 'fid,clip_score', visibleWhen: when('quality_evaluation_enabled', true) },
+  { key: 'quality_evaluation_metrics', type: 'string', label: '评估指标', title: 'quality_evaluation_metrics', desc: '逗号分隔：fid,clip_score,lpips,dino_i,wd14_tag_recall。', defaultValue: 'fid,clip_score', visibleWhen: when('quality_evaluation_enabled', true) },
   { key: 'quality_evaluation_validation_prompts', type: 'textarea', label: '评估 / XY 提示词', title: 'quality_evaluation_validation_prompts', desc: '评估 / XY 提示词', defaultValue: '', visibleWhen: when('quality_evaluation_enabled', true) },
-  { key: 'fid_real_image_dir', type: 'folder', pickerType: 'folder', label: 'FID 真图目录', title: 'fid_real_image_dir', desc: 'FID 对照真实图片目录；留空则可能跳过 FID。', defaultValue: '', visibleWhen: when('quality_evaluation_enabled', true) },
+  { key: 'fid_real_image_dir', type: 'folder', pickerType: 'folder', label: '指标参考图目录', title: 'fid_real_image_dir', desc: 'FID、LPIPS、DINO-I 与标签召回的成对参考图目录。', defaultValue: '', visibleWhen: when('quality_evaluation_enabled', true) },
+  { key: 'quality_dino_model', type: 'string', label: 'DINO 模型名', title: 'quality_dino_model', desc: '本地 DINO hub 入口名。', defaultValue: 'dinov2_vits14', visibleWhen: qualityMetricEnabled('dino_i') },
+  { key: 'quality_dino_code_path', type: 'folder', pickerType: 'folder', label: 'DINO 本地代码目录', title: 'quality_dino_code_path', desc: '必须包含 hubconf.py；评估只执行该本地入口。', defaultValue: '', visibleWhen: qualityMetricEnabled('dino_i') },
+  { key: 'quality_dino_model_path', type: 'file', pickerType: 'file', label: 'DINO 本地权重文件', title: 'quality_dino_model_path', desc: '必须选择已有权重文件；评估不会联网或自动下载。', defaultValue: '', visibleWhen: qualityMetricEnabled('dino_i') },
+  { key: 'quality_dino_device', type: 'select', label: 'DINO 评估设备', title: 'quality_dino_device', desc: 'CPU 更省显存；auto 跟随训练设备。', defaultValue: 'cpu', options: ['cpu', 'auto', 'cuda'], visibleWhen: qualityMetricEnabled('dino_i') },
+  { key: 'quality_wd14_model', type: 'select', label: '标签召回模型', title: 'quality_wd14_model', desc: '只读取本地缓存中的模型与词表。', defaultValue: 'wd-eva02-large-v3', options: ['wd-eva02-large-v3', 'wd-convnext-v3', 'wd-swinv2-v3', 'wd-vit-v3'], visibleWhen: qualityMetricEnabled('wd14_tag_recall') },
+  { key: 'quality_wd14_threshold', type: 'number', label: '标签置信度阈值', title: 'quality_wd14_threshold', desc: '生成图与参考图使用相同阈值。', defaultValue: 0.35, min: 0, max: 1, step: 0.01, visibleWhen: qualityMetricEnabled('wd14_tag_recall') },
   // Preference scorers (PickScore / ImageReward / HPSv2) — default-off product thin seam
   { key: 'preference_scoring_enabled', type: 'boolean', label: '偏好对齐评分', title: 'preference_scoring_enabled', desc: '训练后用 PickScore / ImageReward / HPSv2 对生成图打偏好分。权重较重，默认关；需先开启质量评估。', defaultValue: false, visibleWhen: when('quality_evaluation_enabled', true) },
-  { key: 'preference_models', type: 'string', label: '偏好评分模型', title: 'preference_models', desc: '逗号分隔：pickscore,imagereward,hpsv2。空=仅 pickscore。模型缺失时记 skipped，不静默当 0 分成功。', defaultValue: 'pickscore', visibleWhen: when('preference_scoring_enabled', true) }
+  { key: 'preference_models', type: 'ordered_multiselect', label: '偏好评分模型', title: 'preference_models', desc: '勾选要启用的评分模型，可拖动调整顺序。空=仅 pickscore。模型缺失时记 skipped，不静默当 0 分成功。', defaultValue: 'pickscore', visibleWhen: when('preference_scoring_enabled', true) }
 ];
 
 export const S_STAGED_RESOLUTION = [
@@ -688,8 +760,8 @@ export const S_SPEED_SDXL = [
   { key: 'xformers', type: 'boolean', label: '启用 xformers', title: 'xformers', desc: '高级覆盖：强制 xformers。', defaultValue: false, requiresAttentionBackend: 'xformers', visibleWhen: when('performance_expert_mode', true) },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', title: 'sdpa', desc: '高级覆盖：强制 SDPA', defaultValue: false, visibleWhen: when('performance_expert_mode', true) },
   { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', title: 'sageattn', desc: '高级覆盖：强制 SageAttention。默认跟随启动环境。', defaultValue: false, requiresAttentionBackend: 'sageattn', visibleWhen: when('performance_expert_mode', true) },
-  { key: 'experimental_attention_profile_enabled', type: 'boolean', label: '步骤耗时统计', title: 'experimental_attention_profile_enabled', desc: '步骤耗时统计', defaultValue: false },
-  { key: 'experimental_attention_profile_window', type: 'number', label: '统计窗口 (步)', title: 'experimental_attention_profile_window', desc: '每 N 个优化步输出一次聚合耗时摘要', defaultValue: 50, min: 1, visibleWhen: when('experimental_attention_profile_enabled', true) },
+  { key: 'experimental_attention_profile_enabled', type: 'boolean', label: 'Sliding Window Attention', title: 'experimental_attention_profile_enabled', desc: '把注意力限制在滑动窗口内以降低长序列开销；关闭时为完整注意力。不是耗时统计开关。', defaultValue: false },
+  { key: 'experimental_attention_profile_window', type: 'number', label: '窗口大小 (token)', title: 'experimental_attention_profile_window', desc: '每个 token 可关注的历史窗口长度（token 数，不是步数）；0 表示完整注意力。', defaultValue: 50, min: 1, visibleWhen: when('experimental_attention_profile_enabled', true) },
   { key: 'flashattn', type: 'boolean', label: '启用 FlashAttention 2', title: 'flashattn', desc: '高级覆盖：强制 FlashAttention 2。', defaultValue: false, requiresAttentionBackend: 'flash2', visibleWhen: when('performance_expert_mode', true) },
   { key: 'cross_attn_fused_kv', type: 'boolean', label: '启用 Fused K/V', title: 'cross_attn_fused_kv', desc: '启用 SDXL cross-attn 的 fused K/V', defaultValue: false },
   { key: 'fused_projection_memory_mode', type: 'select', label: 'Fused Projection 显存模式', title: 'fused_projection_memory_mode', desc: 'keep_original 最兼容', defaultValue: 'keep_original', options: FUSED_PROJECTION_MEMORY_MODE_OPTIONS, visibleWhen: all(when('performance_expert_mode', true), when('cross_attn_fused_kv', true)) },
@@ -801,8 +873,8 @@ export const S_SPEED_FLOW = [
   { key: 'fp8_base', type: 'boolean', label: '基础模型使用 FP8（旧）', title: 'fp8_base', desc: '【已弃用】请使用上方的「权重压缩预设」。此字段保留用于向后兼容旧配置', defaultValue: false },
   { key: 'sdpa', type: 'boolean', label: '启用 SDPA', title: 'sdpa', desc: '高级覆盖：强制 SDPA', defaultValue: false, visibleWhen: when('performance_expert_mode', true) },
   { key: 'sageattn', type: 'boolean', label: '启用 SageAttention', title: 'sageattn', desc: '高级覆盖：强制 SageAttention。默认跟随启动环境。', defaultValue: false, requiresAttentionBackend: 'sageattn', visibleWhen: when('performance_expert_mode', true) },
-  { key: 'experimental_attention_profile_enabled', type: 'boolean', label: '步骤耗时统计', title: 'experimental_attention_profile_enabled', desc: '步骤耗时统计', defaultValue: false },
-  { key: 'experimental_attention_profile_window', type: 'number', label: '统计窗口 (步)', title: 'experimental_attention_profile_window', desc: '每 N 个优化步输出一次聚合耗时摘要', defaultValue: 50, min: 1, visibleWhen: when('experimental_attention_profile_enabled', true) },
+  { key: 'experimental_attention_profile_enabled', type: 'boolean', label: 'Sliding Window Attention', title: 'experimental_attention_profile_enabled', desc: '把注意力限制在滑动窗口内以降低长序列开销；关闭时为完整注意力。不是耗时统计开关。', defaultValue: false },
+  { key: 'experimental_attention_profile_window', type: 'number', label: '窗口大小 (token)', title: 'experimental_attention_profile_window', desc: '每个 token 可关注的历史窗口长度（token 数，不是步数）；0 表示完整注意力。', defaultValue: 50, min: 1, visibleWhen: when('experimental_attention_profile_enabled', true) },
   { key: 'flashattn', type: 'boolean', label: '启用 FlashAttention 2', title: 'flashattn', desc: '高级覆盖：强制 FlashAttention 2。默认跟随启动环境。', defaultValue: false, requiresAttentionBackend: 'flash2', visibleWhen: when('performance_expert_mode', true) },
   { key: 'mem_eff_attn', type: 'boolean', label: '低显存注意力', title: 'mem_eff_attn', desc: '高级覆盖：省显存 attention。', defaultValue: false, visibleWhen: when('performance_expert_mode', true) },
   { key: 'lowram', type: 'boolean', label: '低内存模式', title: 'lowram', desc: '低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中', defaultValue: false },
@@ -971,7 +1043,7 @@ export const S_WEIGHT_NOISE = [
 ];
 
 export const S_NOISE = [
-  { key: 'noise_offset', type: 'number', label: '噪声偏移', title: 'noise_offset', desc: '在训练中添加噪声偏移来改良生成非常暗或者非常亮的图像，如果启用推荐为 0.1', defaultValue: '', step: 0.01 },
+  { key: 'noise_offset', type: 'number', label: '噪声偏移', title: 'noise_offset', desc: '在训练中添加噪声偏移来改良生成非常暗或者非常亮的图像；0 表示关闭，启用时建议从 0.1 开始', defaultValue: '', min: 0, step: 0.01 },
   { key: 'noise_offset_random_strength', type: 'boolean', label: '噪声偏移随机强度', title: 'noise_offset_random_strength', desc: '噪声偏移强度在 0 到 noise_offset 间随机变化', defaultValue: false },
   { key: 'multires_noise_iterations', type: 'number', label: '多分辨率噪声迭代', title: 'multires_noise_iterations', desc: '多分辨率（金字塔）噪声迭代次数 推荐 6-10', defaultValue: '',step: 1 },
   { key: 'multires_noise_discount', type: 'number', label: '多分辨率噪声衰减', title: 'multires_noise_discount', desc: '多分辨率（金字塔）衰减率 推荐 0.3-0.8', defaultValue: '', step: 0.01 },
@@ -1046,7 +1118,7 @@ export const S_PEAK_VRAM = [
 export const conceptEditModelFields = (typeId, label, isSdxl = false) => [
   { key: 'model_train_type', type: 'hidden', defaultValue: typeId },
   { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: `${label} 底模路径`, title: 'pretrained_model_name_or_path', desc: '底模文件路径', defaultValue: '' },
-  { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
+  { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' },
   { key: 'vae', type: 'file', pickerType: 'model-file', label: 'VAE 路径', title: 'vae', desc: 'VAE 路径', defaultValue: '' },
   { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', title: 'network_weights', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
   ...(isSdxl ? [] : [{ key: 'v2', type: 'boolean', label: 'SD 2.x 模型', title: 'v2', desc: '使用 SD 2.x 模型', defaultValue: false }]),
@@ -1102,7 +1174,11 @@ export const conceptEditSections = ({ typeId, label, isSdxl = false, mode, resol
   sec('training-settings', 'training', '训练参数', '概念编辑首版优先按 step 控制训练时长，不走普通 LoRA 的数据集 epoch 语义。', conceptEditTrainingFields({ resolution, maxTrainSteps, minTimestep, maxTimestep })),
   sec('preview-settings', 'preview', '预览图设置', '可选。概念编辑首版也可以沿用普通训练预览。', [...S_PREVIEW, ...S_QUALITY_EVAL]),
   sec('speed-settings', 'speed', '速度优化', '混合精度、缓存与注意力后端。', [...(isSdxl ? S_SPEED_SDXL : S_SPEED_SD15)]),
-  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与辅助损失设置。', [...S_NOISE]),
+  // min_timestep / max_timestep 与上面 training-settings 的 conceptEditTrainingFields 重叠；
+  // S_NOISE 里那份默认值是空串，且渲染顺序在后，会把 ADDifT 传进来的 minTimestep=500 盖成空串
+  // （createDefaultConfig 是无条件覆盖，最后渲染的赢）。概念编辑的时间步范围归 training-settings 管。
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与辅助损失设置。',
+    S_NOISE.filter((f) => !['min_timestep', 'max_timestep'].includes(f.key))),
   sec('advanced-settings', 'advanced', '其他设置', '其它参数。', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '冷却/占空/功率墙，以及可选 GPU 硬件熔断（温度/VRAM/throttle/ECC）。', [...S_THERMAL]),
   sec('distributed-settings', 'advanced', '分布式训练', '首版概念编辑暂不建议多机多卡；这里仍保留通用入口。', [...S_DISTRIBUTED])
@@ -1112,7 +1188,7 @@ export const conceptEditSections = ({ typeId, label, isSdxl = false, mode, resol
 export const finetuneModel = (typeId, label) => [
   { key: 'model_train_type', type: 'hidden', defaultValue: typeId },
   { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: `${label} 底模路径`, desc: '底模文件路径', defaultValue: '' },
-  { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
+  { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' },
   { key: 'vae', type: 'file', pickerType: 'model-file', label: 'VAE 路径', title: 'vae', desc: 'VAE 路径', defaultValue: '' }
 ];
 

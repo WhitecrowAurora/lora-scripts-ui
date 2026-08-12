@@ -19,6 +19,45 @@ export const api = {
     return request('/api/config/saved_params');
   },
 
+  getTrainDrafts() {
+    return request('/api/train_drafts');
+  },
+
+  async saveTrainDrafts(payload) {
+    const response = await request('/api/train_drafts', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (response?.status !== 'success') {
+      throw new Error(response?.message || '配置保存失败。');
+    }
+    return response;
+  },
+
+  getTrainingProjects() {
+    return request('/api/training_projects');
+  },
+
+  createTrainingProject(payload) {
+    return postJson('/api/training_projects', payload);
+  },
+
+  saveTrainingProjectVersion(payload) {
+    return request('/api/training_projects/version', { method: 'PUT', body: JSON.stringify(payload) });
+  },
+
+  switchTrainingProjectVersion(payload) {
+    return postJson('/api/training_projects/switch', payload);
+  },
+
+  forkTrainingProjectVersion(payload) {
+    return postJson('/api/training_projects/fork', payload);
+  },
+
+  recordTrainingProjectRun(payload) {
+    return postJson('/api/training_projects/run', payload);
+  },
+
   getConfigOptions() {
     return request('/api/config/options');
   },
@@ -49,6 +88,37 @@ export const api = {
 
   getTasks() {
     return request('/api/tasks');
+  },
+
+  getTrainingQueue() {
+    return request('/train/queue');
+  },
+
+  getQueuedRunEditContext(runId) {
+    return request(`/train/queue/${encodeURIComponent(runId)}/edit-context`);
+  },
+
+  editQueuedRun(runId, payload) {
+    return request(`/train/queue/${encodeURIComponent(runId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  reorderTrainingQueue(payload) {
+    return postJson('/train/queue/reorder', payload);
+  },
+
+  replayTrainingRun(runId, payload) {
+    return postJson(`/train/queue/${encodeURIComponent(runId)}/replay`, payload);
+  },
+
+  pauseTrainingQueueRun(runId) {
+    return postJson('/train/queue/' + encodeURIComponent(runId) + '/pause', {});
+  },
+
+  resumeTrainingQueueRun(runId) {
+    return postJson('/train/queue/' + encodeURIComponent(runId) + '/resume', {});
   },
 
   terminateTask(taskId) {
@@ -283,16 +353,6 @@ export const api = {
     });
   },
 
-  applyBubbleAdvisorPatch(config, report, options = {}) {
-    return postJson('/api/train/bubble-advisor/apply', {
-      config: config || {},
-      report: report || {},
-      embed_ledger: true,
-      keep_bubble_controller_enabled: true,
-      ...options,
-    });
-  },
-
   runPcieTransferBenchmark(params = {}) {
     return postJson('/api/train/pcie-transfer-benchmark', params || {});
   },
@@ -465,6 +525,11 @@ export const api = {
   /** 自动训练 Copilot：授权一次无人值守闭环训练会话（提交后台 job） */
   startCopilot(payload) {
     return postJson('/api/system/copilot/start', payload);
+  },
+
+  /** 从持久化 SessionState 恢复 Copilot 会话 */
+  resumeCopilot(sessionId) {
+    return postJson('/api/system/copilot/resume/' + encodeURIComponent(sessionId), {});
   },
 
   /** Copilot 会话状态（含持久化 SessionState + job 状态） */
@@ -790,8 +855,24 @@ export const api = {
   },
 
   /** 获取训练任务输出日志 */
-  getTaskOutput(taskId, tail = 100) {
-    return request(`/api/task_output/${taskId}?tail=${tail}`);
+  getTaskOutput(taskId, tail = 100, options = {}) {
+    const params = new URLSearchParams({ tail: String(tail) });
+    if (options.cursor != null) params.set('cursor', String(options.cursor));
+    if (options.limit != null) params.set('limit', String(options.limit));
+    if (options.search) params.set('search', String(options.search));
+    return request(`/api/task_output/${encodeURIComponent(taskId)}?${params.toString()}`);
+  },
+
+  getTaskPreviews(taskId, { cursor = 0, limit = 60 } = {}) {
+    const params = new URLSearchParams({
+      cursor: String(cursor),
+      limit: String(limit),
+    });
+    return request(`/api/task_preview/${encodeURIComponent(taskId)}?${params.toString()}`);
+  },
+
+  getTaskPreviewUrl(taskId, name) {
+    return `/api/task_preview/${encodeURIComponent(taskId)}/file?name=${encodeURIComponent(name)}`;
   },
 
   /** GPU 实时状态 (VRAM 占用等) */

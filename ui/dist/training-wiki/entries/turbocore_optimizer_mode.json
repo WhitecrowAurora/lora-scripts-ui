@@ -12,7 +12,7 @@
     "optionDescriptions": {
       "off": "优化器 step 走原生 PyTorch。",
       "auto": "条件够就走 Lulynx Triton 优化器。",
-      "force": "硬走 Triton；环境不够会直接挂。"
+      "force": "硬走 Triton；环境不够会直接挂。（本选择器里没有：force 在原生模块缺失或优化器不受支持时会直接抛错中断训练，属于调试用途，界面只提供 off / auto。）"
     }
   },
   "advanced": {

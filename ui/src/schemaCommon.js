@@ -7,7 +7,6 @@
 import {
   ALL_OPTIMIZERS,
   ALL_SCHEDULERS,
-  FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS,
   TARGET_LORA_OPTIMIZERS,
   getOptimizersForTrainingMode,
   schedulerOptions,
@@ -16,7 +15,6 @@ import {
 export {
   ALL_OPTIMIZERS,
   ALL_SCHEDULERS,
-  FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS,
   TARGET_LORA_OPTIMIZERS,
   getOptimizersForTrainingMode,
   schedulerOptions,
@@ -584,9 +582,11 @@ export const ds = (reso, bucketMax = 2048, bucketStep = 64, extra = []) => [
   { key: 'min_bucket_reso', type: 'number', label: '桶最小分辨率', title: 'min_bucket_reso', desc: 'arb 桶最小边。仅在分桶真正生效的路径上有意义。', defaultValue: 256 },
   { key: 'max_bucket_reso', type: 'number', label: '桶最大分辨率', title: 'max_bucket_reso', desc: 'arb 桶最大边。cache-first 回放通常沿用构建时分辨率。', defaultValue: bucketMax },
   { key: 'bucket_reso_steps', type: 'number', label: '桶划分单位', title: 'bucket_reso_steps', desc: '桶分辨率步进。UNet 全支持；DiT 见 enable_bucket 说明。', defaultValue: bucketStep },
-  { key: 'bucket_no_upscale', type: 'boolean', label: '桶不放大图片', title: 'bucket_no_upscale', desc: 'arb 桶不放大图片', defaultValue: true },
-  { key: 'bucket_selection_mode', type: 'select', label: '分桶策略', title: 'bucket_selection_mode', desc: 'legacy 为原始穷举桶，nearest_only 就近桶', defaultValue: 'legacy', options: ['legacy', 'nearest_only', 'custom_only'] },
-  { key: 'bucket_custom_resos', type: 'textarea', label: '自定义桶列表', title: 'bucket_custom_resos', desc: '一行一个，支持 1024x1024', defaultValue: '', visibleWhen: when('bucket_selection_mode', 'custom_only') },
+  { key: 'bucket_no_upscale', type: 'boolean', label: '桶不放大图片', title: 'bucket_no_upscale', desc: 'arb 桶不放大图片', defaultValue: false },
+  { key: 'bucket_selection_mode', type: 'select', label: '分桶策略', title: 'bucket_selection_mode', desc: 'aspect 默认宽高比匹配；area/pixel 面积匹配；larger/ceil 不缩小；smaller/floor 不放大', defaultValue: 'aspect', options: ['aspect', 'area', 'pixel', 'pixels', 'larger', 'ceil', 'no_downscale', 'smaller', 'floor', 'no_upscale'] },
+  // 与 bucket_selection_mode 无关：后端 dataset_bucketing.py 只要这里解析出非空桶表就
+  // 优先采用。原先锚在幽灵值 'custom_only' 上（options 里没有），字段永久不可见。
+  { key: 'bucket_custom_resos', type: 'textarea', label: '自定义桶列表', title: 'bucket_custom_resos', desc: '一行一个，支持 1024x1024。留空则按上面的分桶策略自动生成；一旦填了内容，后端会优先使用这里的桶表，「分桶策略」将不再生效。', defaultValue: '', visibleWhen: when('enable_bucket', true) },
   { key: 'image_decode_backend', type: 'select', label: '图片解码后端', title: 'image_decode_backend', desc: 'pil 最兼容；pil_lru 会按文件 mtime/大小缓存已解码 RGB', defaultValue: 'pil', options: IMAGE_DECODE_BACKEND_OPTIONS, visibleWhen: when('performance_expert_mode', true) },
   { key: 'data_backend', type: 'select', label: '数据后端', title: 'data_backend', desc: 'auto/caption 当前继续走 CaptionDataset', defaultValue: 'auto', options: DATA_BACKEND_OPTIONS, visibleWhen: when('performance_expert_mode', true) },
   { key: 'image_decode_cache_size', type: 'number', label: '图片解码缓存张数', title: 'image_decode_cache_size', desc: '每个 DataLoader worker 的 PIL 解码 LRU', defaultValue: 0, min: 0, visibleWhen: all(when('performance_expert_mode', true), oneOf('image_decode_backend', ['auto', 'pil_lru'])) },
@@ -616,7 +616,9 @@ export const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = [], ext
   { key: 'lycoris_algo', type: 'select', label: 'LyCORIS 算法', title: 'lycoris_algo', desc: '后端原生支持：LoCon / LoHa / LoKr / IA3 /', defaultValue: 'locon', options: SUPPORTED_LYCORIS_ALGOS, visibleWhen: lycorisNetworkSelected },
   { key: 'conv_dim', type: 'number', label: '卷积维度', title: 'conv_dim', desc: '卷积维度', defaultValue: 4, min: 1, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_CONV_ALGOS.includes(c.lycoris_algo) },
   { key: 'conv_alpha', type: 'number', label: '卷积 Alpha', title: 'conv_alpha', desc: '卷积 Alpha', defaultValue: 1, min: 1, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_CONV_ALGOS.includes(c.lycoris_algo) },
-  { key: 'lycoris_preset', type: 'string', label: 'LyCORIS Preset', title: 'lycoris_preset', desc: '传给 LyCORIS 库的 preset。', defaultValue: '', visibleWhen: lycorisNetworkSelected },
+  // LyCORISInjector.PRESET_TARGETS 只认这三个;其他字符串会被当成模块名子串去匹配,
+  // 匹配不到就静默注入 0 层。所以这里收成 select,不留自由文本。
+  { key: 'lycoris_preset', type: 'select', label: 'LyCORIS Preset', title: 'lycoris_preset', desc: '决定注入哪些层。full=Linear/Conv2d/Norm 全量;attn-only=只注意力投影;attn-mlp=注意力+前馈。留空 = 按算法默认目标。', defaultValue: '', options: [{ value: '', label: '不使用（默认目标）' }, { value: 'full', label: 'full（含 Norm，会自动开启训练 Norm 层）' }, { value: 'attn-only', label: 'attn-only（仅注意力投影）' }, { value: 'attn-mlp', label: 'attn-mlp（注意力 + 前馈）' }], visibleWhen: lycorisNetworkSelected },
   uiGroup('正则化与稳定性', 'LyCORIS 专用 dropout / 正则项。大多数训练保持默认即可。', lycorisNetworkSelected),
   { key: 'dropout', type: 'number', label: 'LyCORIS Dropout', desc: 'LyCORIS 主 dropout 概率。', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_DELTA_ALGOS.includes(c.lycoris_algo) },
   { key: 'rank_dropout', type: 'number', label: 'LoKr Rank Dropout', title: 'rank_dropout', desc: 'LoKr 专用：按 rank/输出维度随机丢弃的概率。', defaultValue: '', min: 0, max: 1, step: 0.01, visibleWhen: all(lycorisNetworkSelected, when('lycoris_algo', 'lokr')) },

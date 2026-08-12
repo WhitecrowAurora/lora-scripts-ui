@@ -41,6 +41,20 @@ export const S_ADAPTIVE_TRAINING = [
   { key: 'adaptive_sample_mining_top_fraction', type: 'number', label: '困难样本比例', desc: '建议列表中保留困难度最高的样本比例。', defaultValue: 0.25, min: 0.01, max: 1, step: 0.01, visibleWhen: all(when('adaptive_training_enabled', true), when('adaptive_sample_mining_enabled', true)) },
   { key: 'adaptive_sample_mining_report_limit', type: 'number', label: '建议列表上限', desc: '每次事件最多输出多少个困难样本建议。', defaultValue: 32, min: 1, max: 256, step: 1, visibleWhen: all(when('adaptive_training_enabled', true), when('adaptive_sample_mining_enabled', true)) },
   { key: 'adaptive_sample_mining_max_samples', type: 'number', label: '样本状态容量', desc: '内存与 resume 中最多跟踪多少个样本的 EMA 困难度。', defaultValue: 2048, min: 16, max: 100000, step: 16, visibleWhen: all(when('adaptive_training_enabled', true), when('adaptive_sample_mining_enabled', true)) },
+  { key: 'loss_state_enabled', type: 'boolean', label: '启用逐图 Loss 状态机', desc: '跨 epoch 跟踪每个样本的 loss 状态，并将判定结果合入样本难度权重。', defaultValue: false },
+  { key: 'loss_state_fusion_mode', type: 'select', label: 'Loss 状态融合模式', defaultValue: 'loss', options: [
+    { value: 'loss', label: '仅 Loss' },
+    { value: 'loss+aesthetic', label: 'Loss + 审美分位' },
+  ], visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_aesthetic_weight', type: 'number', label: '审美融合强度', defaultValue: 0.0, min: 0, max: 1, step: 0.05, visibleWhen: (c) => c.loss_state_enabled && c.loss_state_fusion_mode === 'loss+aesthetic' },
+  { key: 'loss_state_num_bins', type: 'number', label: '时间步分桶数', defaultValue: 32, min: 2, max: 256, step: 1, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_healthy_quantile', type: 'number', label: '健康残差分位', defaultValue: 0.4, min: 0, max: 1, step: 0.05, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_watching_rise_epochs', type: 'number', label: '观察确认 Epoch', defaultValue: 1, min: 1, max: 32, step: 1, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_lrugged_votes', type: 'number', label: '退化确认票数', defaultValue: 3, min: 1, max: 32, step: 1, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_plateau_slope', type: 'number', label: '饱和斜率阈值', defaultValue: 0.001, min: 0, max: 1, step: 0.0001, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_warmup_window', type: 'number', label: '升温窗口', defaultValue: 3, min: 1, max: 32, step: 1, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_lost_votes', type: 'number', label: '卡死追加票数', defaultValue: 2, min: 1, max: 32, step: 1, visibleWhen: when('loss_state_enabled', true) },
+  { key: 'loss_state_lrugged_hits', type: 'number', label: '平坦高位阈值', defaultValue: 0.9, min: 0, max: 1, step: 0.05, visibleWhen: when('loss_state_enabled', true) },
 ];
 
 
@@ -78,6 +92,31 @@ export const S_WEIGHT_COMPOSER = [
   { key: 'sample_difficulty_weighting_strength', type: 'number', label: '难度权重强度', desc: '0=不改变；provided 模式下对输入权重做线性混合。', defaultValue: 1.0, min: 0, max: 4, step: 0.05, visibleWhen: (c) => c.sample_difficulty_weighting_enabled },
   { key: 'sample_difficulty_weighting_min', type: 'number', label: '样本权重下限', defaultValue: 0.25, min: 0, max: 16, step: 0.05, visibleWhen: (c) => c.sample_difficulty_weighting_enabled },
   { key: 'sample_difficulty_weighting_max', type: 'number', label: '样本权重上限', defaultValue: 4.0, min: 0.01, max: 64, step: 0.1, visibleWhen: (c) => c.sample_difficulty_weighting_enabled },
+];
+
+// dataset_intelligence_* 属于数据集侧(离线 Manifest 驱动采样/权重),不是权重合成器的
+// opt-in 轴。这批字段此前只有 React 侧有(而且是混在 S_WEIGHT_COMPOSER 里),legacy 从来
+// 没有过 —— 两边现在统一:字段独立成组,由 schemaIndex 挂进各族已有的 dataset-settings
+// section,不另立新组,也不再占权重组合面板的开关位。
+export const S_DATASET_INTELLIGENCE = [
+  { key: 'dataset_intelligence_enabled', type: 'boolean', label: '启用数据集智能 Manifest', desc: '离线统一质量、Caption、难度、区域覆盖率和概念稀有度；训练期只读取 Manifest，不加载检测模型。', defaultValue: false },
+  { key: 'dataset_intelligence_manifest_path', type: 'file', pickerType: 'text-file', label: '数据智能 Manifest', desc: '标准 lulynx.dataset_intelligence_manifest.v1 JSON。留空不会阻断经典训练。', defaultValue: '', visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_sampling_mode', type: 'select', label: '数据采样策略', defaultValue: 'fixed', options: [
+    { value: 'fixed', label: '固定采样' },
+    { value: 'curriculum', label: '课程学习：简单 → 普通 → 困难' },
+  ], visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_seed', type: 'number', label: '采样 Seed', desc: '相同 Manifest、epoch 和 seed 生成相同采样计划。', defaultValue: 0, min: 0, step: 1, visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_min_weight', type: 'number', label: '数据样本权重下限', desc: 'Manifest 样本权重与课程阶段权重的最终下限。', defaultValue: 0.25, min: 0, max: 64, step: 0.05, visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_max_weight', type: 'number', label: '数据样本权重上限', desc: 'Manifest 样本权重与课程阶段权重的最终上限。', defaultValue: 4.0, min: 0.01, max: 64, step: 0.1, visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_curriculum_easy_end', type: 'number', label: '简单阶段终点', desc: '训练进度达到该比例前优先简单样本。', defaultValue: 0.33, min: 0, max: 1, step: 0.01, visibleWhen: (c) => c.dataset_intelligence_enabled && c.dataset_intelligence_sampling_mode === 'curriculum' },
+  { key: 'dataset_intelligence_curriculum_normal_end', type: 'number', label: '普通阶段终点', desc: '达到该比例后逐步开放困难样本。不得小于简单阶段终点。', defaultValue: 0.66, min: 0, max: 1, step: 0.01, visibleWhen: (c) => c.dataset_intelligence_enabled && c.dataset_intelligence_sampling_mode === 'curriculum' },
+  { key: 'dataset_intelligence_region_balance_strength', type: 'number', label: '区域覆盖率平衡', defaultValue: 0.0, min: 0, max: 4, step: 0.05, visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_concept_rarity_strength', type: 'number', label: '概念稀有度平衡', defaultValue: 0.0, min: 0, max: 4, step: 0.05, visibleWhen: when('dataset_intelligence_enabled', true) },
+  { key: 'dataset_intelligence_target_caption_language', type: 'select', label: 'Caption 目标语言', defaultValue: 'auto', options: [
+    { value: 'auto', label: '保持原语言 / 自动' },
+    { value: 'zh', label: '中文' },
+    { value: 'latin', label: '拉丁字母语言' },
+  ], visibleWhen: when('dataset_intelligence_enabled', true) },
 ];
 export const S_SEMANTIC_REGION_WEIGHTING = [
   { key: 'semantic_region_weighting_enabled', type: 'boolean', label: '启用语义区域加权', desc: '按固定语义区域为训练 loss 应用随进度变化的空间权重。未配置区域保持 1.0。', defaultValue: false },
@@ -195,16 +234,9 @@ export const S_LORA_VARIANTS = [
   { key: 'gdlokr_factor', type: 'number', label: 'GDLoKr Kronecker 因子', desc: '共享 Kronecker 因子 (0=自动平衡)。', defaultValue: 0, min: 0, step: 1, visibleWhen: (c) => c.lora_type === 'gdlokr' || c.adapter_type === 'gdlokr' || c.gdlokr_enabled },
   { key: 'gdlokr_mode', type: 'select', label: 'GDLoKr 模式', desc: 'GDLoKr 模式', defaultValue: 'full', options: [{ value: 'full', label: 'full (完整)' }, { value: 'style', label: 'style (magnitude only)' }, { value: 'structure', label: 'structure (方向 only)' }], visibleWhen: (c) => c.lora_type === 'gdlokr' || c.adapter_type === 'gdlokr' || c.gdlokr_enabled },
   { key: 'gdlokr_alpha', type: 'number', label: 'GDLoKr alpha', desc: 'generalized-direction 缩放分子 (默认', defaultValue: 1.0, min: 0, step: 0.1, visibleWhen: (c) => c.lora_type === 'gdlokr' || c.adapter_type === 'gdlokr' || c.gdlokr_enabled },
-  { key: 'lora_composer_enabled', type: 'boolean', label: 'LoRA-Composer (区域组合)', desc: '多概念区域感知组合（inference-time）。', defaultValue: false },
-  { key: 'lora_composer_alpha', type: 'number', label: 'Composer fill loss 权重', desc: 'Fill loss 权重 α', defaultValue: 0.25, min: 0, step: 0.05, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_beta', type: 'number', label: 'Composer region loss 权重', desc: 'Region perceptual loss 权重 β。', defaultValue: 0.8, min: 0, step: 0.1, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_initial_step_size', type: 'number', label: 'Composer 初始步长', desc: '梯度更新初始步长 φ₀', defaultValue: 20.0, min: 0, step: 0.5, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_final_step_size', type: 'number', label: 'Composer 最终步长', desc: '梯度更新最终步长 φ_T', defaultValue: 5.0, min: 0, step: 0.5, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_topk_ratio', type: 'number', label: 'Composer top-k 比例', desc: '约束损失的 top-k 选择比例。', defaultValue: 0.3, min: 0, max: 1, step: 0.05, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_gaussian_sigma', type: 'number', label: 'Composer 高斯 σ', desc: '中心偏置的高斯权重 sigma', defaultValue: 1.0, min: 0, step: 0.1, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_enable_latent_reinit', type: 'boolean', label: 'Composer latent 重初始化', desc: '启用 latent 重初始化', defaultValue: true, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_enable_concept_isolation', type: 'boolean', label: 'Composer 概念隔离', desc: '启用概念隔离约束', defaultValue: true, visibleWhen: (c) => c.lora_composer_enabled },
-  { key: 'lora_composer_enable_concept_injection', type: 'boolean', label: 'Composer 概念注入', desc: '启用概念注入约束', defaultValue: true, visibleWhen: (c) => c.lora_composer_enabled },
+  // 区域多 LoRA 的 10 个参数曾经住在这里。它们是 GenerationRequest 的字段，训练配置上
+  // 只剩 reader-free 的兼容别名，所以放在训练页等于让用户调一组无人读取的旋钮。归出图页
+  // （仅 evolution / stitch 两套有出图页，这份 UI 落后 37 字段，只做删除不移植）。
   { key: 'delta_lora_enabled', type: 'boolean', label: 'Delta-LoRA (ΔBA 动态缩放)', desc: 'ΔBA 动态缩放 LoRA 更新，提升表达力。', defaultValue: false },
   { key: 'dora_enabled', type: 'boolean', label: 'DoRA (权重分解)', desc: '分解权重为方向+幅度，比标准 LoRA 表达力强但稍慢。', defaultValue: false },
   { key: 'dora_mode', type: 'select', label: 'DoRA 模式', desc: '实现模式。full=完整分解', defaultValue: 'full', options: [{ value: 'full', label: 'full' }, { value: 'split', label: 'split' }, { value: 'merged', label: 'merged' }], visibleWhen: (c) => c.dora_enabled },
@@ -508,7 +540,7 @@ export const S_NEGATIVE_SEMANTIC_REGULARIZATION = [
 // ── 实验探针 ──────────────────────────────────────────────────────────────────
 export const S_EXPERIMENTAL_PROBES = [
   { key: 'fera_enabled', type: 'boolean', label: 'FERA 探测', desc: '特征探测。', defaultValue: false },
-  { key: 'fera_gate_init', type: 'number', label: 'FERA gate 初值', desc: 'FERA 门控初始化值', defaultValue: 0.0, step: 0.01, visibleWhen: (c) => c.fera_enabled },
+  { key: 'fera_gate_init', type: 'number', label: 'FeRA gate 初值', desc: '逐输出通道门控初值；默认 1.0。显式填写 0 会归一化为 1.0，避免与零初始化 LoRA up 形成梯度死锁。', defaultValue: 1.0, step: 0.01, visibleWhen: (c) => c.fera_enabled },
   { key: 'fim_scan_enabled', type: 'boolean', label: 'FIM 扫描', desc: 'Fisher 信息矩阵扫描', defaultValue: false },
   { key: 'fim_scan_calib_steps', type: 'number', label: 'FIM 校准步数', desc: '反向传播校准步数', defaultValue: 8, min: 1, step: 1, visibleWhen: (c) => c.fim_scan_enabled },
   { key: 'fim_scan_r_min', type: 'number', label: 'FIM 最小 rank', desc: 'rank 下界', defaultValue: 8, min: 1, step: 1, visibleWhen: (c) => c.fim_scan_enabled },
@@ -641,29 +673,6 @@ export const S_PATTERN_LOSS = [
   { key: 'pattern_loss_high_huber_c', type: 'number', label: '高频 Huber c', desc: '高频 huber 的 delta。', defaultValue: 0.1, min: 0, step: 0.01, visibleWhen: (c) => c.pattern_loss_enabled && c.pattern_loss_high_type === 'huber' },
 ];
 
-// ── Bubble Controller 产品子集（不含 benchmark 探针）────────────────────────
-export const S_BUBBLE_CONTROLLER = [
-  { key: 'bubble_controller_enabled', type: 'boolean', label: 'Bubble Controller', desc: '气泡感知运行时诊断/顾问补丁。', defaultValue: false },
-  { key: 'bubble_controller_mode', type: 'select', label: 'Bubble 模式', desc: 'Bubble 模式', defaultValue: 'report_only', options: [
-    { value: 'report_only', label: 'report_only' },
-    { value: 'advisor_patch', label: 'advisor_patch' },
-    { value: 'auto_apply', label: 'auto_apply' },
-  ], visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_target_active_gpu_util', type: 'number', label: '目标活跃 GPU 利用率', desc: '目标 GPU 活跃利用率', defaultValue: 0.90, min: 0, max: 1, step: 0.01, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_target_saturated_ratio', type: 'number', label: '目标饱和比例', desc: '目标饱和步比例', defaultValue: 0.50, min: 0, max: 1, step: 0.01, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_min_throughput_gain', type: 'number', label: '最小吞吐增益', desc: '触发动作所需的最小吞吐增益', defaultValue: 0.03, min: 0, step: 0.01, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_warmup_steps', type: 'number', label: 'Bubble 预热步', desc: '预热步数，预热期间不动作', defaultValue: 8, min: 0, step: 1, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_tune_interval_steps', type: 'number', label: '调优间隔步', desc: '每隔多少步评估一次', defaultValue: 32, min: 1, step: 1, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_max_actions_per_run', type: 'number', label: '每 run 最大动作数', desc: '单次训练最多应用多少次补丁', defaultValue: 3, min: 0, step: 1, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_max_vram_ratio', type: 'number', label: '最大显存比例', desc: '动作后允许的最大显存占用比例', defaultValue: 0.92, min: 0, max: 1, step: 0.01, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_allow_batch_growth', type: 'boolean', label: '允许扩 batch', desc: '允许建议/应用 batch 增大。', defaultValue: true, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_allow_worker_tuning', type: 'boolean', label: '允许调 worker', desc: '允许建议/应用 DataLoader worker 调整。', defaultValue: true, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_allow_transfer_prefetch', type: 'boolean', label: '允许传输预取', desc: '允许建议/应用传输预取调整', defaultValue: true, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_allow_optimizer_swap', type: 'boolean', label: '允许优化器状态交换', desc: '允许将优化器状态交换到 CPU（极端显存紧张时）。', defaultValue: false, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_allow_checkpoint_async', type: 'boolean', label: '允许异步 checkpoint', desc: '允许建议/应用异步 checkpoint。', defaultValue: true, visibleWhen: (c) => c.bubble_controller_enabled },
-  { key: 'bubble_controller_allow_dataloader_rebuild_current_run', type: 'boolean', label: '允许本 run 重建 DataLoader', desc: '允许在当前 run 中重建 DataLoader（更激进）。', defaultValue: false, visibleWhen: (c) => c.bubble_controller_enabled },
-];
-
 // ── Concept Geometry（数据集几何采样；不含 legacy h_lora_* 别名）────────────────
 export const S_CONCEPT_GEOMETRY = [
   { key: 'concept_geometry_enabled', type: 'boolean', label: 'Concept Geometry', desc: '按概念几何图做采样/加权', defaultValue: false },
@@ -681,7 +690,7 @@ export const S_CONCEPT_GEOMETRY = [
     { value: 'native', label: 'native' },
     { value: 'rust', label: 'rust' },
   ], visibleWhen: (c) => c.concept_geometry_enabled },
-  { key: 'concept_geometry_source_priority', type: 'string', label: '概念来源优先级', desc: '逗号分隔：explicit,folder,nl,identity', defaultValue: 'explicit,folder,nl,identity,tag,stem', visibleWhen: (c) => c.concept_geometry_enabled },
+  { key: 'concept_geometry_source_priority', type: 'ordered_multiselect', label: '概念来源优先级', desc: '顺序有语义：靠前的来源先命中。可拖动排序；未勾选的来源后端仍会按默认顺序补在末尾。', defaultValue: 'explicit,folder,nl,identity,tag,stem', visibleWhen: (c) => c.concept_geometry_enabled },
   { key: 'concept_geometry_alias_map', type: 'textarea', label: '别名映射 JSON', desc: 'prep 时概念/标签别名 JSON 文本。', defaultValue: '', visibleWhen: (c) => c.concept_geometry_enabled },
   { key: 'concept_geometry_alias_map_path', type: 'string', label: '别名映射文件', desc: '可选 JSON 文件路径', defaultValue: '', visibleWhen: (c) => c.concept_geometry_enabled },
   { key: 'concept_geometry_semantic_enabled', type: 'boolean', label: '语义 embedding 增强', desc: 'prep 时用文本 embedding 增强几何。', defaultValue: false, visibleWhen: (c) => c.concept_geometry_enabled },
@@ -690,9 +699,8 @@ export const S_CONCEPT_GEOMETRY = [
     { value: 'auto_download', label: 'auto_download' },
     { value: 'api', label: 'api' },
   ], visibleWhen: (c) => c.concept_geometry_enabled && c.concept_geometry_semantic_enabled },
-  { key: 'concept_geometry_embedding_backend', type: 'select', label: 'Embedding 后端', desc: 'pytorch / onnx（扩展点）。', defaultValue: 'pytorch', options: [
+  { key: 'concept_geometry_embedding_backend', type: 'select', label: 'Embedding 后端', desc: '当前训练路径仅支持 PyTorch。', defaultValue: 'pytorch', options: [
     { value: 'pytorch', label: 'pytorch' },
-    { value: 'onnx', label: 'onnx' },
   ], visibleWhen: (c) => c.concept_geometry_enabled && c.concept_geometry_semantic_enabled },
   { key: 'concept_geometry_embedding_model', type: 'string', label: 'Embedding 模型 ID', desc: '如 BAAI/bge-m3', defaultValue: 'BAAI/bge-m3', visibleWhen: (c) => c.concept_geometry_enabled && c.concept_geometry_semantic_enabled },
   { key: 'concept_geometry_embedding_model_path', type: 'string', label: 'Embedding 本地路径', desc: 'local_path 时使用', defaultValue: '', visibleWhen: (c) => c.concept_geometry_enabled && c.concept_geometry_semantic_enabled },
@@ -735,12 +743,19 @@ export const S_DPO = [
   { key: 'dpo_enabled', type: 'boolean', label: 'DPO / Flow-DPO', desc: '偏好对齐。真正生效还需 dpo_weight>0。有 rejected_latents 真 pair 时走 Flow-DPO 四路 margin（同 noise/σ，更慢）；无 pair 时 velocity 弱代理（非完整产品）。非顶部加速。', defaultValue: false },
   { key: 'dpo_weight', type: 'number', label: 'DPO 权重', desc: 'DPO 损失总权重；后端以 weight>0 为门闩（仅开开关不够）。', defaultValue: 0.0, min: 0, step: 0.01, visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_beta', type: 'number', label: 'DPO β', desc: '偏好温度/强度', defaultValue: 1.0, min: 0, step: 0.05, visibleWhen: (c) => c.dpo_enabled },
-  { key: 'dpo_pair_mode', type: 'string', label: 'Pair 模式', desc: 'auto=有 rejected_latents 走 Flow-DPO 否则弱代理；flow=强制真 pair（无则 skip）；proxy=强制弱代理。', defaultValue: 'auto', visibleWhen: (c) => c.dpo_enabled },
+  { key: 'dpo_pair_mode', type: 'select', label: 'Pair 模式', desc: 'auto=有 rejected_latents 走 Flow-DPO 否则弱代理；flow=强制真 pair（无则 skip）；proxy=强制弱代理。', defaultValue: 'auto', options: [
+    { value: 'auto', label: '自动（有真 pair 就用，否则弱代理）' },
+    { value: 'flow', label: '强制真 pair（Flow-DPO）' },
+    { value: 'proxy', label: '强制弱代理' },
+  ], visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_rejected_latent_cache_dir', type: 'string', label: 'Rejected latent 缓存目录', desc: '按 stem 加载 lose 侧 clean latent 侧车；空=不从盘加载。需与 preferred 同 spatial。', defaultValue: '', visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_rejected_latent_filename_template', type: 'string', label: 'Rejected 文件名模板', desc: '须含 {stem}。默认 {stem}_rejected_anima.npz。', defaultValue: '{stem}_rejected_anima.npz', visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_rejected_latent_field', type: 'string', label: 'Rejected batch 字段', desc: 'batch 中真 pair clean latent 键名。', defaultValue: 'rejected_latents', visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_rejected_latent_required', type: 'boolean', label: 'Rejected 侧车必填', desc: '开且缺文件则 dataset 报错。', defaultValue: false, visibleWhen: (c) => c.dpo_enabled },
-  { key: 'dpo_error_reduction', type: 'string', label: '误差归约', desc: 'Flow-DPO 预测误差 sum 或 mean。', defaultValue: 'sum', visibleWhen: (c) => c.dpo_enabled },
+  { key: 'dpo_error_reduction', type: 'select', label: '误差归约', desc: 'Flow-DPO 预测误差 sum 或 mean。', defaultValue: 'sum', options: [
+    { value: 'sum', label: 'sum（按元素求和）' },
+    { value: 'mean', label: 'mean（按元素求均值）' },
+  ], visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_anchor_alpha', type: 'number', label: 'Anchor α', desc: 'policy≈ref 全局 MSE 正则；0=关。', defaultValue: 0.0, min: 0, step: 0.05, visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_logprob_scale', type: 'number', label: 'DPO logprob 尺度', desc: '弱代理路径：velocity Gaussian 密度中的 σ_dpo²。', defaultValue: 1.0, min: 0, step: 0.05, visibleWhen: (c) => c.dpo_enabled },
   { key: 'dpo_rejected_perturb', type: 'number', label: 'Rejected 扰动幅度', desc: '弱代理：自构造 rejected target 的扰动强度。', defaultValue: 0.1, min: 0, step: 0.01, visibleWhen: (c) => c.dpo_enabled },
@@ -811,15 +826,4 @@ export const S_TURBOCORE = [
     { value: 'native_experimental', label: 'native_experimental（加速）' },
   ] },
   { key: 'turbocore_tuned_kernel_disable', type: 'boolean', label: '禁用自动调优内核', desc: '关闭 TurboCore 自动调优内核（全局开关）', defaultValue: false },
-  { key: 'turbocore_profile', type: 'select', label: 'TurboCore 性能档位', desc: 'basic=基础;balanced=平衡', defaultValue: 'basic', options: [
-    { value: 'basic', label: 'Basic (基础)' },
-    { value: 'balanced', label: 'Balanced (平衡)' },
-    { value: 'aggressive', label: 'Aggressive (激进)' },
-  ] },
-  { key: 'turbocore_allow_fallback', type: 'boolean', label: '允许回退到 PyTorch', desc: '优化内核不可用时自动回退，建议保持开启。', defaultValue: true },
-  { key: 'turbocore_strict', type: 'boolean', label: '严格模式', desc: '优化内核失败时报错而非回退，用于调试。', defaultValue: false },
-  { key: 'turbocore_workspace_mb', type: 'number', label: 'Workspace 大小 (MB)', desc: '0 = 自动分配', defaultValue: 0, min: 0, step: 64 },
-  { key: 'turbocore_prefetch_depth', type: 'number', label: '预取深度', desc: '预取队列深度，默认 2，增加可隐藏延迟但增加显存。', defaultValue: 2, min: 1, max: 8, step: 1 },
-  { key: 'turbocore_features', type: 'textarea', label: '启用功能列表', desc: '额外启用的优化功能（逗号分隔），留空=使用 profile 默认。', defaultValue: '' },
-  { key: 'turbocore_disable', type: 'textarea', label: '禁用功能列表', desc: '要禁用的优化功能（逗号分隔），用于排查兼容性问题。', defaultValue: '' },
 ];

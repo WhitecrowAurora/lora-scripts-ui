@@ -20,6 +20,7 @@ export const TRAINING_TYPES = [
   { id: 'zimage-lora', group: 'LoRA', label: 'Z-Image' },
   { id: 'wan22-ti2v-lora', group: 'LoRA', label: 'Wan2.2 TI2V-5B' },
   { id: 'wan22-t2v-a14b-lora', group: 'LoRA', label: 'Wan2.2 T2V-A14B' },
+  { id: 'minimax-h3-lora', group: 'LoRA', label: 'MiniMax H3' },
   { id: 'ltx23-lora', group: 'LoRA', label: 'LTX-2.3' },
   { id: 'boogu-lora', group: 'LoRA', label: 'Boogu-Image' },
   { id: 'boogu-edit-lora', group: 'Edit 模型', label: 'Boogu-Image Edit' },
@@ -54,7 +55,7 @@ export const TRAINING_TYPES = [
   { id: 'sd-textual-inversion', group: 'Textual Inversion', label: 'SD 1.5 TI' },
   { id: 'sdxl-textual-inversion', group: 'Textual Inversion', label: 'SDXL TI' },
   { id: 'yolo', group: '其他模型训练', label: 'YOLO 模型训练' },
-  { id: 'aesthetic-scorer', group: '其他模型训练', label: '美学评分模型训练' },
+  { id: 'aesthetic-scorer', group: '其他模型训练', label: '美学评分模型训练', hidden: true, disabled: true, disabledReason: '后端训练 schema 尚未实现。' },
 ];
 
 export const VISIBLE_TRAINING_TYPES = TRAINING_TYPES.filter((type) => !type.hidden);

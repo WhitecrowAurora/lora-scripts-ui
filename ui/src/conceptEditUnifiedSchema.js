@@ -232,7 +232,11 @@ export const CONCEPT_EDIT_UNIFIED_SECTIONS = [
   sec('training-settings', 'training', '训练参数', '训练步数、分辨率与时间步控制。概念编辑优先按 step 控制时长。', TRAINING_FIELDS),
   sec('preview-settings', 'preview', '预览图设置', '可选。概念编辑也可以沿用普通训练预览。', [...S_PREVIEW, ...S_QUALITY_EVAL]),
   sec('speed-settings', 'speed', '速度优化', '混合精度、缓存与注意力后端。', [...S_SPEED_FLOW]),
-  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与辅助损失设置。', [...S_NOISE]),
+  // min_timestep / max_timestep 与上面 training-settings 的 conceptEditTrainingFields 重叠；
+  // S_NOISE 里那份默认值是空串，且渲染顺序在后，会把 ADDifT 的 500/1000 默认值盖成空串
+  // （createDefaultConfig 是无条件覆盖，最后渲染的赢）。概念编辑的时间步范围归 training-settings 管。
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与辅助损失设置。',
+    S_NOISE.filter((f) => !['min_timestep', 'max_timestep'].includes(f.key))),
   sec('advanced-settings', 'advanced', '其他设置', '其它参数。', [...S_ADV]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
   sec('distributed-settings', 'advanced', '分布式训练', '概念编辑首版暂不建议多机多卡；这里仍保留通用入口。', [...S_DISTRIBUTED]),

@@ -321,6 +321,7 @@ const entries = [
  group: 'compute',
  source: 'frontier',
  routeId: null,
+ fieldKey: 'dit_compute_reducer_strategy',
  guideEntryKey: 'dit_blockskip',
  backendContractReady: true,
  smokeEvidence: true,
@@ -332,7 +333,7 @@ const entries = [
  },
 ];
 
-export const ANIMA_METHOD_READINESS = Object.freeze(entries.map((entry) => Object.freeze({ .entry })));
+export const ANIMA_METHOD_READINESS = Object.freeze(entries.map((entry) => Object.freeze({ ...entry })));
 
 export function listAnimaMethodReadiness() {
  return ANIMA_METHOD_READINESS;

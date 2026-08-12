@@ -11,7 +11,7 @@
     "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。",
     "optionDescriptions": {
       "dp_dmd_turbo": "DMD/Turbo 管线。",
-      "anyflow": "AnyFlow 管线。"
+      "anyflow": "AnyFlow 管线（FM 一致性）。注意 AnyFlow 分支只接受 anima / newbie 两族；在其他训练类型上选它，后端会回落到 dp_dmd_turbo。"
     }
   },
   "advanced": {

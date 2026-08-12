@@ -17,5 +17,8 @@
     "tradeoffs": "权重大；默认勿开。",
     "codePath": "backend/core/lulynx_trainer/quality/preference_quality_integration.py"
   },
-  "relatedConfigs": ["quality_evaluation_enabled", "preference_models"]
+  "relatedConfigs": [
+    "quality_evaluation_enabled",
+    "preference_models"
+  ]
 }

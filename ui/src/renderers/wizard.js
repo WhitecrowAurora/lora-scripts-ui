@@ -291,7 +291,7 @@ export function createWizardRenderer({ state, updateConfigValue, getFieldDefinit
     if (c.max_bucket_reso === undefined || c.max_bucket_reso === '') updateConfigValue('max_bucket_reso', 1536);
     if (c.bucket_reso_steps === undefined || c.bucket_reso_steps === '') updateConfigValue('bucket_reso_steps', 64);
     if (!c.shuffle_caption) updateConfigValue('shuffle_caption', true);
-    if (c.keep_tokens === undefined || c.keep_tokens === '') updateConfigValue('keep_tokens', 1);
+    if (c.keep_tokens === undefined || c.keep_tokens === '') updateConfigValue('keep_tokens', 0);
     // 训练默认参数
     if (!c.gradient_checkpointing) updateConfigValue('gradient_checkpointing', true);
     if (!c.network_train_unet_only) updateConfigValue('network_train_unet_only', true);

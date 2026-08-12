@@ -25,11 +25,11 @@
       "glora": "GLoRA。",
       "glokr": "GLoKr。",
       "ia3": "IA³。",
-      "dora": "DoRA。",
+      "dora": "DoRA。（本选择器里没有：DoRA 走的是独立入口 network_module='networks.lora' + use_dora 开关，不是本字段的取值。）",
       "oft": "OFT。",
       "diag-oft": "Diag-OFT。",
       "full": "最重那档。",
-      "hydralora": "HydraLoRA。"
+      "hydralora": "HydraLoRA。（本选择器里没有：HydraLoRA 由独立开关 hydralora_enabled 驱动，配套 hydralora_num_experts / hydralora_top_k 等字段。）"
     }
   },
   "advanced": {

@@ -23,6 +23,7 @@ import { api } from '../api.js';
 import { createWeightComposerActions, renderWeightComposerPreview, scheduleWeightComposerPreview } from './weightComposerPreview.js';
 import { createTrainingIntentProfileActions, renderTrainingIntentProfilePreview } from './trainingIntentProfilePreview.js';
 import { renderProgressivePhaseEditorField } from './progressivePhaseEditor.js';
+import { renderOrderedMultiSelectField } from './orderedMultiSelect.js';
 import { isAttentionBackendAvailable, makeAttentionOptions } from '../features/attentionCapabilities.js';
 import {
   renderCaptionSettingsContentLayout,
@@ -73,7 +74,12 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
   }
 
   function resolveFieldOptions(field) {
-    const options = field.options || [];
+    const source = typeof field.options === 'function'
+      ? field.options(state.config || {})
+      : field.options;
+    const options = source && typeof source !== 'string' && source[Symbol.iterator]
+      ? Array.from(source)
+      : [];
     if (field.attentionBackendOptions) {
       return makeAttentionOptions(options, state.executionProfiles || [], { ...(state.config || {}), runtime: state.runtime });
     }
@@ -144,7 +150,12 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     const attentionBackendBlocker = getAttentionBackendBlocker(field);
     const conflictWith = getFieldConflict(field) || attentionBackendBlocker;
     const keepActiveAttentionToggleEditable = field.type === 'boolean' && attentionBackendBlocker && toBool(value);
-    const disabledAttr = conflictWith && !keepActiveAttentionToggleEditable ? ' disabled' : '';
+    // execution_backend 拿到冲突时只出提示,不置灰整个下拉框:互斥的是 thunder /
+    // torch_compile 两个选项(由逐 option disabled 拦住),optimized / eager 是化解冲突的
+    // 出路。整个禁掉等于把选了编译后端的用户锁在冲突态里,只能回头去关 module offload。
+    // 这与布尔字段"已开可关"是同一条原则:永远留一条退出路径。
+    const keepBackendSelectEditable = field.key === 'execution_backend';
+    const disabledAttr = conflictWith && !keepActiveAttentionToggleEditable && !keepBackendSelectEditable ? ' disabled' : '';
     const fieldKeyArg = escapeHtml(JSON.stringify(String(field.key || '')));
     const renderHeader = () => `
       <div class="field-header-row">
@@ -274,6 +285,20 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
         renderConflictHint,
       });
     }
+    if (field.type === 'ordered_multiselect') {
+      return renderOrderedMultiSelectField({
+        field,
+        value,
+        disabledAttr,
+        disabledCls,
+        modCls,
+        conflictWith,
+        renderHeader,
+        renderFieldDescription,
+        renderConflictHint,
+        lang: state.lang,
+      });
+    }
     if (field.type === 'textarea') {
       if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
         return renderCollapsibleField(`
@@ -297,15 +322,23 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     const inputValue = value === undefined || value === null ? '' : value;
 
     if (isPicker) {
+      const renderPickerButtons = () => `
+        <button class="picker-icon" type="button"${disabledAttr} title="${field.allowModelDirectory ? '选择文件' : '选择路径'}" onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
+          <svg class="icon"><use href="#icon-${field.type === 'folder' ? 'folder' : 'file'}"></use></svg>
+        </button>
+        ${field.allowModelDirectory ? `
+          <button class="picker-icon" type="button"${disabledAttr} title="选择模型目录" onclick="pickPath('${field.key}', 'folder')">
+            <svg class="icon"><use href="#icon-folder"></use></svg>
+          </button>
+        ` : ''}
+      `;
       if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
         return renderCollapsibleField(`
           ${renderHeader()}
           ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <div class="input-picker">
-            <button class="picker-icon" type="button"${disabledAttr} onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
-              <svg class="icon"><use href="#icon-folder"></use></svg>
-            </button>
+            ${renderPickerButtons()}
             <input type="text" value="${escapeHtml(inputValue)}"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">
           </div>
         `);
@@ -316,9 +349,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
           ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
           <div class="input-picker">
-            <button class="picker-icon" type="button"${disabledAttr} onclick="pickPath('${field.key}', '${field.pickerType || 'folder'}')">
-              <svg class="icon"><use href="#icon-folder"></use></svg>
-            </button>
+            ${renderPickerButtons()}
             <input type="text" value="${escapeHtml(inputValue)}"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">
           </div>
         </div>

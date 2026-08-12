@@ -58,7 +58,7 @@ export const SDXL_LORA_SECTIONS = [
   sec('model-settings', 'model', '训练用模型', 'SDXL 底模、VAE 与恢复训练。', [
     { key: 'model_train_type', type: 'hidden', defaultValue: 'sdxl-lora' },
     { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'SDXL 底模路径', title: 'pretrained_model_name_or_path', desc: '底模文件路径', defaultValue: './sd-models/model.safetensors' },
-    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
+    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' },
     { key: 'vae', type: 'file', pickerType: 'model-file', label: 'VAE 路径', title: 'vae', desc: 'VAE 路径', defaultValue: '' },
     { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', title: 'network_weights', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
   ]),

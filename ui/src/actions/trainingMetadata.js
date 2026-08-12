@@ -122,38 +122,6 @@ export function createTrainingMetadataActions({
     return String((task && (task.id || task.task_id)) || '');
   }
 
-  function getBubbleAdvisorAbEvidenceForTask(taskId, explicitTask = null) {
-    var task = explicitTask || state.tasks.find(function(t) { return getTaskId(t) === taskId; }) || null;
-    var metadata = task && task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
-    var cached = taskId && state.taskSummaries ? state.taskSummaries[taskId] : null;
-    cached = cached && typeof cached === 'object' ? cached : {};
-    var embedded = task && task._summary && typeof task._summary === 'object' ? task._summary : {};
-    var evidence = metadata.bubble_advisor_ab_evidence
-      || task?.bubble_advisor_ab_evidence
-      || cached.bubbleAdvisorAbEvidence
-      || cached.bubble_advisor_ab_evidence
-      || embedded.bubbleAdvisorAbEvidence
-      || embedded.bubble_advisor_ab_evidence
-      || null;
-    return evidence && typeof evidence === 'object' ? evidence : null;
-  }
-
-  function getBubbleClosedLoopStateForTask(taskId, explicitTask = null) {
-    var task = explicitTask || state.tasks.find(function(t) { return getTaskId(t) === taskId; }) || null;
-    var metadata = task && task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
-    var cached = taskId && state.taskSummaries ? state.taskSummaries[taskId] : null;
-    cached = cached && typeof cached === 'object' ? cached : {};
-    var embedded = task && task._summary && typeof task._summary === 'object' ? task._summary : {};
-    var closedLoop = metadata.bubble_closed_loop_state
-      || task?.bubble_closed_loop_state
-      || cached.bubbleClosedLoopState
-      || cached.bubble_closed_loop_state
-      || embedded.bubbleClosedLoopState
-      || embedded.bubble_closed_loop_state
-      || null;
-    return closedLoop && typeof closedLoop === 'object' ? closedLoop : null;
-  }
-
   function getMultiBatchEvidenceForTask(taskId, explicitTask = null) {
     var task = explicitTask || state.tasks.find(function(t) { return getTaskId(t) === taskId; }) || null;
     return getMultiBatchEvidenceFromTask(task, state.taskSummaries);
@@ -168,8 +136,6 @@ export function createTrainingMetadataActions({
     return {
       pcieTransferBenchmark: state.pcieTransferBenchmark || null,
       showCompileRuntime: true,
-      bubbleAdvisorAbEvidence: getBubbleAdvisorAbEvidenceForTask(taskId),
-      bubbleClosedLoopState: getBubbleClosedLoopStateForTask(taskId),
       multiBatchEvidence: getMultiBatchEvidenceForTask(taskId),
       trainingRuntimeSummary: getTrainingRuntimeSummaryForTask(taskId),
     };
@@ -194,16 +160,8 @@ export function createTrainingMetadataActions({
     const lines = await fetchTaskLogLines(taskId, 5000);
     if (lines.length=== 0) return null;
     const summary = generateSummaryFromTaskLog(lines);
-    const evidence = getBubbleAdvisorAbEvidenceForTask(taskId);
-    const closedLoop = getBubbleClosedLoopStateForTask(taskId);
     const multiBatchEvidence = getMultiBatchEvidenceForTask(taskId);
     const trainingRuntimeSummary = getTrainingRuntimeSummaryForTask(taskId);
-    if (evidence && summary && typeof summary === 'object') {
-      summary.bubbleAdvisorAbEvidence = evidence;
-    }
-    if (closedLoop && summary && typeof summary === 'object') {
-      summary.bubbleClosedLoopState = closedLoop;
-    }
     if (multiBatchEvidence && summary && typeof summary === 'object') {
       summary.multiBatchEvidence = multiBatchEvidence;
     }
@@ -218,16 +176,8 @@ await saveLocalTaskHistory();
   /** Save task summary to session cache */
   function saveTaskSummary(taskId, summary) {
     var task = state.tasks.find(function(t) { return getTaskId(t) === taskId; });
-    var evidence = getBubbleAdvisorAbEvidenceForTask(taskId, task);
-    var closedLoop = getBubbleClosedLoopStateForTask(taskId, task);
     var multiBatchEvidence = getMultiBatchEvidenceForTask(taskId, task);
     var trainingRuntimeSummary = getTrainingRuntimeSummaryForTask(taskId, task);
-    if (evidence && summary && typeof summary === 'object' && !summary.bubbleAdvisorAbEvidence && !summary.bubble_advisor_ab_evidence) {
-      summary = { ...summary, bubbleAdvisorAbEvidence: evidence };
-    }
-    if (closedLoop && summary && typeof summary === 'object' && !summary.bubbleClosedLoopState && !summary.bubble_closed_loop_state) {
-      summary = { ...summary, bubbleClosedLoopState: closedLoop };
-    }
     if (multiBatchEvidence && summary && typeof summary === 'object' && !summary.multiBatchEvidence && !summary.multi_batch_evidence) {
       summary = { ...summary, multiBatchEvidence };
     }

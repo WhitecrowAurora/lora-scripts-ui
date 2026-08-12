@@ -75,9 +75,13 @@ import { createBackendHeartbeat } from './utils/backendHeartbeat.js';
 import { createTaskPolling } from './utils/taskPolling.js';
 import { createTrainingLivePolling } from './utils/trainingLivePolling.js';
 import { createAppBootstrap } from './utils/appBootstrap.js';
+import { createConfigTransaction } from './utils/configTransaction.js';
+import { createTrainingProjectActions, renderTrainingProjectBar } from './trainingProjects.js';
 import { bindWindowActions } from './utils/windowActions.js';
 import { installGlobalErrorReporter } from './utils/errorReporter.js';
 import { reportWebuiError } from './utils/errorReporter.js';
+import { applyUiUrlState, readUiUrlState, writeUiUrlState } from './utils/urlState.js';
+import { installRouteChunkRecovery } from './utils/routeRecovery.js';
 
 import { createAboutRenderer, renderGuide, renderLogs, refreshTensorBoardStatus, refreshWebuiErrorLogs, startTensorBoardFromLogs, stopTensorBoardFromLogs, createBuiltinPickerRenderer, createStatusDeckRenderer, createNavigatorRenderer, createSettingsRenderer, createConfigFormRenderer, createConfigPageRenderer, createPreflightRenderer, createSamplesRenderer, createWizardRenderer, createPluginsRenderer, createToolsRenderer, createDatasetRenderer, createSysMonitorRenderer, createTrainingRenderer, createExperimentalTrainingRenderer, createConfigShellRenderer, createAppViewRenderer, renderTurboCore, turboCoreProbeStatus, turboCoreCopyFlags } from './renderers/index.js';
 import { createThemeActions, createTrainTabsActions, createJsonPanelActions, createFieldMenuActions, createTaskHistoryActions, createSearchActions, createPickerActions, createLayoutActions, createConfigActions, createSampleActions, createWizardActions, createPluginsActions, createToolsActions, createNavActions, createRuntimeActions, createTerminateActions, createSavedConfigsActions, createTrainingActions, createTrainingMetadataActions, createTrainingChromeActions, createPreviewGroupsActions, createExperimentalTrainingActions, createDeveloperModeChromeActions } from './actions/index.js';
@@ -89,8 +93,14 @@ import { setupOptimizerToggle } from './actions/optimizerToggle.js';
 import { createResourceCenterRenderer } from './renderers/resourceCenter.js';
 import { createSemanticRegionWeightsActions } from './actions/semanticRegionWeightsActions.js';
 import { createProgressivePhaseEditorActions } from './actions/progressivePhaseEditorActions.js';
+import { createOrderedMultiSelectActions } from './actions/orderedMultiSelectActions.js';
+import { createQueueWorkbenchActions } from './actions/queueWorkbench.js';
 
 const state = createInitialAppState({ createDefaultConfig });
+const initialUiUrlState = readUiUrlState();
+applyUiUrlState(state, { ...initialUiUrlState, trainingType: '' });
+installRouteChunkRecovery();
+const configTransaction = createConfigTransaction({ state, api });
 installGlobalErrorReporter();
 const { renderAbout } = createAboutRenderer({ api, showToast, reportWebuiError });
 
@@ -307,6 +317,8 @@ const { _buildSysMonitorHTML } = createSysMonitorRenderer({ state });
 const {
   resetTrainingLogCursor: _resetTrainingLogCursor,
   refreshTrainingLog,
+  refreshTrainingPreviews,
+  searchTrainingLog,
   selectTrainingLogTask,
   setTrainingLogFollowLatest,
   startTrainingLogPolling,
@@ -322,6 +334,11 @@ const {
 });
 bindWindowActions({
   refreshTrainingLog,
+  refreshTrainingPreviews: async (taskId) => {
+    await refreshTrainingPreviews(taskId);
+    if (state.activeModule === 'training') renderView('training');
+  },
+  searchTrainingLog,
   selectTrainingLogTask: (taskId, options) => {
     selectTrainingLogTask(taskId, options);
     if (state.activeModule === 'training') renderView('training');
@@ -349,7 +366,7 @@ const { renderTraining, renderTrainingSummaryHTML } = createTrainingRenderer({ s
 // ===== actions 装配（Stage 3，逐步补充）=====
 const { applyLanguage, setLanguage, applyTheme, toggleTheme } = createThemeActions({ state, t, renderView });
 // trainTabs：scanDataset 仍为 main.js 中后续声明的 window.scanDataset；用闭包 lambda 延迟取
-const { switchTrainTab, setBubbleClosedLoopHistoryFilter } = createTrainTabsActions({
+const { switchTrainTab } = createTrainTabsActions({
   state,
   renderView,
   scanDataset:() => window.scanDataset?.(),
@@ -357,7 +374,7 @@ const { switchTrainTab, setBubbleClosedLoopHistoryFilter } = createTrainTabsActi
 });
 const { setupJsonPanel, updateJSONPreview } = createJsonPanelActions({ state, buildRunConfig });
 const { setupFieldMenus } = createFieldMenuActions({ state, getFieldDefinition });
-bindWindowActions({ switchTrainTab, setBubbleClosedLoopHistoryFilter });
+bindWindowActions({ switchTrainTab });
 // taskHistory 包含 mergeTaskHistory / deleteTaskHistory / clearAllTaskHistory 等
 // 注意：getPendingTrainingMetadata / applyTaskMetadata / rememberTrainingTaskMetadata
 // 现在来自 trainingMetadata 工厂（L900+ 才装配），用 getter 延迟取以避免 TDZ。
@@ -433,9 +450,13 @@ async function refreshDeveloperModeChrome() {
 function init() {
   // Initialize model architecture detection
   window.validateModelSelection = validateModelSelection;
-  window.currentTrainingType = state.activeTrainingType;
+  const hasLocalDraft = loadDraft();
+  if (!hasLocalDraft && initialUiUrlState.trainingType) {
+    state.activeTrainingType = initialUiUrlState.trainingType;
+    localStorage.setItem('sd-rescripts:training-type', state.activeTrainingType);
+  }
 
-  loadDraft();
+  window.currentTrainingType = state.activeTrainingType;
 
   // Check for theme parameter in URL (from launcher embedding)
   const urlParams = new URLSearchParams(window.location.search);
@@ -506,7 +527,7 @@ function init() {
 let _appBootstrap = null;
 
 function loadDraft() {
-  _appBootstrap?.loadDraft();
+  return _appBootstrap?.loadDraft() ?? false;
 }
 
 function saveDraft() {
@@ -588,7 +609,9 @@ const { startTaskPolling } = createTaskPolling({
 let _renderViewImpl = null;
 
 function renderView(module) {
+  if (module) state.activeModule = module;
   _renderViewImpl?.(module);
+  writeUiUrlState(state);
 }
 
 let _renderConfigImpl = null;
@@ -637,6 +660,23 @@ _appBootstrap = createAppBootstrap({
   renderView,
   loadLocalTaskHistory,
   mergeTaskHistory,
+  configTransaction,
+});
+const trainingProjectActions = createTrainingProjectActions({
+  state,
+  api,
+  configTransaction,
+  resetTransientState,
+  saveDraft,
+  renderView,
+  showToast,
+});
+bindWindowActions({
+  createTrainingProject: trainingProjectActions.createTrainingProject,
+  saveTrainingProjectVersion: trainingProjectActions.saveTrainingProjectVersion,
+  forkTrainingProjectVersion: trainingProjectActions.forkTrainingProjectVersion,
+  switchTrainingProject: trainingProjectActions.switchTrainingProject,
+  switchTrainingProjectVersion: trainingProjectActions.switchTrainingProjectVersion,
 });
 const {
   validateTurboLoraOutputFromConfig,
@@ -690,6 +730,18 @@ const {
   updateJSONPreview,
   renderView,
 });
+const {
+  toggleOrderedMultiSelectItem,
+  moveOrderedMultiSelectItem,
+  beginOrderedMultiSelectDrag,
+  dropOrderedMultiSelect,
+  endOrderedMultiSelectDrag,
+} = createOrderedMultiSelectActions({
+  state,
+  syncConfigState,
+  updateJSONPreview,
+  renderView,
+});
 bindWindowActions({
   addPreviewGroup,
   removePreviewGroup,
@@ -708,6 +760,11 @@ bindWindowActions({
   updateProgressivePhaseScheduleJson,
   applyProgressivePhaseScheduleJson,
   resetProgressivePhaseSchedule,
+  toggleOrderedMultiSelectItem,
+  moveOrderedMultiSelectItem,
+  beginOrderedMultiSelectDrag,
+  dropOrderedMultiSelect,
+  endOrderedMultiSelectDrag,
   updateConfigValue,
   resetAllParams,
   resetFieldValue,
@@ -905,6 +962,7 @@ _renderConfigImpl = createConfigPageRenderer({
   renderPreflightReport,
   renderSlot,
   renderExperimentalTrainingPanel,
+  renderTrainingProjectBar: () => renderTrainingProjectBar(state),
   renderConfigSections,
   renderFloatingTrainingAssistant,
   renderNavigator,
@@ -931,7 +989,8 @@ _renderViewImpl = createAppViewRenderer({
   renderWizard,
   renderPlugins,
   renderTurboCore,
-  renderTraining,  renderResourceCenter,
+  renderTraining,
+  renderResourceCenter,
 }).renderView;
 _trainingChromeActions = createTrainingChromeActions({
   state,
@@ -983,6 +1042,25 @@ const { terminateTask, terminateAllTasks } = createTerminateActions({
   loadLocalTaskHistory, saveLocalTaskHistory, mergeTaskHistory, syncFooterAction,
 });
 bindWindowActions({ terminateTask, terminateAllTasks });
+const queueWorkbenchActions = createQueueWorkbenchActions({
+  state,
+  api,
+  showToast,
+  renderView,
+});
+bindWindowActions({
+  refreshTrainingQueue: queueWorkbenchActions.refreshTrainingQueue,
+  openQueuedRunEditor: queueWorkbenchActions.openQueuedRunEditor,
+  closeQueuedRunEditor: queueWorkbenchActions.closeQueuedRunEditor,
+  saveQueuedRunEditor: queueWorkbenchActions.saveQueuedRunEditor,
+  moveQueuedRun: queueWorkbenchActions.moveQueuedRun,
+  queueDragStart: queueWorkbenchActions.queueDragStart,
+  queueDragOver: queueWorkbenchActions.queueDragOver,
+  queueDrop: queueWorkbenchActions.queueDrop,
+  replayTrainingRun: queueWorkbenchActions.replayTrainingRun,
+  pauseTrainingRun: queueWorkbenchActions.pauseTrainingRun,
+  resumeTrainingRun: queueWorkbenchActions.resumeTrainingRun,
+});
 // savedConfigs actions
 const {
   setupImportConfig,
@@ -999,6 +1077,7 @@ const {
   state, api, showToast, renderView, renderNavigator,
   saveDraft, resetTransientState, updateJSONPreview,
   enforceLycorisDoraSafety, mergeConfigPatch,
+  configTransaction,
   createDefaultConfig, TRAINING_TYPES: ALL_TRAINING_TYPES, SCHEDULER_TYPE_TO_VALUE,
   parseSimpleToml: _parseSimpleToml, configToToml: _configToToml, buildRunConfig,
   DRAFT_STORAGE_KEY,
@@ -1041,6 +1120,8 @@ const { validateConfigConflicts, executeTraining } = createTrainingActions({
   rememberTrainingTaskMetadata, getPendingTrainingMetadata, applyTaskMetadata,
   loadLocalTaskHistory, saveLocalTaskHistory, mergeTaskHistory,
   refreshTrainingLog, startTrainingLogPolling, startSysMonitorPolling,
+  configTransaction,
+  recordTrainingProjectRun: trainingProjectActions.recordTrainingProjectRun,
 });
 bindWindowActions({ executeTraining });
 

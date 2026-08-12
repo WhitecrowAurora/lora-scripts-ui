@@ -14,6 +14,11 @@
 //   POST   /api/system/copilot/stop/{session_id}
 
 import { escapeHtml } from './utils/dom.js';
+import {
+  COPILOT_SEARCH_STRATEGIES,
+  buildCopilotSearchParam,
+  normalizeCopilotSearchStrategy,
+} from './utils/copilotSearch.js';
 
 const MODAL_CLASS = 'training-option-help-modal copilot-modal';
 const POLL_MS = 2500;
@@ -36,10 +41,10 @@ const VERDICT = {
   stopped: { label: '— 已停止', cls: 'gf-verdict-warn' },
 };
 const TUNABLES = [
-  { name: 'learning_rate', label: '学习率', step: 2.0, hint: '×/÷ 步长' },
-  { name: 'network_dim', label: 'network_dim', step: 8, hint: '±步长' },
-  { name: 'network_alpha', label: 'network_alpha', step: 2.0, hint: '×/÷ 步长' },
-  { name: 'min_snr_gamma', label: 'min_snr_gamma', step: 1, hint: '±步长' },
+  { name: 'learning_rate', label: '学习率', step: 2.0, hint: '×/÷ 步长', kind: 'mul', min: 1e-7, max: 1e-2, fallback: 1e-4 },
+  { name: 'network_dim', label: 'network_dim', step: 8, hint: '±步长', kind: 'add', min: 1, max: 256, fallback: 32, integer: true },
+  { name: 'network_alpha', label: 'network_alpha', step: 2.0, hint: '×/÷ 步长', kind: 'mul', min: 0.1, max: 512, fallback: 16 },
+  { name: 'min_snr_gamma', label: 'min_snr_gamma', step: 1, hint: '±步长', kind: 'add', min: 0, max: 20, fallback: 5 },
 ];
 
 export function createCopilotTool({ state, api, showToast }) {
@@ -79,6 +84,8 @@ export function createCopilotTool({ state, api, showToast }) {
     if (startBtn) startBtn.onclick = () => startSession(root);
     const stopBtn = root.querySelector('[data-cp-stop]');
     if (stopBtn) stopBtn.onclick = () => stopSession(root);
+    const resumeBtn = root.querySelector('[data-cp-resume]');
+    if (resumeBtn) resumeBtn.onclick = () => resumeSession(root);
   }
 
   async function startSession(root) {
@@ -90,12 +97,36 @@ export function createCopilotTool({ state, api, showToast }) {
     try {
       const res = await api.startCopilot(payload);
       activeSession = res.session_id || '';
+      const resumeInput = root.querySelector('[data-cp-input=cp-resume-id]');
+      if (resumeInput) resumeInput.value = activeSession;
       setStatus(root, okLine(`会话已启动：${activeSession}${payload.dry_run ? '（演练模式）' : ''}`));
       toggleStopButton(root, true);
       pollStatus(root);
     } catch (error) {
       setRunning(root, false);
       const msg = error?.message || '启动失败';
+      setStatus(root, errLine(msg));
+      showToast(msg);
+    }
+  }
+
+  async function resumeSession(root) {
+    const sessionId = String(readInput(root, 'cp-resume-id') || '').trim();
+    if (!sessionId) {
+      alertInline(root, '请输入要恢复的会话 ID。');
+      return;
+    }
+    setRunning(root, true);
+    setStatus(root, busyLine('正在恢复会话…'));
+    try {
+      await api.resumeCopilot(sessionId);
+      activeSession = sessionId;
+      setStatus(root, okLine('会话已恢复：' + activeSession));
+      toggleStopButton(root, true);
+      pollStatus(root);
+    } catch (error) {
+      setRunning(root, false);
+      const msg = error?.message || '恢复会话失败';
       setStatus(root, errLine(msg));
       showToast(msg);
     }
@@ -151,13 +182,18 @@ function collectPayload(root, cfg) {
     return null;
   }
   const dryRun = !!root.querySelector('[data-cp-input="cp-dry"]')?.checked;
+  const searchStrategy = normalizeCopilotSearchStrategy(
+    root.querySelector('[data-cp-input="cp-strategy"]')?.value,
+  );
+  const searchSeed = intOr(readInput(root, 'cp-search-seed'), 0);
   const searchSpace = TUNABLES
     .filter((t) => root.querySelector(`[data-cp-enable="${t.name}"]`)?.checked)
-    .map((t) => ({
-      name: t.name,
-      enabled: true,
-      step: numOr(readInput(root, `cp-step-${t.name}`), t.step),
-    }));
+    .map((t) => buildCopilotSearchParam(
+      t,
+      cfg,
+      numOr(readInput(root, `cp-step-${t.name}`), t.step),
+      searchStrategy,
+    ));
   if (!dryRun && searchSpace.length === 0) {
     alertInline(root, '真实运行至少需勾选一个可调超参（演练模式可不选）。');
     return null;
@@ -178,6 +214,8 @@ function collectPayload(root, cfg) {
       purge_on_finish: !!root.querySelector('[data-cp-input="cp-purge"]')?.checked,
     },
     search_space: searchSpace,
+    search_strategy: searchStrategy,
+    search_seed: searchSeed,
     start_policy: root.querySelector('[data-cp-input="cp-policy"]')?.value || 'warm_start',
     execution_profile_id: cfg.execution_profile_id || cfg.__execution_profile_id || '',
     attention_backend: cfg.attention_backend || 'auto',
@@ -236,6 +274,16 @@ function renderShell(cfg) {
           <div class="cp-section-title">运行选项</div>
           <div class="cp-run-options">
             <label class="gf-field">
+              <span>搜索策略</span>
+              <select class="text-input" data-cp-input="cp-strategy">
+                ${COPILOT_SEARCH_STRATEGIES.map((item) => `<option value="${item.value}">${item.label}</option>`).join('')}
+              </select>
+            </label>
+            <label class="gf-field">
+              <span>搜索随机种子</span>
+              <input class="text-input" type="number" data-cp-input="cp-search-seed" value="0" step="1">
+            </label>
+            <label class="gf-field">
               <span>起点策略</span>
               <select class="text-input" data-cp-input="cp-policy">
                 <option value="warm_start">温启动（载入上一轮 LoRA 权重，默认）</option>
@@ -246,6 +294,17 @@ function renderShell(cfg) {
               <input type="checkbox" data-cp-input="cp-dry" checked>
               <span>演练模式（合成趋势，不真正发射训练，用于验证闭环）</span>
             </label>
+          </div>
+        </div>
+
+        <div class="cp-section">
+          <div class="cp-section-title">恢复已有会话</div>
+          <div class="cp-run-options">
+            <label class="gf-field">
+              <span>会话 ID</span>
+              <input class="text-input" type="text" data-cp-input="cp-resume-id" placeholder="输入此前 session_id">
+            </label>
+            <button class="btn" type="button" data-cp-resume>恢复并继续</button>
           </div>
         </div>
 
@@ -363,6 +422,8 @@ function shortKey(k) {
 function setRunning(root, running) {
   const startBtn = root.querySelector('[data-cp-start]');
   if (startBtn) startBtn.disabled = running;
+  const resumeBtn = root.querySelector('[data-cp-resume]');
+  if (resumeBtn) resumeBtn.disabled = running;
 }
 
 function toggleStopButton(root, enabled) {

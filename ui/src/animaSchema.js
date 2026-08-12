@@ -61,7 +61,7 @@ import {
   S_SAMPLING_OPTIMIZATION_RESERVE, S_REPA_RESERVE, S_LAYERSYNC, S_EXPERIMENTAL_PROBES,
   S_DIAGNOSTICS_MONITORING, S_AUTO_CONTROLLER, S_TURBOCORE, S_TURBO_LORA,
   S_NEGATIVE_SEMANTIC_REGULARIZATION, S_DIT_BLOCKSKIP,
-  S_PATTERN_LOSS, S_BUBBLE_CONTROLLER,
+  S_PATTERN_LOSS,
   S_CONCEPT_GEOMETRY, S_IP_ADAPTER, S_DPO, S_SRA2_HASTE,
   S_ADAPTIVE_CACHING, S_SAMPLE_PROBES,
   S_EASYCONTROL, S_PIXEL_SPACE, S_SEMANTIC_REGION_WEIGHTING, S_WEIGHT_COMPOSER, S_PROGRESSIVE_TRAINING, S_ADAPTIVE_TRAINING,
@@ -243,7 +243,20 @@ const S_CACHE_SYSTEM = [
 ];
 
 // ── Phase C: Anima 高级配置 ──
+// 预设 → 目标族的展开在后端 adapter_preset_targets.py 从 TOML 派生（唯一真源），
+// 这里只列可选值，不复制那份映射，否则加预设文件必然两边漂移。
+const ANIMA_ADAPTER_PRESET_OPTIONS = [
+  { value: '', label: '不使用预设（按下方勾选）' },
+  { value: 'anima_main_block', label: '主干 block（self_attn + cross_attn + mlp）' },
+  { value: 'anima_main_block_with_adln', label: '主干 block + AdaLN' },
+  { value: 'anima_attention_only', label: '仅 Attention（self_attn + cross_attn）' },
+  { value: 'anima_self_attn_only', label: '仅 Self-Attention' },
+  { value: 'anima_cross_attn_only', label: '仅 Cross-Attention' },
+  { value: 'anima_mlp_only', label: '仅 MLP' },
+];
+
 const S_ANIMA_ADVANCED = [
+  { key: 'lycoris_preset', type: 'select', label: 'LoRA 目标预设', title: 'lycoris_preset', desc: '一键把注入目标设成常用组合，会同步改写下方勾选。留空 = 按勾选。已手填「目标模块族（高级）」时预设不覆盖它（控制台会说明）。', defaultValue: '', options: ANIMA_ADAPTER_PRESET_OPTIONS },
   // 模块族勾选：关掉 = 真正不注入 LoRA（与下方「分组 LR」不同；LR=0 仍可能注入）。
   // 默认全开 + llm_adapter 仍走独立门闩，保持与历史默认 target 集一致。
   { key: 'anima_train_self_attn', type: 'boolean', label: '训练 Self-Attention', desc: '是否把 Self-Attn（q/k/v/out）注入 LoRA。关闭后该族完全不参与训练（不是把学习率设为 0）。', defaultValue: true },
@@ -276,11 +289,11 @@ const animaConceptEditModelFields = (typeId) => [
   },
   { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'Anima DiT 权重路径', title: 'pretrained_model_name_or_path', desc: 'Anima 主 DiT 权重；支持 BF16 与 Bedovyy/Comfy INT8（int8rowwise/int8convrot）。INT8 包训练前会 dequant 成 dense，训练显存≈BF16（省磁盘，非 keep-I8，非 Comfy 原生加速）', defaultValue: './sd-models/model.safetensors' },
   { key: 'vae', type: 'file', pickerType: 'model-file', label: 'Qwen Image VAE 路径', title: 'vae', desc: 'Anima 概念编辑需要的 VAE 路径', defaultValue: '' },
-  { key: 'qwen3', type: 'file', pickerType: 'model-file', label: 'Qwen3 文本模型路径', title: 'qwen3', desc: 'Qwen3 文本模型路径。可填写单文件或本地模型目录', defaultValue: '' },
+  { key: 'qwen3', type: 'file', pickerType: 'model-file', allowModelDirectory: true, label: 'Qwen3 文本模型路径', title: 'qwen3', desc: 'Qwen3 文本模型路径。可填写单文件或本地模型目录', defaultValue: '' },
   { key: 'llm_adapter_path', type: 'file', pickerType: 'model-file', label: 'LLM Adapter 路径', title: 'llm_adapter_path', desc: '单独的 LLM Adapter 权重路径（可选）', defaultValue: '' },
   { key: 't5_tokenizer_path', type: 'folder', pickerType: 'folder', label: 'T5 tokenizer 目录', title: 't5_tokenizer_path', desc: '可选。留空时回退到项目内置 tokenizer', defaultValue: '' },
   { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', title: 'network_weights', desc: '从已有的概念编辑 LoRA / DoRA / T-LoRA 模型继续训练', defaultValue: '' },
-  { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
+  { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' },
   {
     key: 'lora_meta_reader',
     type: 'action',
@@ -380,7 +393,11 @@ const animaConceptEditSections = ({ typeId, mode, maxTrainSteps, minTimestep = '
     sec('compile-settings', 'speed', '编译与执行后端',
     'execution_backend / torch.compile / Thunder 与 compile expert 旋钮；从速度页拆出以免与缓存/注意力搅在一起。',
     [...S_EXECUTION_BACKEND, ...S_COMPILE_EXPERT], { expert: true }),
-  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与辅助损失设置。', [...S_NOISE]),
+  // min_timestep / max_timestep 与上面 training-settings 的 animaConceptEditTrainingFields 重叠；
+  // S_NOISE 里那份默认值是空串，且渲染顺序在后，会把 ADDifT 传进来的 minTimestep=500 盖成空串
+  // （createDefaultConfig 是无条件覆盖，最后渲染的赢）。概念编辑的时间步范围归 training-settings 管。
+  sec('noise-settings', 'advanced', '噪声设置', '噪声偏移与辅助损失设置。',
+    S_NOISE.filter((f) => !['min_timestep', 'max_timestep'].includes(f.key))),
   sec('advanced-settings', 'advanced', '其他设置', '噪声、种子与其它选项。', [...S_ADV_DIT]),
   sec('thermal-settings', 'training', '散热与功耗', '训练期间冷却与功率管理。', [...S_THERMAL]),
   sec('distributed-settings', 'advanced', '分布式训练', 'Anima 概念编辑首版不建议多机多卡；这里仍保留通用入口。', [...S_DISTRIBUTED]),
@@ -407,10 +424,10 @@ export const ANIMA_LORA_SECTIONS = [
     },
     { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', label: 'Anima DiT 权重路径', title: 'pretrained_model_name_or_path', desc: 'Anima 主 DiT 权重；支持 BF16 与 Bedovyy/Comfy INT8（int8rowwise/int8convrot）。INT8 包训练前会 dequant 成 dense，训练显存≈BF16（省磁盘，非 keep-I8，非 Comfy 原生加速）', defaultValue: './sd-models/model.safetensors' },
     { key: 'vae', type: 'file', pickerType: 'model-file', label: 'Qwen Image VAE 路径', title: 'vae', desc: 'Qwen Image VAE 路径', defaultValue: '' },
-    { key: 'qwen3', type: 'file', pickerType: 'model-file', label: 'Qwen3 文本模型路径', title: 'qwen3', desc: 'Qwen3 文本模型路径', defaultValue: '' },
+    { key: 'qwen3', type: 'file', pickerType: 'model-file', allowModelDirectory: true, label: 'Qwen3 文本模型路径', title: 'qwen3', desc: 'Qwen3 文本模型文件或本地模型目录', defaultValue: '' },
     { key: 'llm_adapter_path', type: 'file', pickerType: 'model-file', label: 'LLM Adapter 路径', title: 'llm_adapter_path', desc: 'LLM Adapter 路径', defaultValue: '' },
     { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', title: 'network_weights', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
-    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' },
+    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' },
   ]),
   sec('anima-params', 'model', 'Anima 专用参数', '', [
     ...flowParams({ ts: 'shift', dfs: 3.0, tsExtra: ['logit_normal'] }),
@@ -467,11 +484,18 @@ export const ANIMA_LORA_SECTIONS = [
     'cache_text_encoder_outputs', 'cache_text_encoder_outputs_to_disk',
     'text_encoder_outputs_cache_disk_format', 'text_encoder_outputs_cache_disk_dtype',
     'disable_mmap_load_safetensors', 'torch_compile', 'dynamo_backend',
+    // 与上面 S_DIT_PERFORMANCE_EXPERT 重叠；不排除会在同一段里渲染两次，
+    // 且 flow 版的 window 默认值会盖掉 expert 版。
+    'acceleration_profile',
+    'experimental_attention_profile_enabled', 'experimental_attention_profile_window',
   ]).has(f.key))]),
     sec('compile-settings', 'speed', '编译与执行后端',
     'execution_backend / torch.compile / Thunder 与 compile expert 旋钮；从速度页拆出以免与缓存/注意力搅在一起。',
     [...S_EXECUTION_BACKEND, ...S_COMPILE_EXPERT], { expert: true }),
-  sec('noise-settings', 'training', '噪声设置', '噪声偏移与多分辨率噪声。', [...S_NOISE]),
+  // min_timestep / max_timestep 归下面的 timestep-sampling-settings 管（那份带 timestep_sampling_mode
+  // 门控，是后端真正读得到的一套）。S_NOISE 里那份是空串且渲染在前，留着只会在 UI 上重复出现两次。
+  sec('noise-settings', 'training', '噪声设置', '噪声偏移与多分辨率噪声。',
+    S_NOISE.filter((f) => !['min_timestep', 'max_timestep'].includes(f.key))),
   sec('timestep-sampling-settings', 'training', '时间步采样策略', '控制训练时采样哪些时间步。可用于集中训练特定噪声阶段。', [...S_TIMESTEP_SAMPLING_STRATEGY]),
   // 画质：质量包 + Pattern + 感知锚/频域 + Wavelet（从 safeguard 拆入质量叙事）
   sec('quality-pack-settings', 'frontier', '图像质量与感知损失', '线稿/DCT/Gram/困难样本/多尺度监督 + Pattern Loss + 感知锚/频域纹理 + Wavelet。', [...S_QUALITY_OPTIMIZATION_PACK, ...S_PATTERN_LOSS, ...S_PERCEPTUAL_ANCHOR_LOSS, ...S_WAVELET_LOSS]),
@@ -497,9 +521,8 @@ export const ANIMA_LORA_SECTIONS = [
     'lulynx_auto_controller_enabled', 'lulynx_auto_check_every', 'lulynx_auto_early_stop_patience',
   ]).has(f.key))),
   sec('turbocore-settings', 'speed', 'TurboCore 内核优化', '由顶栏 TurboCore 开关启用（）。本页为高级参数：工作空间、预取深度、模式/profile 等；调优结果可缓存复用。', [...S_TURBOCORE], { expert: true }),
-  sec('bubble-controller-settings', 'speed', 'Bubble Controller', '训练步间显存气泡调度与交换策略。不含 benchmark 探针。', [...S_BUBBLE_CONTROLLER], { expert: true }),
   sec('memory-offload-settings', 'speed', '内存与 Offload',
-    '顺序 CPU offload、module_offload 完整面、checkpointing pool 与 VAE slice/tile。',
+    '顺序 CPU offload、module_offload 完整面、checkpointing pool 与 VAE slice/tile；含极端内存模式（磁盘换内存，给小内存机器）。',
     [...S_MEMORY_OFFLOAD], { expert: true }),
     sec('quantization-settings', 'speed', '量化 / QLoRA', '底模量化加载与 bnb 4bit。', [...S_QUANTIZATION], { expert: true }),
   sec('turbo-lora-settings', 'speed', 'TurboLoRA 投机采样', '草稿网络盲猜多步，大模型批量验证，接受步骤几乎免费。训练时自动蒸馏草稿网络，推理时可跳过已验证步骤。', [...S_TURBO_LORA], { expert: true }),

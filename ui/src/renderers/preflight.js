@@ -6,7 +6,6 @@
 // 解决与 statusDeck 的循环依赖）
 
 import { escapeHtml, _ico } from '../utils/dom.js';
-import { renderBubbleAdvisorNarrativePanel } from '../utils/bubbleAdvisorNarrative.js';
 import { renderPcieTransferBenchmarkCard, renderUnifiedRecommendationCard } from '../utils/trainingMetrics.js';
 import {
   collectAdvisorRecommendedConfigPatch,
@@ -367,6 +366,74 @@ export function createPreflightRenderer({ state, deps }) {
     return html;
   }
 
+  function _renderStepBreakdown(report) {
+    if (!report || typeof report !== 'object' || !report.available) return '';
+    var images = report.images || {};
+    var repeats = report.repeats || {};
+    var regularization = report.regularization || {};
+    var buckets = report.buckets || {};
+    var batch = report.batch || {};
+    var epochs = report.epochs || {};
+    var assumptions = Array.isArray(report.assumptions) ? report.assumptions : [];
+    var unknowns = Array.isArray(report.unknowns) ? report.unknowns : [];
+    var entries = Array.isArray(buckets.entries) ? buckets.entries : [];
+    var dropLastLabel = report.drop_last_confidence === 'range'
+      ? '待运行时决议'
+      : (buckets.drop_last ? '丢弃尾批' : '保留尾批');
+    var stepLabel = epochs.estimated_optimizer_steps == null
+      ? String(epochs.optimizer_steps_min == null ? '?' : epochs.optimizer_steps_min) + '-' + String(epochs.optimizer_steps_max == null ? '?' : epochs.optimizer_steps_max)
+      : epochs.estimated_optimizer_steps;
+    var epochStepLabel = epochs.steps_per_epoch == null
+      ? String(epochs.steps_per_epoch_min == null ? '?' : epochs.steps_per_epoch_min) + '-' + String(epochs.steps_per_epoch_max == null ? '?' : epochs.steps_per_epoch_max)
+      : epochs.steps_per_epoch;
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;" open>';
+    html += '<summary class="preflight-group-title">' + _ico('activity', 14) + ' 训练步数拆解<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += '<div class="preflight-dataset-grid">';
+    html += _pfTag('模型族', report.family || 'unknown');
+    html += _pfTag('原始图片', images.discovered == null ? '未知' : images.discovered);
+    html += _pfTag('运行时样本', images.runtime_samples == null ? '未知' : images.runtime_samples);
+    html += _pfTag('训练/验证', String(images.train_samples || 0) + ' / ' + String(images.validation_samples || 0));
+    html += _pfTag('声明重复后', repeats.declared_effective_samples == null ? '未知' : repeats.declared_effective_samples, repeats.runtime_consumed ? 'ok' : 'warn');
+    html += _pfTag('正则图片', regularization.images == null ? '未知' : regularization.images, regularization.requested ? 'warn' : '');
+    html += _pfTag('Bucket', String(buckets.count || 0) + ' 个');
+    html += _pfTag('尾批', String(buckets.tail_bucket_count || 0) + ' 个 / ' + String(buckets.tail_samples || 0) + ' 样本');
+    html += _pfTag('每卡 Batch', batch.per_device || 1);
+    html += _pfTag('World Size', batch.world_size || 1);
+    html += _pfTag('GPU 选择', batch.selected_gpu_count == null ? '自动/未知' : String(batch.selected_gpu_count) + ' 张');
+    html += _pfTag('梯度累积', batch.gradient_accumulation || 1);
+    html += _pfTag('全局有效 Batch', batch.global_effective_batch || 1);
+    html += _pfTag('Epoch', epochs.requested || 0);
+    html += _pfTag('尾批策略', dropLastLabel, report.drop_last_confidence === 'range' ? 'warn' : '');
+    html += _pfTag('每 Epoch 步数', epochStepLabel, epochs.steps_per_epoch == null ? 'warn' : '');
+    html += _pfTag('预计优化器步数', stepLabel, epochs.estimated_optimizer_steps == null ? 'warn' : 'accent');
+    html += '</div>';
+    if (!repeats.runtime_consumed && Number(repeats.declared_extra_samples || 0) > 0) {
+      html += '<div class="preflight-item preflight-warning">检测到目录 repeats 声明，但当前运行时 Dataset 未展开；预计步数按实际运行时样本计算。</div>';
+    }
+    if (regularization.requested && regularization.runtime_consumption !== 'auxiliary_per_microbatch') {
+      html += '<div class="preflight-item preflight-warning">' + escapeHtml(String(regularization.note || '正则数据未进入当前运行时。')) + '</div>';
+    }
+    if (entries.length) {
+      var bucketText = entries.slice(0, 12).map(function(entry) {
+        var keepBatches = entry.microbatches_keep;
+        var dropBatches = entry.microbatches_drop;
+        var microbatches = entry.microbatches == null
+          ? (keepBatches == null || dropBatches == null
+            ? '?'
+            : String(Math.min(keepBatches, dropBatches)) + '-' + String(Math.max(keepBatches, dropBatches)))
+          : String(entry.microbatches || 0);
+        var tail = Number(entry.tail_samples || 0) > 0 ? '，尾批 ' + entry.tail_samples : '';
+        return String(entry.resolution || '?') + ': ' + String(entry.samples || 0) + ' 样本 / ' + microbatches + ' 批次' + tail;
+      }).join('; ');
+      html += '<div class="preflight-item preflight-note">Bucket: ' + escapeHtml(bucketText + (entries.length > 12 ? '; ...' : '')) + '</div>';
+    }
+    assumptions.concat(unknowns).slice(0, 6).forEach(function(note) {
+      html += '<div class="preflight-item preflight-note">' + escapeHtml(String(note)) + '</div>';
+    });
+    html += '</details>';
+    return html;
+  }
+
   function renderPreflightReport() {
     const pf = state.preflight;
     if (!pf) return '';
@@ -380,8 +447,7 @@ export function createPreflightRenderer({ state, deps }) {
     const modelAcceleration = pf.model_acceleration;
     const precisionSwapProfile = pf.precision_swap_profile;
     const nativeUnetProfile = pf.native_unet_profile;
-
-    const bubbleAdvisorPanel = renderBubbleAdvisorNarrativePanel(pf);
+    const stepBreakdown = pf.step_breakdown;
 
     if (
       errors.length === 0
@@ -389,10 +455,10 @@ export function createPreflightRenderer({ state, deps }) {
       && notes.length === 0
       && !ds
       && !advisor
-      && !bubbleAdvisorPanel
       && !modelAcceleration
       && !precisionSwapProfile
       && !nativeUnetProfile
+      && !(stepBreakdown && stepBreakdown.available)
     ) {
       return '';
     }
@@ -447,6 +513,8 @@ export function createPreflightRenderer({ state, deps }) {
       html += '</div></div>';
     }
 
+    html += _renderStepBreakdown(stepBreakdown);
+
     // 依赖检测
     if (deps) {
       var missing = deps.missing || [];
@@ -464,7 +532,6 @@ export function createPreflightRenderer({ state, deps }) {
       }
     }
 
-    html += bubbleAdvisorPanel;
     html += _renderAdvisorSummary(advisor);
     html += _renderModelAcceleration(modelAcceleration);
     html += _renderBackendRecommendedPatch(pf);

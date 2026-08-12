@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-07-16",
+  "updatedAt": "2026-08-11",
   "title": "Lulynx Training Wiki",
   "description": "Shared help entries for WebUI option hints and the launcher learning center.",
   "entries": [
@@ -812,20 +812,6 @@
       "entry": "entries/bp_low_schedule.json"
     },
     {
-      "key": "bubble_controller_enabled",
-      "title": "Bubble Controller (运行时自动调优)",
-      "category": "性能 / 自动调优",
-      "summary": "Bubble Controller 是 Lulynx 的运行时自动调优引擎——实时监控 GPU 利用率、数据管道吞吐量和显存使用，自动调整 batch size、worker 数量、传输预取等参数以最大化训练吞吐。",
-      "entry": "entries/bubble_controller_enabled.json"
-    },
-    {
-      "key": "bubble_controller_mode",
-      "title": "Bubble 模式",
-      "category": "训练参数",
-      "summary": "report_only=只报告（详见 ?）",
-      "entry": "entries/bubble_controller_mode.json"
-    },
-    {
       "key": "bucket_custom_resos",
       "title": "自定义桶列表（bucket_custom_resos）",
       "category": "训练参数",
@@ -850,7 +836,7 @@
       "key": "bucket_selection_mode",
       "title": "分桶策略（bucket_selection_mode）",
       "category": "训练参数",
-      "summary": "legacy 为原始穷举桶，nearest_only 就近桶",
+      "summary": "决定每张图被分到哪个桶。10 个取值实际是 4 组语义：aspect 比宽高比（默认）、area/pixel/pixels 比面积、larger/ceil/no_downscale 永不缩小、smaller/floor/no_upscale 永不放大。",
       "entry": "entries/bucket_selection_mode.json"
     },
     {
@@ -1245,7 +1231,7 @@
       "key": "concept_geometry_embedding_backend",
       "title": "Embedding 后端",
       "category": "训练参数",
-      "summary": "Embedding 后端 可选值（含换档影响）。",
+      "summary": "Concept Geometry 的文本 embedding 当前使用 PyTorch 后端。",
       "entry": "entries/concept_geometry_embedding_backend.json"
     },
     {
@@ -1999,7 +1985,7 @@
       "key": "fera_enabled",
       "title": "FeRA (特征调制适配)",
       "category": "LoRA / 实验性",
-      "summary": "FeRA 通过门控机制控制 LoRA 特征的注入强度，初始门控值设为 0（不注入），训练中逐渐学习合适的注入量。",
+      "summary": "FeRA 通过逐输出通道门控控制 LoRA 增量强度，门控默认初始化为 1.0。",
       "entry": "entries/fera_enabled.json"
     },
     {
@@ -2186,16 +2172,6 @@
       "category": "精度 / 计算",
       "summary": "在 Ada/Hopper GPU 上使用 FP8 张量核心（torch._scaled_mm）执行冻结底模的 GEMM 计算，比 FP16 更快且显存占用更低。",
       "entry": "entries/fp8_base_compute.json"
-    },
-    {
-      "key": "frontier_optimizer_candidate",
-      "title": "Frontier 优化器候选",
-      "category": "训练 / 优化器",
-      "summary": "选择已回签的 Frontier 优化器产品候选（如 AutomagicPlusPlus / AutoProdigy / Riemannion / Rose / Aurora 等实验性优化器）。需要先开启 frontier_optimizer_product_candidate_enabled 才生效。",
-      "entry": "entries/frontier_optimizer_candidate.json",
-      "aliases": [
-        "frontier_optimizer_product_candidate_enabled"
-      ]
     },
     {
       "key": "full_matrix",
@@ -2660,13 +2636,6 @@
       "category": "训练参数",
       "summary": "降低原生 DiT LoRA 反传激活峰值。",
       "entry": "entries/lora_activation_recompute_mode.json"
-    },
-    {
-      "key": "lora_composer_enabled",
-      "title": "LoRA-Composer (区域组合)",
-      "category": "训练参数",
-      "summary": "多概念区域感知组合（inference-time）。",
-      "entry": "entries/lora_composer_enabled.json"
     },
     {
       "key": "lora_fa_enabled",
@@ -3672,7 +3641,7 @@
       "key": "optimizer_state_paging_enabled",
       "title": "优化器状态分页",
       "category": "显存 / Offload",
-      "summary": "将 optimizer state（AdamW 的 m_t 和 v_t）在 step 间隙停放在 CPU 内存中，只在 step 时搬到 GPU。减少 optimizer state 的常驻显存。",
+      "summary": "将 optimizer state 在 step 间按 storage_device 停放到 CPU 或参数设备；CPU 副本可选 preserve/fp16/bf16/fp32，step 前恢复原计算精度。",
       "entry": "entries/optimizer_state_paging_enabled.json"
     },
     {
@@ -3917,6 +3886,20 @@
       "entry": "entries/pixel_space_loss_type.json"
     },
     {
+      "key": "preference_models",
+      "title": "偏好评分模型",
+      "category": "质量评估",
+      "summary": "逗号分隔：pickscore,imagereward,hpsv2。空=仅 pickscore。",
+      "entry": "entries/preference_models.json"
+    },
+    {
+      "key": "preference_scoring_enabled",
+      "title": "偏好对齐评分",
+      "category": "质量评估",
+      "summary": "训练后用 PickScore / ImageReward / HPSv2 对生成图打偏好分。默认关。",
+      "entry": "entries/preference_scoring_enabled.json"
+    },
+    {
       "key": "prefetch_factor",
       "title": "DataLoader 预取批次",
       "category": "训练参数",
@@ -4020,7 +4003,7 @@
       "key": "quantization_type",
       "title": "量化类型",
       "category": "训练参数",
-      "summary": "量化类型：下列可选值说明含换档影响。",
+      "summary": "量化类型：下列可选值说明含换档影响。 真正的 FP4 开关是独立字段 bnb_4bit_quant_type，不在本字段的可选值里。",
       "entry": "entries/quantization_type.json"
     },
     {
@@ -4071,6 +4054,13 @@
       "category": "训练参数",
       "summary": "正则化数据集路径。默认留空，不使用正则化图像。",
       "entry": "entries/reg_data_dir.json"
+    },
+    {
+      "key": "regional_lora_regions_json",
+      "title": "区域多 LoRA（分区域布局）",
+      "category": "推理参数",
+      "summary": "在画面上划分区域，每个区域绑一个 LoRA 与局部提示词。",
+      "entry": "entries/regional_lora_regions_json.json"
     },
     {
       "key": "repa_capture_modules_auto",
@@ -5082,7 +5072,7 @@
       "key": "training_quantization_type",
       "title": "训练量化类型（别名）",
       "category": "训练参数",
-      "summary": "训练量化类型（别名） 可选值（含换档影响）。",
+      "summary": "训练量化类型（别名） 可选值（含换档影响）。 真正的 FP4 开关是独立字段 bnb_4bit_quant_type，不在本字段的可选值里。",
       "entry": "entries/training_quantization_type.json"
     },
     {
@@ -5491,12 +5481,6 @@
       "category": "训练参数",
       "summary": "时间步采样（zimage_timestep_sampling） 可选值（含换档影响）。",
       "entry": "entries/zimage_timestep_sampling.json"
-    },
-    {
-      "key": "preference_scoring_enabled"
-    },
-    {
-      "key": "preference_models"
     }
   ]
 }

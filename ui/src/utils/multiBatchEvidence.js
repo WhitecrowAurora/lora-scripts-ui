@@ -26,16 +26,13 @@ function listText(value, emptyText = '无') {
 
 function readEvidenceParts(source) {
   const src = asObject(source);
-  const gate = src.gate === 'lulynx_multi_batch_promotion_gate_v0'
-    ? src
-    : asObject(src.multi_batch_promotion_gate || src.promotionGate);
   const dataloader = src.contract === 'lulynx_multi_batch_dataloader_contract_v0'
     ? src
     : asObject(src.multi_batch_dataloader || src.dataloader);
   const stability = src.report === 'lulynx_multi_batch_stability_candidate_evidence_v0'
     ? src
     : asObject(src.multi_batch_stability_candidate_evidence || src.stabilityCandidateEvidence);
-  return { gate, dataloader, stability };
+  return { dataloader, stability };
 }
 
 export function getMultiBatchEvidenceFromTask(task, summaries = {}) {
@@ -44,7 +41,6 @@ export function getMultiBatchEvidenceFromTask(task, summaries = {}) {
   const cached = taskId ? asObject(summaries[taskId]) : {};
   const embedded = asObject(task?._summary);
   const evidence = {
-    multi_batch_promotion_gate: metadata.multi_batch_promotion_gate || task?.multi_batch_promotion_gate || cached.multiBatchPromotionGate || cached.multi_batch_promotion_gate || embedded.multiBatchPromotionGate || embedded.multi_batch_promotion_gate,
     multi_batch_dataloader: metadata.multi_batch_dataloader || task?.multi_batch_dataloader || cached.multiBatchDataloader || cached.multi_batch_dataloader || embedded.multiBatchDataloader || embedded.multi_batch_dataloader,
     multi_batch_stability_candidate_evidence: metadata.multi_batch_stability_candidate_evidence || task?.multi_batch_stability_candidate_evidence || cached.multiBatchStabilityCandidateEvidence || cached.multi_batch_stability_candidate_evidence || embedded.multiBatchStabilityCandidateEvidence || embedded.multi_batch_stability_candidate_evidence,
   };
@@ -53,18 +49,15 @@ export function getMultiBatchEvidenceFromTask(task, summaries = {}) {
 
 export function normalizeMultiBatchEvidence(source) {
   const parts = readEvidenceParts(source);
-  if (!Object.keys(parts.gate).length && !Object.keys(parts.dataloader).length && !Object.keys(parts.stability).length) return null;
-  const gateReady = parts.gate.ready_for_long_window_probe === true;
+  if (!Object.keys(parts.dataloader).length && !Object.keys(parts.stability).length) return null;
   const stabilityComplete = parts.stability.evidence_complete_for_review === true;
-  const blocked = Array.isArray(parts.gate.blockers) && parts.gate.blockers.length > 0;
-  const label = blocked ? '推广阻断' : (stabilityComplete ? '复核证据完整' : (gateReady ? '可进长窗复核' : '复核证据'));
+  const blocked = Object.keys(parts.dataloader).length > 0 && parts.dataloader.ok === false;
+  const label = blocked ? '批处理配置异常' : (stabilityComplete ? '长窗证据完整' : '批处理运行态');
   const color = blocked ? 'var(--warning)' : (stabilityComplete ? 'var(--info)' : 'var(--text-dim)');
   return {
     label,
     color,
     icon: blocked ? 'alert-tri' : 'lock',
-    releaseClaimAllowed: false,
-    gate: parts.gate,
     dataloader: parts.dataloader,
     stability: parts.stability,
   };
@@ -74,20 +67,15 @@ export function renderMultiBatchEvidenceBadge(source) {
   const info = normalizeMultiBatchEvidence(source);
   if (!info) return '';
   return '<span style="font-size:0.68rem;color:' + info.color + ';background:var(--bg-hover);border:1px solid var(--border);padding:1px 6px;border-radius:4px;white-space:nowrap;">'
-    + _ico(info.icon, 12) + ' Multi-batch ' + escapeHtml(info.label + ' · 不可发布')
+    + _ico(info.icon, 12) + ' Multi-batch ' + escapeHtml(info.label)
     + '</span>';
 }
 
 export function renderMultiBatchEvidenceCard(source) {
   const info = normalizeMultiBatchEvidence(source);
   if (!info) return '';
-  const gate = info.gate;
   const dataloader = info.dataloader;
   const stability = info.stability;
-  const batch = gate.candidate_physical_batch_size || dataloader.physical_batch_size || '—';
-  const gateLine = Object.keys(gate).length
-    ? 'Gate ' + String(gate.status || 'unknown') + '，batch ' + String(batch) + '，阻断 ' + listText(gate.blockers)
-    : 'Gate 证据缺失';
   const loaderLine = Object.keys(dataloader).length
     ? 'DataLoader ' + (dataloader.ok ? 'ok' : 'blocked') + '，physical/effective '
       + String(dataloader.physical_batch_size || '—') + '/' + String(dataloader.effective_batch_size || '—')
@@ -101,17 +89,15 @@ export function renderMultiBatchEvidenceCard(source) {
       + ' samples/s，active GPU ' + formatPlain(stability.active_gpu_util_pct_mean, '%', 1)
       + '，VRAM ' + formatPlain(stability.peak_vram_mb, ' MB', 1)
       + '，Loss ' + formatPlain(stability.final_loss, '', 4)
-    : '长窗 stability candidate evidence 缺失';
+    : '';
   return '<div style="margin-top:8px;">'
     + '<div class="status-card" style="border-left:3px solid ' + info.color + ';">'
     + '<div class="status-label">Multi-batch 证据</div>'
     + '<div style="font-size:0.95rem;font-weight:700;color:' + info.color + ';margin:4px 0;">'
-    + _ico(info.icon, 14) + ' ' + escapeHtml(info.label) + ' / 发布 claim：关闭'
+    + _ico(info.icon, 14) + ' ' + escapeHtml(info.label)
     + '</div>'
-    + '<div class="status-sub">' + escapeHtml(gateLine) + '</div>'
-    + '<div class="status-sub" style="margin-top:4px;">' + escapeHtml(loaderLine) + '</div>'
-    + '<div class="status-sub" style="margin-top:4px;">' + escapeHtml(stabilityLine) + '</div>'
-    + '<div class="status-sub" style="margin-top:4px;">只读 evidence，不用于 batch2/4/8 发布 claim。</div>'
+    + '<div class="status-sub">' + escapeHtml(loaderLine) + '</div>'
+    + (stabilityLine ? '<div class="status-sub" style="margin-top:4px;">' + escapeHtml(stabilityLine) + '</div>' : '')
     + '</div>'
     + '</div>';
 }

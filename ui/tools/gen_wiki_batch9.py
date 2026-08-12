@@ -103,20 +103,11 @@ write('enhanced_protection_mode.json', {
   'relatedConfigs': ['safeguard_enabled', 'max_grad_norm', 'peak_vram_control_enabled']
 })
 
-write('frontier_optimizer_candidate.json', {
-  'key': 'frontier_optimizer_candidate',
-  'title': 'Frontier 优化器候选',
-  'category': '训练 / 优化器',
-  'appliesTo': ['anima-lora', 'sdxl-lora'],
-  'aliases': ['frontier_optimizer_product_candidate_enabled'],
-  'standard': {
-    'summary': '选择已回签的 Frontier 优化器产品候选（如 AutomagicPlusPlus / AutoProdigy / Riemannion / Rose / Aurora 等实验性优化器）。需要先开启 frontier_optimizer_product_candidate_enabled 才生效。',
-    'effect': '覆盖 optimizer_type，使用选中的前沿优化器。这些优化器均为自有实现，default-off。',
-    'whenToUse': '有明确需要测试前沿优化器时使用。先了解各优化器的特性（通过问号帮助或文档）再开启。',
-    'avoidWhen': '不了解具体优化器特性时不要随意切换。前沿优化器可能有未知的稳定性问题。'
-  },
-  'relatedConfigs': ['optimizer_type', 'optimizer_backend']
-})
+# frontier_optimizer_candidate 条目已于 2026-08-07 移除:该字段随 frontier 门闸
+# 一起从三套 UI 的 schema 和后端删掉了,条目里"需要先开启
+# frontier_optimizer_product_candidate_enabled 才生效"是对不存在开关的说明。
+# 它宣传的 Riemannion / Rose / Aurora 等现在都是 optimizer_type 的普通选项,
+# 说明已并入 entries/optimizer_type.json 的 optionDescriptions。
 
 write('copilot_tool.json', {
   'key': 'copilot_tool',

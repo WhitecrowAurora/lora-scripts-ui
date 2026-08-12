@@ -6,7 +6,7 @@
 //   - getSectionsForType  结构序列化(函数 visibleWhen → 稳定 token 'ƒ',保 section/field 全形)
 //   - createDefaultConfig 默认值
 //   - getAvailableTabs    页签集
-//   - buildRunConfig      payload(默认 + 每 boolean 翻转 + 每 select 选项,穷尽 visibleWhen 门控)
+//   - buildRunConfig      payload SHA-256(默认 + 每 boolean 翻转 + 每 select 选项,穷尽 visibleWhen 门控)
 //
 // 用法(纯 node,无需 python 环境):
 //   node ui/tools/schemaParitySnapshot.mjs --capture   # 改动前采 baseline
@@ -22,6 +22,7 @@ import {
   buildRunConfig,
 } from '../src/schemaIndex.js';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -45,6 +46,12 @@ function optionValue(opt) {
   return opt && typeof opt === 'object' ? opt.value : opt;
 }
 
+function optionsFor(field, config) {
+  const raw = typeof field.options === 'function' ? field.options(config) : field.options;
+  if (raw == null) return [];
+  return Array.isArray(raw) ? raw : Array.from(raw);
+}
+
 // 默认 + 逐 boolean 翻转 + 逐 select 选项:O(字段数) 个配置,穷尽 boolean/select 门控的
 // visibleWhen 分支(本仓 visibleWhen 绝大多数由 boolean 开关或 select 取值驱动)。
 function permutations(typeId) {
@@ -54,8 +61,8 @@ function permutations(typeId) {
     if (!f || !f.key) continue;
     if (f.type === 'boolean') {
       variants.push([`bool:${f.key}=${!base[f.key]}`, { ...base, [f.key]: !base[f.key] }]);
-    } else if (f.type === 'select' && Array.isArray(f.options)) {
-      for (const opt of f.options) {
+    } else if (f.type === 'select') {
+      for (const opt of optionsFor(f, base)) {
         const val = optionValue(opt);
         variants.push([`sel:${f.key}=${val}`, { ...base, [f.key]: val }]);
       }
@@ -72,13 +79,17 @@ function safe(fn) {
   }
 }
 
+function sha256Json(value) {
+  return createHash('sha256').update(JSON.stringify(value, fnReplacer), 'utf8').digest('hex');
+}
+
 function buildSnapshot() {
   const snap = {};
   for (const t of TRAINING_TYPES) {
     const typeId = t.id;
     const runConfigs = {};
     for (const [label, cfg] of permutations(typeId)) {
-      runConfigs[label] = safe(() => buildRunConfig(cfg, typeId));
+      runConfigs[label] = sha256Json(safe(() => buildRunConfig(cfg, typeId)));
     }
     snap[typeId] = {
       sections: safe(() => getSectionsForType(typeId)),
@@ -108,8 +119,8 @@ function firstDiff(a, b) {
             const ra = oa[typeId]?.runConfigs ?? {};
             const rb = ob[typeId]?.runConfigs ?? {};
             for (const lbl of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
-              if (JSON.stringify(ra[lbl]) !== JSON.stringify(rb[lbl])) {
-                return `type='${typeId}' runConfigs['${lbl}']\n  baseline: ${JSON.stringify(ra[lbl])}\n  current : ${JSON.stringify(rb[lbl])}`;
+              if (ra[lbl] !== rb[lbl]) {
+                return `type='${typeId}' runConfigs['${lbl}']\n  baseline hash: ${ra[lbl] ?? '(missing)'}\n  current hash : ${rb[lbl] ?? '(missing)'}`;
               }
             }
           }

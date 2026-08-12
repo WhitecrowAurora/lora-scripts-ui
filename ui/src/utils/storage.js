@@ -1,4 +1,8 @@
-import { DRAFT_STORAGE_KEY, DELETED_TASK_IDS_STORAGE_KEY } from './constants.js';
+import {
+  DRAFT_BACKUP_STORAGE_KEY,
+  DRAFT_STORAGE_KEY,
+  DELETED_TASK_IDS_STORAGE_KEY,
+} from './constants.js';
 
 const STORAGE_KEYS = Object.freeze({
   theme: 'theme',
@@ -13,7 +17,22 @@ const STORAGE_KEYS = Object.freeze({
   legacyNavigatorCollapsed: 'sd-rescripts:navigator-collapsed',
 });
 
-export { DRAFT_STORAGE_KEY, DELETED_TASK_IDS_STORAGE_KEY, STORAGE_KEYS };
+export {
+  DRAFT_BACKUP_STORAGE_KEY,
+  DRAFT_STORAGE_KEY,
+  DELETED_TASK_IDS_STORAGE_KEY,
+  STORAGE_KEYS,
+};
+
+function parseDraft(rawDraft) {
+  if (!rawDraft) return null;
+  try {
+    const parsed = JSON.parse(rawDraft);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+}
 
 function readBool(key, fallback = false) {
   const value = localStorage.getItem(key);
@@ -65,15 +84,20 @@ export function persistJsonPanelCollapsed(collapsed) {
  */
 export function readDraftFromStorage() {
   const rawDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
-  if (!rawDraft) return null;
-  try {
-    const parsed = JSON.parse(rawDraft);
-    if (!parsed || typeof parsed !== 'object') return null;
-    return parsed;
-  } catch (error) {
-    console.warn('Failed to read local draft:', error);
-    return null;
+  const primary = parseDraft(rawDraft);
+  if (primary) return primary;
+
+  const rawBackup = localStorage.getItem(DRAFT_BACKUP_STORAGE_KEY);
+  const backup = parseDraft(rawBackup);
+  if (backup) {
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, rawBackup);
+    } catch (_error) {
+      // Recovery can still proceed when storage is read-only or full.
+    }
+    return backup;
   }
+  return null;
 }
 
 /**
@@ -82,8 +106,12 @@ export function readDraftFromStorage() {
  */
 export function writeDraftToStorage(config) {
   try {
+    const previousRaw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (parseDraft(previousRaw)) {
+      localStorage.setItem(DRAFT_BACKUP_STORAGE_KEY, previousRaw);
+    }
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(config));
-  } catch (error) {
+  } catch (_error) {
     /* localStorage 满或被禁用时静默 */
   }
 }

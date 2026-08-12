@@ -5,7 +5,7 @@
 // 这是 main.js 与各 smoke/parity 工具的唯一公共入口(原先在 sdxlSchema 神文件尾部)。
 // ================================================================
 import { TRAINING_TYPES as ALL_TRAINING_TYPES, VISIBLE_TRAINING_TYPES, UI_TABS } from './trainingTypeRegistry.js';
-import { FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS, TARGET_LORA_OPTIMIZERS, schedulerOptions } from './features/settingsOptions.js';
+import { TARGET_LORA_OPTIMIZERS, schedulerOptions } from './features/settingsOptions.js';
 import { buildRunConfigFromSections } from './runConfigBuilder.js';
 import {
   SDXL_LORA_SECTIONS, SDXL_ILECO_SECTIONS, SDXL_ADDIFT_SECTIONS, SDXL_MULTI_ADDIFT_SECTIONS,
@@ -24,11 +24,12 @@ import {
   HUNYUAN_IMAGE_COMPAT_SECTIONS, FLUX_FT_SECTIONS, LUMINA_FT_SECTIONS, FLUX_CN_SECTIONS, NEWBIE_LORA_SECTIONS,
   KREA2_LORA_SECTIONS, FLUX2_LORA_SECTIONS, ZIMAGE_LORA_SECTIONS, WAN22_TI2V_LORA_SECTIONS, WAN22_T2V_A14B_LORA_SECTIONS, LTX23_LORA_SECTIONS, BOOGU_LORA_SECTIONS, BOOGU_EDIT_LORA_SECTIONS,
 } from './otherDitSchemas.js';
+import { MINIMAX_H3_LORA_SECTIONS } from './minimaxH3Schema.js';
 import {
   LAB_DISTILLER_SECTIONS, SDXL_TURBO_LORA_SECTIONS, ANIMA_FEW_STEP_LORA_SECTIONS, NEWBIE_FEW_STEP_LORA_SECTIONS,
 } from './experimentalTrainingSchemas.js';
 import { CONCEPT_EDIT_UNIFIED_SECTIONS } from './conceptEditUnifiedSchema.js';
-import { S_TRAINING_INTENT_PROFILE } from './schemaFrontierGroups.js';
+import { S_TRAINING_INTENT_PROFILE, S_DATASET_INTELLIGENCE } from './schemaFrontierGroups.js';
 import { S_UNIVERSAL_DIT } from './universalDitFields.js';
 
 export { ALL_TRAINING_TYPES, UI_TABS };
@@ -64,6 +65,7 @@ const SECTIONS_MAP = {
   'zimage-lora':            ZIMAGE_LORA_SECTIONS,
   'wan22-ti2v-lora':        WAN22_TI2V_LORA_SECTIONS,
   'wan22-t2v-a14b-lora':     WAN22_T2V_A14B_LORA_SECTIONS,
+  'minimax-h3-lora':        MINIMAX_H3_LORA_SECTIONS,
   'ltx23-lora':             LTX23_LORA_SECTIONS,
   'boogu-lora':             BOOGU_LORA_SECTIONS,
   'boogu-edit-lora': BOOGU_EDIT_LORA_SECTIONS,
@@ -87,7 +89,13 @@ const SECTIONS_MAP = {
   'aesthetic-scorer':       AESTHETIC_SCORER_SECTIONS,
 };
 
-const TARGET_OPTIMIZER_TRAINING_TYPES = new Set(['sdxl-lora', 'anima-lora', 'anima-edit-model', 'newbie-lora']);
+const TARGET_OPTIMIZER_TRAINING_TYPES = new Set([
+  'sdxl-lora',
+  'anima-lora',
+  'anima-edit-model',
+  'newbie-lora',
+  'minimax-h3-lora',
+]);
 const TRAINING_INTENT_SUPPORTED_TYPES = new Set([
   'sdxl-lora',
   'sd-lora',
@@ -124,6 +132,18 @@ const TRAINING_INTENT_PROFILE_SECTION = {
 };
 const _profiledSectionsCache = {};
 
+// dataset_intelligence_* 走的就是 sample_difficulty 那条权重 seam(后端
+// trainer_execution_loop_config 在 dataset_intelligence_enabled 为真时直接把
+// sample_difficulty_weighting 置成 provided 档),所以它的可见面必须与 weight-composer
+// 完全一致。这里由 section 现场派生,而不是再维护第三份类型名单 —— 名单一多必漂移。
+// 字段本身是数据集侧配置,挂进各族已有的 dataset-settings,不新开分组。
+function withDatasetIntelligence(sections) {
+  if (!sections.some((section) => section.id === 'weight-composer')) return sections;
+  return sections.map((section) => (section.id === 'dataset-settings'
+    ? { ...section, fields: [...section.fields, ...S_DATASET_INTELLIGENCE] }
+    : section));
+}
+
 // 兼容旧名
 export const SDXL_SECTIONS = SDXL_LORA_SECTIONS;
 
@@ -131,10 +151,11 @@ export const SDXL_SECTIONS = SDXL_LORA_SECTIONS;
 // 公共 API
 // ================================================================
 export function getSectionsForType(typeId) {
-  const base = SECTIONS_MAP[typeId] || SDXL_LORA_SECTIONS;
-  if (!TRAINING_INTENT_SUPPORTED_TYPES.has(typeId)) return base;
   if (!_profiledSectionsCache[typeId]) {
-    _profiledSectionsCache[typeId] = [TRAINING_INTENT_PROFILE_SECTION, UNIVERSAL_DIT_SECTION, ...base];
+    const base = withDatasetIntelligence(SECTIONS_MAP[typeId] || SDXL_LORA_SECTIONS);
+    _profiledSectionsCache[typeId] = TRAINING_INTENT_SUPPORTED_TYPES.has(typeId)
+      ? [TRAINING_INTENT_PROFILE_SECTION, UNIVERSAL_DIT_SECTION, ...base]
+      : base;
   }
   return _profiledSectionsCache[typeId];
 }
@@ -153,8 +174,10 @@ function getFieldMapForType(typeId) {
 
 export function getFieldDefinition(key, typeId) {
   if (typeId) return getFieldMapForType(typeId).get(key);
-  for (const sections of Object.values(SECTIONS_MAP)) {
-    const map = buildFieldMap(sections);
+  // 走 getSectionsForType 而不是直接遍历 SECTIONS_MAP:后者是未经派生的原始表,
+  // 查不到 withDatasetIntelligence 补进去的字段,无 typeId 时会假报"字段不存在"。
+  for (const id of Object.keys(SECTIONS_MAP)) {
+    const map = getFieldMapForType(id);
     if (map.has(key)) return map.get(key);
   }
   return undefined;
@@ -178,27 +201,14 @@ export function applyBackendConfigOptions(optionsPayload) {
   };
   const optimizers = uniqueOptions(payload.optimizers || payload.optimizer_type);
   const schedulers = uniqueOptions(payload.schedulers || payload.lr_scheduler);
-  const frontierCandidates = uniqueOptions(
-    (payload.frontier_optimizer_candidates || []).map((item) => (
-      item && typeof item === 'object'
-        ? { value: item.name || item.value, label: item.label || item.name || item.value }
-        : item
-    ))
-  );
-  if (optimizers.length === 0 && schedulers.length === 0 && frontierCandidates.length === 0) return false;
+  if (optimizers.length === 0 && schedulers.length === 0) return false;
   const mergedOptimizerOptions = uniqueOptions([...optimizers, ...TARGET_LORA_OPTIMIZERS]);
-  const frontierOptimizerOptions = uniqueOptions([
-    ...frontierCandidates,
-    ...FRONTIER_OPTIMIZER_CANDIDATE_OPTIONS,
-  ]);
 
   for (const [typeId, sections] of Object.entries(SECTIONS_MAP)) {
     for (const section of sections) {
       for (const field of section.fields || []) {
         if (field.key === 'optimizer_type' && optimizers.length > 0 && TARGET_OPTIMIZER_TRAINING_TYPES.has(typeId)) {
           field.options = mergedOptimizerOptions;
-        } else if (field.key === 'frontier_optimizer_candidate' && frontierOptimizerOptions.length > 0) {
-          field.options = frontierOptimizerOptions;
         } else if (field.key === 'lr_scheduler' && schedulers.length > 0) {
           field.options = schedulerOptions(schedulers);
         }

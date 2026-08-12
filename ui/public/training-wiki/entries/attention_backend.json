@@ -22,7 +22,7 @@
       "flash2": "有 Flash2 环境时的最佳选择（RTX 30xx/40xx，需 Ampere+）",
       "sageattn": "比 Flash2 快 20-30%，但有轻微量化精度损失",
       "sdpa": "兼容性最好，无需额外安装。速度中等",
-      "spargeattn2": "最快但仍是实验性，仅支持特定硬件和形状"
+      "spargeattn2": "最快但仍是实验性，仅支持特定硬件和形状（本选择器里没有：它绑定独立运行时环境 python-spargeattn2，需要在该环境下启动训练才可用，通用列表里不提供。）"
     },
     "whenToUse": "auto 通常就够用。如果你有 Flash2 环境，显式设 flash2 可以获得最稳定的加速。高分辨率（≥1536px）训练时 attention 后端的差异最明显——Flash2 比 SDPA 快 2-3 倍。",
     "avoidWhen": "不要在不支持的硬件上强制选高级后端（会报错或静默 fallback）。sdpa_backend_policy 控制 SDPA 内部子后端选择（cutlass/flash/cudnn/math），通常不需要手动调。attention_early_deletion 在 attention 计算后立即释放 Q/K/V tensor 以节省显存。",

@@ -94,7 +94,7 @@ export const FLUX_LORA_SECTIONS = [
     { key: 't5xxl', type: 'file', pickerType: 'model-file', label: 'T5-XXL 路径', title: 't5xxl', desc: 'T5-XXL 文本编码器路径', defaultValue: '' },
     { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', title: 'network_weights', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
 
-    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' }
+    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' }
 ]),
   sec('flux-params', 'model', 'FLUX 专用参数', '时间步采样、CFG、损失函数等。', [
     ...flowParams({ ts: 'sigmoid', gs: 1.0 }),
@@ -140,7 +140,7 @@ export const LUMINA_LORA_SECTIONS = [
     { key: 'gemma2', type: 'file', pickerType: 'model-file', label: 'Gemma2 模型路径', title: 'gemma2', desc: 'Gemma2 文本模型路径', defaultValue: '' },
     { key: 'network_weights', type: 'file', pickerType: 'output-model-file', label: '继续训练 LoRA', title: 'network_weights', desc: '从已有的 LoRA 模型上继续训练，填写路径', defaultValue: '' },
 
-    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' }
+    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' }
 ]),
   sec('lumina-params', 'model', 'Lumina 专用参数', '', [
     ...flowParams({ ts: 'shift', dfs: 6.0 }),
@@ -316,7 +316,7 @@ export const FLUX_FT_SECTIONS = [
     { key: 'ae', type: 'file', pickerType: 'model-file', label: 'AE 路径', title: 'ae', desc: 'AutoEncoder 模型路径', defaultValue: '' },
     { key: 'clip_l', type: 'file', pickerType: 'model-file', label: 'CLIP-L 路径', title: 'clip_l', desc: 'CLIP-L 文本编码器路径', defaultValue: '' },
     { key: 't5xxl', type: 'file', pickerType: 'model-file', label: 'T5-XXL 路径', title: 't5xxl', desc: 'T5-XXL 文本编码器路径', defaultValue: '' },
-    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，填写文件路径', defaultValue: '' }
+    { key: 'resume', type: 'folder', pickerType: 'output-folder', label: '继续训练路径', title: 'resume', desc: '从某个 save_state 保存的中断状态继续训练，选择 save-state 目录', defaultValue: '' }
 ]),
   sec('flux-params', 'model', 'FLUX 专用参数', '', [
     ...flowParams({ ts: 'sigma', mp: 'sigma_scaled', dfs: 3.0, gs: 3.5 }),
@@ -536,7 +536,7 @@ export const NEWBIE_LORA_SECTIONS = [
     { key: 'cpu_offload_checkpointing', type: 'boolean', label: 'CPU 卸载检查点', title: 'cpu_offload_checkpointing', desc: 'checkpointing 时把部分张量卸载到 CPU', defaultValue: false },
     { key: 'pytorch_cuda_expandable_segments', type: 'boolean', label: '显存碎片优化', title: 'pytorch_cuda_expandable_segments', desc: '启用 PyTorch CUDA', defaultValue: true },
     { key: 'newbie_safe_fallback', type: 'boolean', label: 'OOM 安全回退', title: 'newbie_safe_fallback', desc: 'OOM 时自动尝试更保守的 Newbie 安全回退', defaultValue: true },
-    { key: 'trust_remote_code', type: 'boolean', label: '允许远程代码', title: 'trust_remote_code', desc: '允许 transformers / diffusers 加载远程自定义代码', defaultValue: true },
+    { key: 'trust_remote_code', type: 'boolean', label: '允许远程代码', title: 'trust_remote_code', desc: '允许 transformers / diffusers 加载远程自定义代码', defaultValue: false },
     ...S_DIT_PERFORMANCE_EXPERT
 ]),
     sec('compile-settings', 'speed', '编译与执行后端',
@@ -545,6 +545,7 @@ export const NEWBIE_LORA_SECTIONS = [
     sec('memory-offload-settings', 'speed', '模块 Offload',
     'module_offload 完整面（CORE+EXPERT）；默认关闭。与 family block_swap / activation offload 独立。',
     [...S_MODULE_OFFLOAD_EXPERT], { expert: true }),
+  sec('noise-settings', 'advanced', '噪声设置', 'noise_offset=0 表示关闭；正数会进入 Newbie 的共享噪声构造。', [...S_NOISE]),
   sec('lulynx-settings', 'advanced', 'Lulynx 核心 (Newbie)', 'SafeGuard、EMA、ResourceManager、SmartRank、AutoController。', S_LULYNX_SDXL),
   sec('log-settings', 'model', '日志设置', '', [
     { key: 'log_with', type: 'select', label: '日志模块', title: 'log_with', desc: '日志模块', defaultValue: 'tensorboard', options: ['tensorboard', 'wandb'] },
@@ -566,9 +567,9 @@ export const NEWBIE_LORA_SECTIONS = [
 
 // ---- Krea-2 LoRA (Turbo / Raw) ----
 export const KREA2_LORA_SECTIONS = [
-  sec('model-settings', 'model', '训练用模型', 'Krea-2 模型目录（Turbo 或 Raw：含 turbo.safetensors 或 raw.safetensors + text_encoder + vae）。', [
+  sec('model-settings', 'model', '训练用模型', 'Krea-2 模型路径（Turbo 或 Raw：可选模型目录，也可直接选单个 .safetensors 文件）。', [
     { key: 'model_train_type', type: 'hidden', defaultValue: 'krea2-lora' },
-    { key: 'pretrained_model_name_or_path', type: 'folder', pickerType: 'folder', label: 'Krea-2 模型目录', title: 'pretrained_model_name_or_path', desc: '完整本地目录：turbo.', defaultValue: '' },
+    { key: 'pretrained_model_name_or_path', type: 'file', pickerType: 'model-file', allowModelDirectory: true, label: 'Krea-2 模型路径', title: 'pretrained_model_name_or_path', desc: '可填模型目录或直接选单个 .safetensors 文件；选单文件时 TE/VAE 会从同目录的 text_encoder/、vae/ 子目录或兄弟 Krea-2 目录树自动解析，找不到时退用 CLIP/sdxl-vae 兜底（可能影响训练质量）', defaultValue: '' },
     { key: 'output_dir', type: 'folder', pickerType: 'folder', label: '输出目录', title: 'output_dir', desc: '训练输出目录', defaultValue: './output/krea2' },
     { key: 'output_name', type: 'string', label: '输出名称', title: 'output_name', desc: 'LoRA 输出文件名', defaultValue: 'krea2-lora' },
     {
@@ -619,7 +620,6 @@ export const KREA2_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [
     { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 0, min: 0 },
     { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 1, min: 0 },
-    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', title: 'max_train_epochs', defaultValue: 10, min: 1 },
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -641,6 +641,7 @@ export const KREA2_LORA_SECTIONS = [
     [...S_EXECUTION_BACKEND, ...S_COMPILE_EXPERT], { expert: true }),
   sec('krea2-offload-settings', 'speed', 'Krea2 Block/Layer Offload', 'resident / block_offload / layer_offload 与预取、槽位。vram_preset 会覆盖默认 slots。', [...KREA2_OFFLOAD_FIELDS]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV_DIT]),
+  sec('noise-settings', 'advanced', '噪声设置', 'noise_offset=0 表示关闭；正数会进入 Krea-2 的共享噪声构造。', [...S_NOISE]),
   sec('thermal-settings', 'training', '散热与功耗', '', [...S_THERMAL]),
   sec('peak-vram-settings', 'speed', 'VRAM 峰值监测', '', [...S_PEAK_VRAM], { expert: true }),
   sec('quality-pack-settings', 'frontier', '画质优化包', '', [...S_QUALITY_OPTIMIZATION_PACK], { expert: true }),
@@ -681,7 +682,6 @@ export const FLUX2_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [
     { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 0, min: 0 },
     { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 1, min: 0 },
-    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', title: 'max_train_epochs', defaultValue: 10, min: 1 },
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -703,6 +703,7 @@ export const FLUX2_LORA_SECTIONS = [
     [...S_EXECUTION_BACKEND, ...S_COMPILE_EXPERT], { expert: true }),
   sec('flux2-offload-settings', 'speed', 'FLUX.2 Block Offload', 'resident / block_offload 与预取、槽位。默认 slots=4、prefetch=3、pin=true。无 layer_offload。', [...FLUX2_OFFLOAD_FIELDS]),
   sec('advanced-settings', 'advanced', '其他设置', '', [...S_ADV_DIT]),
+  sec('noise-settings', 'advanced', '噪声设置', 'noise_offset=0 表示关闭；正数会进入 FLUX.2 RF 噪声构造。', [...S_NOISE]),
   sec('thermal-settings', 'training', '散热与功耗', '', [...S_THERMAL]),
   sec('peak-vram-settings', 'speed', 'VRAM 峰值监测', '', [...S_PEAK_VRAM], { expert: true }),
   sec('quality-pack-settings', 'frontier', '画质优化包', '', [...S_QUALITY_OPTIMIZATION_PACK], { expert: true }),
@@ -741,7 +742,6 @@ export const ZIMAGE_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [
     { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 0, min: 0 },
     { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 1, min: 0 },
-    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', title: 'max_train_epochs', defaultValue: 10, min: 1 },
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -806,7 +806,6 @@ export const WAN22_TI2V_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [
     { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 0, min: 0 },
     { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 1, min: 0 },
-    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', title: 'max_train_epochs', defaultValue: 10, min: 1 },
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -870,7 +869,6 @@ export const WAN22_T2V_A14B_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [
     { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 0, min: 0 },
     { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 1, min: 0 },
-    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', title: 'max_train_epochs', defaultValue: 10, min: 1 },
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -929,7 +927,6 @@ export const LTX23_LORA_SECTIONS = [
   sec('save-settings', 'model', '保存设置', '', [
     { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 0, min: 0 },
     { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 1, min: 0 },
-    { key: 'max_train_epochs', type: 'number', label: '最大训练轮数', title: 'max_train_epochs', defaultValue: 10, min: 1 },
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -995,9 +992,7 @@ export const BOOGU_LORA_SECTIONS = [
     { key: 'dataloader_num_workers', type: 'number', label: 'DataLoader 线程数', defaultValue: 4, min: 0 },
     { key: 'use_cache', type: 'boolean', label: '使用磁盘缓存', title: 'use_cache', desc: '推荐开启：读 latent/指令 TE 缓存', defaultValue: true }
 ]),
-  sec('save-settings', 'model', '保存设置', 'RunComfy：每 250 步保存、保留约 4 个。', [
-    { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 250, min: 0 },
-    { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 0, min: 0 },
+  sec('save-settings', 'model', '保存设置', '默认按轮保存（每轮一次）。RunComfy 参考基线是每 250 步保留约 4 份，需要的话把「每 N 步保存」改成 250。', [
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),
@@ -1070,9 +1065,7 @@ export const BOOGU_EDIT_LORA_SECTIONS = [
     { key: 'dataloader_num_workers', type: 'number', label: 'DataLoader 线程数', defaultValue: 4, min: 0 },
     { key: 'use_cache', type: 'boolean', label: '使用磁盘缓存', title: 'use_cache', desc: 'Edit cache 含 ref_latents', defaultValue: true }
 ]),
-  sec('save-settings', 'model', '保存设置', 'RunComfy 基线：每 250 步、保留约 4 份。', [
-    { key: 'save_every_n_steps', type: 'number', label: '每 N 步保存', title: 'save_every_n_steps', defaultValue: 250, min: 0 },
-    { key: 'save_every_n_epochs', type: 'number', label: '每 N 轮保存', title: 'save_every_n_epochs', defaultValue: 0, min: 0 },
+  sec('save-settings', 'model', '保存设置', '默认按轮保存（每轮一次）。RunComfy 基线是每 250 步保留约 4 份，需要的话把「每 N 步保存」改成 250。', [
     { key: 'train_batch_size', type: 'number', label: 'Batch Size', title: 'train_batch_size', defaultValue: 1, min: 1 },
     ...S_SAVE.filter((f) => !['output_dir', 'output_name'].includes(f.key))
 ]),

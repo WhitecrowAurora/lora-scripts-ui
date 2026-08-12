@@ -8,8 +8,30 @@ import {
   shouldExposeAsTrainingToggle,
 } from '../src/features/animaMethodReadiness.js';
 import { TRAINING_TYPES } from '../src/trainingTypeRegistry.js';
+import { getSectionsForType } from '../src/schemaIndex.js';
 
 const registeredTrainingTypes = new Set(TRAINING_TYPES.map((item) => item.id));
+
+// 可见开关有两种载体:训练路由(routeId)和 schema 字段(fieldKey)。
+// 原来只认前者,拿 readiness.id 去查 TRAINING_TYPES —— dit_blockskip 这类字段级
+// 开关必然落空。改成按注册表自带的判别位分流,并把"字段真在 schema 里"验成实证,
+// 而不是用"是不是训练路由"当代理。
+const schemaFieldKeys = new Set();
+for (const type of TRAINING_TYPES) {
+  let sections;
+  try {
+    sections = getSectionsForType(type.id) || [];
+  } catch {
+    continue;
+  }
+  for (const section of sections) {
+    for (const field of section.fields || []) {
+      if (field && field.key) schemaFieldKeys.add(field.key);
+    }
+  }
+}
+assert.ok(schemaFieldKeys.size > 0, 'expected schema field keys to be enumerable');
+
 const visibleToggleIds = getVisibleTrainingToggleIds();
 const guideOnlyIds = getGuideOnlyMethodIds();
 const wiredReserveIds = getWiredReserveMethodIds();
@@ -22,7 +44,20 @@ for (const id of visibleToggleIds) {
   assert.equal(readiness.trainingLaunchAllowed, true, `${id} must be launchable if visible`);
   assert.equal(readiness.runtimeActivationEnabled, true, `${id} must have runtime activation if visible`);
   assert.equal(readiness.requestFieldsEmitted, true, `${id} must emit request fields if visible`);
-  assert.equal(registeredTrainingTypes.has(id), true, `${id} must be a registered training type`);
+  if (readiness.routeId) {
+    assert.equal(
+      registeredTrainingTypes.has(readiness.routeId),
+      true,
+      `${id} routeId ${readiness.routeId} must be a registered training type`,
+    );
+  } else {
+    assert.ok(readiness.fieldKey, `${id} is visible but carries neither routeId nor fieldKey`);
+    assert.equal(
+      schemaFieldKeys.has(readiness.fieldKey),
+      true,
+      `${id} fieldKey ${readiness.fieldKey} must exist in the UI schema`,
+    );
+  }
 }
 
 for (const id of guideOnlyIds) {
@@ -48,7 +83,10 @@ for (const id of [
   'adapter_target_policy',
   'fg_lora_rank_policy',
   'tlora',
-  'dit_blockskip',
+  // dit_blockskip 已不在此列:UI select(schemaFrontierGroups dit_compute_reducer_strategy)
+  // → training_loop._get_compute_reducer_seam(闸门就是 strategy≠none)
+  // → compute_reducer_seam_context → anima_native_dit_executable 前向真消费。
+  // 它是字段级可见开关,上面按 fieldKey 分支验;不是储备。
 ]) {
   assert.equal(shouldExposeAsTrainingToggle(id), false, `${id} should stay guide-only`);
 }
@@ -62,7 +100,9 @@ const pid = getAnimaMethodReadiness('pid_decoder_backend');
 assert.equal(pid.requestFieldsEmitted, false);
 assert.equal(pid.runtimeActivationEnabled, false);
 assert.equal(pid.reserveSeamWired, true);
-assert.match(pid.reason, /opt-in/i);
+// reason 必须写明这是 opt-in。原来只认连字符写法,"opted in" 这个语法变体就挂——
+// 卡的是措辞不是行为(行为由上面三条结构断言钉)。放宽到兼容两种写法。
+assert.match(pid.reason, /opt(-|ed )?in/i);
 
 // Wired reserves (blocks 3-4: EasyControl v2 / P3 adapters / P4 / P5) must surface
 // as opt-in guide entries while every launch gate stays closed until operator sign-off.

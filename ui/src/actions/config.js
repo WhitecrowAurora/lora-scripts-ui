@@ -146,9 +146,9 @@ updateJSONPreview,
   function resetAllParams() {
     state.config = createDefaultConfig(state.activeTrainingType);
     state.trainingIntentExplicitFields[state.activeTrainingType] = new Set();
-    state.hasLocalDraft = false;
     localStorage.removeItem(DRAFT_STORAGE_KEY);
     resetTransientState();
+    saveDraft();
     if (state.activeModule === 'config') {
       renderView('config');
     } else {

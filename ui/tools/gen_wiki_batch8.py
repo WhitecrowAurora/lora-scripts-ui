@@ -264,7 +264,7 @@ write('advanced_stats_enabled.json', {
   'aliases': ['layer_monitor_enabled', 'layer_monitor_mode', 'step_phase_profile_enabled',
               'deep_diagnostics_enabled', 'fim_scan_enabled', 'fim_scan_tool',
               'data_transfer_profile_enabled', 'data_transfer_profile_mode', 'data_transfer_profile_window',
-              'forgetting_probe_enabled', 'bubble_controller_allow_optimizer_swap'],
+              'forgetting_probe_enabled'],
   'standard': {
     'summary': '高级训练诊断工具集：advanced_stats 记录梯度范数/权重范数/更新比等统计；layer_monitor 逐层监控；step_phase_profile 分析每步各阶段耗时；deep_diagnostics 深度诊断模式。',
     'effect': '开启后在训练日志或 WandB 中显示额外统计指标，帮助诊断训练问题（过拟合/梯度消失/I/O 瓶颈等）。',
@@ -272,7 +272,7 @@ write('advanced_stats_enabled.json', {
     'avoidWhen': '所有诊断工具都有不同程度的性能开销（约 1%~10%），不应在追求训练速度时常驻开启。'
   },
   'advanced': {
-    'principle': 'fim_scan（Fisher Information Matrix 扫描）估计各参数的重要性（对 loss 的 sensitivity），用于判断哪些层值得使用更高 rank；forgetting_probe 定期评估模型对预训练能力的遗忘程度；bubble_controller 检测并控制优化器的 bubble（无效更新步骤）。layer_monitor 的 mode 控制监控粒度（block/layer/sublayer）。',
+    'principle': 'fim_scan（Fisher Information Matrix 扫描）估计各参数的重要性（对 loss 的 sensitivity），用于判断哪些层值得使用更高 rank；forgetting_probe 定期评估模型对预训练能力的遗忘程度。layer_monitor 的 mode 控制监控粒度（block/layer/sublayer）。',
     'tradeoffs': 'FIM 扫描需要多次 forward pass（估计 Fisher），开销与参数量成正比；layer_monitor 的详细模式需要每层 hook，累积开销随网络深度增加。'
   },
   'relatedConfigs': ['wandb_api_key', 'turbocore_profile', 'peak_vram_diagnostics_enabled']

@@ -235,9 +235,19 @@ for (const typeId of ['sdxl-lora', 'sd-lora', 'anima-lora', 'newbie-lora', 'flux
 const fluxOptimizerOptions = fieldOptionValues('optimizer_type', 'flux-lora');
 assert.equal(fluxOptimizerOptions.includes('Automagic++'), false);
 assert.equal(fluxOptimizerOptions.includes('AutoProdigy'), false);
-assert.equal(fluxOptimizerOptions.includes('KahanAdamW8bit'), false);
 assert.equal(fluxOptimizerOptions.includes('GenericOptimizer'), false);
 assert.equal(fluxOptimizerOptions.includes('AnimaFactoredAdamW'), false);
+// KahanAdamW8bit 曾在这条"不得出现"名单里,理由是 core/lulynx_trainer/kahan_adamw8bit.py
+// 不存在 —— 选中即 ImportError,能选就是坑人。该模块现已实现并接线,断言随之反转:
+//   · 依赖真在:bitsandbytes 0.50.0 / torch 2.10.0+cu128,capability = available
+//   · 产品 dispatch 真造得出:trainer_optimizer_adam_family_factory 分支返回 KahanAdamW8bit
+//     并打出 "Using KahanAdamW8bit" —— 不是只有 frontier provider 那条储备轨
+//   · 真优化:CUDA 上 40 步 loss 2.005->1.273,exp_avg 是 uint8 blockwise,
+//     小于 min_8bit_size 的张量留 fp32,kahan_comp 始终 fp32
+//   · flux 路由无独立优化器装配:所有族共用 trainer_optimizer_factory._create_optimizer
+// 后端守卫另有 smoke/functional/optimizer/promoted_frontier_optimizers_smoke.py,
+// 其中一条实测 optimizer state 字节数必须低于 fp32 KahanAdamW —— 这是它存在的唯一理由。
+assert.equal(fluxOptimizerOptions.includes('KahanAdamW8bit'), true);
 
 const attentionConfig = {
   ...createDefaultConfig('hunyuan-image-lora'),

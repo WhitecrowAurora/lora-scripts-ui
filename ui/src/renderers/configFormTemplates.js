@@ -246,6 +246,18 @@ export function getFieldConflict(field, config = {}) {
     return 'TurboCore（顶栏 CUDA）';
   }
 
+  // 反向提示挂在 execution_backend 这个活下拉框上。原先挂的是 torch_compile,那个字段现在是
+  // LEGACY_BACKEND_FIELD_HIDDEN(永久隐藏),规则渲染不出来 —— 用户在下拉框里选了编译后端,
+  // 得不到任何"与模块级 Offload 互斥"的提示,直到 preflight 才被拒。
+  //
+  // 必须放在下面 `if (isActive) return ''` 之前:select 只要有值就算 active,而
+  // execution_backend 恒有值(出厂 optimized),放在后面这条规则永远执行不到。
+  // 只出提示不置灰整个下拉框 —— 具体哪个选项不可选由 schemaFieldGroups 的逐 option
+  // disabled 承担,否则用户连切回 optimized 都做不到,会把自己锁死。
+  if (key === 'execution_backend' && (swapActive || moduleOffload)) {
+    return [swapActive ? '显存交换模式' : '', moduleOffload ? '模块级 Offload' : ''].filter(Boolean).join(' / ');
+  }
+
   if (isActive) return '';
 
   const cacheText = toBool(config.cache_text_encoder_outputs);
@@ -265,7 +277,23 @@ export function getFieldConflict(field, config = {}) {
   const swapActive = swapMode !== '' && swapMode !== 'off';
   const moduleOffload = toBool(config.module_offload_enabled);
   const vramSwapToRam = toBool(config.vram_swap_to_ram);
-  const torchCompile = toBool(config.torch_compile);
+  // 编译后端事实源:活控件是 execution_backend 下拉框,torch_compile / thunder_jit_enabled
+  // 两个旧布尔在 schemaFieldGroups.js 里是 LEGACY_BACKEND_FIELD_HIDDEN(永久隐藏、仅供老配置
+  // 迁移),webui 侧无任何一处写它们 —— 同步发生在后端 configs.py,即配置离开浏览器之后。
+  // 所以只读旧布尔的话,下面这些互斥规则对任何现代配置都不会触发。
+  // 与后端 module_offload_contract.resolve_compile_backend_request 保持同一判定顺序。
+  const compileBackend = (() => {
+    const raw = String(config.execution_backend ?? '').trim().toLowerCase().replaceAll('-', '_');
+    const aliased = { torchcompile: 'torch_compile', 'torch.compile': 'torch_compile', compile: 'torch_compile', thunder_jit: 'thunder' }[raw] || raw;
+    if (aliased === 'thunder' || aliased === 'torch_compile') return aliased;
+    if (aliased) return '';
+    if (toBool(config.thunder_jit_enabled)) return 'thunder';
+    if (toBool(config.torch_compile)) return 'torch_compile';
+    return '';
+  })();
+  const torchCompile = compileBackend === 'torch_compile';
+  const thunderActive = compileBackend === 'thunder';
+  const compileBackendLabel = torchCompile ? 'torch.compile' : thunderActive ? 'Thunder 执行后端' : '';
   const distributed = toBool(config.enable_distributed_training) || toBool(config.enable_distributed) || toNum(config.num_processes) > 1 || toNum(config.num_machines) > 1;
   const deepspeed = toBool(config.deepspeed);
   const safeFallback = toBool(config.safe_fallback) || toBool(config.newbie_safe_fallback);
@@ -316,6 +344,8 @@ export function getFieldConflict(field, config = {}) {
     const blockers = [];
     if (moduleOffload) blockers.push('模块级 Offload');
     if (vramSwapToRam) blockers.push('VRAM Swap to RAM');
+    // 这里刻意只判 torch.compile 不判 Thunder:后端 swap 侧只有 swap_torch_compile_conflict,
+    // 没有 swap×Thunder 冲突。加上会让 UI 比后端更严,拦掉后端允许的组合。
     if (torchCompile) blockers.push('torch.compile');
     if (safeFallback) blockers.push('OOM 安全回退');
     if (blockers.length) return blockers.join(' / ');
@@ -324,7 +354,7 @@ export function getFieldConflict(field, config = {}) {
     const blockers = [];
     if (swapActive) blockers.push('显存交换模式');
     if (vramSwapToRam) blockers.push('VRAM Swap to RAM');
-    if (torchCompile) blockers.push('torch.compile');
+    if (compileBackendLabel) blockers.push(compileBackendLabel);
     if (distributed) blockers.push('分布式训练');
     if (deepspeed) blockers.push('DeepSpeed');
     if (toBool(config.gradient_checkpointing)) blockers.push('梯度检查点');
@@ -332,10 +362,17 @@ export function getFieldConflict(field, config = {}) {
     if (safeFallback) blockers.push('OOM 安全回退');
     if (blockers.length) return blockers.join(' / ');
   }
-  if (key === 'torch_compile' && (swapActive || moduleOffload)) {
+  // 反向提示挂在 execution_backend 这个活下拉框上。原先挂的是 torch_compile,那个字段现在是
+  // LEGACY_BACKEND_FIELD_HIDDEN(永久隐藏),规则渲染不出来 —— 用户在下拉框里选了编译后端,
+  // 得不到任何"与模块级 Offload 互斥"的提示,直到 preflight 才被拒。
+  if (key === 'execution_backend' && (swapActive || moduleOffload)) {
     return [swapActive ? '显存交换模式' : '', moduleOffload ? '模块级 Offload' : ''].filter(Boolean).join(' / ');
   }
-  if (key === 'gradient_checkpointing') {
+  if (key === 'torch_compile' && (swapActive || moduleOffload)) {
+    // 保留这条死规则:torch_compile 字段已永久隐藏,但它仍是旧配置迁移兼容的字段,
+    // 万一老存档直接带这个键,这里仍会给出提示。活字段的规则在上面 execution_backend。
+    return [swapActive ? '显存交换模式' : '', moduleOffload ? '模块级 Offload' : ''].filter(Boolean).join(' / ');
+  }  if (key === 'gradient_checkpointing') {
     if (moduleOffload) return '模块级 Offload';
     if (swapMode === 'layer') return 'Layer Swap';
   }
