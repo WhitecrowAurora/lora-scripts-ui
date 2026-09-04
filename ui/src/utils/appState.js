@@ -1,5 +1,6 @@
 import { readUiPreferences, loadDeletedTaskIds } from './storage.js';
 import { VISIBLE_TRAINING_TYPES } from '../trainingTypeRegistry.js';
+import { createTrainingVramProfileUiState } from './trainingVramProfile.js';
 
 const DEFAULT_TRAINING_TYPE = 'sdxl-lora';
 
@@ -31,6 +32,7 @@ export function createInitialAppState({ createDefaultConfig }) {
     jsonPanelWidth: uiPreferences.jsonPanelWidth,
     fieldUndo: {},
     trainingIntentExplicitFields: {},
+    trainingVramProfileUi: createTrainingVramProfileUiState(),
     activeFieldMenu: null,
     datasetSubTab: 'tagger',
     trainSubTab: 'monitor',
@@ -111,7 +113,7 @@ export function createInitialAppState({ createDefaultConfig }) {
       totalSteps: 0,
     },
     interrogators: null,
-    executionProfiles: [],
+    executionProfiles: null,  // null=还没拉到;[] 才是「拉到了但一个都没有」
     runtime: null,
     preflight: null,
     pcieTransferBenchmark: null,

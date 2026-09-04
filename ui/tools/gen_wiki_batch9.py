@@ -85,7 +85,7 @@ write('distillation_enabled.json', {
     'whenToUse': '实验性功能。有更大基础模型可作为教师时可以尝试提升 LoRA 训练效率。',
     'avoidWhen': '默认关闭。蒸馏需要同时运行教师模型（显存约翻倍），大多数 LoRA 训练不适用。'
   },
-  'relatedConfigs': ['anima_ema_feat_align_enabled', 'perceptual_anchor_loss_enabled']
+  'relatedConfigs': ['lulynx_ema_cosine_self_distill_enabled', 'perceptual_anchor_loss_enabled']
 })
 
 write('enhanced_protection_mode.json', {

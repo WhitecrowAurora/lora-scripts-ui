@@ -77,7 +77,17 @@ for (const id of [
   'chimera_hydra',
   'soft_tokens',
   'modulation_guidance',
-  'dp_dmd_turbo',
+  // dp_dmd_turbo 已不在此列:R9 单卡路线把它从储备升为真实 request/config/runtime
+  // 可达,registry 四个位(requestFieldsEmitted / runtimeActivationEnabled /
+  // trainingLaunchAllowed / visibleTrainingToggleAllowed)全为 true。
+  // 真机判据(2026-08-18,非 CPU 外推):
+  //   backend/smoke/benchmarks/_out/dp_dmd_standard_full_model_3step_epoch_fix_20260818_1330
+  //     → status=passed, global_step=3, runtime_contract.dp_dmd_enabled=True,
+  //       runtime_contract.dp_dmd_variant='standard'
+  //   .../dp_dmd_standard_full_model_resume_epoch_fix_20260818_1245 → status=passed
+  // 载体是 schema 字段 distillation_enabled(见 readiness 表 fieldKey),不是训练路由。
+  // 注意 spd_inference 仍留在本列:它与 dp_dmd_turbo 共用 dp_dmd_spd_reserve_seam.py,
+  // 但 sampler-loop 激活仍关着 —— 同一个 seam 模块里只有 DP-DMD 毕业了。
   'spd_inference',
   'pid_decoder_backend',
   'adapter_target_policy',
@@ -112,7 +122,9 @@ const expectedWiredReserves = [
   'chimera_hydra',
   'soft_tokens',
   'modulation_guidance',
-  'dp_dmd_turbo',
+  // dp_dmd_turbo 已毕业,不再是 wired reserve。getWiredReserveMethodIds() 的口径是
+  // `reserveSeamWired && !visibleTrainingToggleAllowed`,它一翻可见位就自动出集合;
+  // 这张表若继续列它,断言的是 selector 不可能满足的条件(理由与证据见上方同名注释)。
   'spd_inference',
   'pid_decoder_backend',
 ];

@@ -75,7 +75,7 @@ write('softrepa_enabled.json', {
     'principle': 'REPA（Representation Alignment）是一种在潜在空间对齐表征的方法。SoftREPA 是其软化版本：通过动态权重（在 min/max 之间线性插值）避免过度约束。当前对齐很好时用低权重（自由学习），偏差大时用高权重（拉回对齐）。',
     'tradeoffs': '对齐约束的强度（权重范围）需要根据具体任务调整；太强会阻止 LoRA 学习新概念，太弱则失去正则化效果。'
   },
-  'relatedConfigs': ['perceptual_anchor_loss_enabled', 'anima_ema_feat_align_enabled']
+  'relatedConfigs': ['perceptual_anchor_loss_enabled', 'lulynx_ema_cosine_self_distill_enabled']
 })
 
 # ── SDS LoRA ──────────────────────────────────────────────────────────────────

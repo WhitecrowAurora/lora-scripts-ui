@@ -24,7 +24,13 @@ import { createWeightComposerActions, renderWeightComposerPreview, scheduleWeigh
 import { createTrainingIntentProfileActions, renderTrainingIntentProfilePreview } from './trainingIntentProfilePreview.js';
 import { renderProgressivePhaseEditorField } from './progressivePhaseEditor.js';
 import { renderOrderedMultiSelectField } from './orderedMultiSelect.js';
-import { isAttentionBackendAvailable, makeAttentionOptions } from '../features/attentionCapabilities.js';
+import { attentionBackendBlockReason, makeAttentionOptions } from '../features/attentionCapabilities.js';
+import { deviceOptions } from '../features/deviceOptions.js';
+import {
+  optionConstraints,
+  runtimeAdvisoryNote,
+  runtimeForcedReason,
+} from '../features/runtimeFieldConstraints.js';
 import {
   renderCaptionSettingsContentLayout,
   renderDatasetSettingsContentLayout,
@@ -35,9 +41,10 @@ import {
 import {
   getFieldConflict as getTemplateFieldConflict,
   getPreviewGroupsForRender as getTemplatePreviewGroupsForRender,
+  isDependencyConflict,
   renderCaptionTagDropoutGroup as renderCaptionTagDropoutGroupTemplate,
   renderConflictHint,
-  renderFieldDescription,
+  renderFieldDescription as renderFieldDescriptionTemplate,
   renderGhostReplayHelperCard as renderGhostReplayHelperCardTemplate,
   renderNetworkOptionGroup as renderNetworkOptionGroupTemplate,
   renderPreviewGroupsField as renderPreviewGroupsFieldTemplate,
@@ -46,16 +53,40 @@ import {
   toBool,
 } from './configFormTemplates.js';
 
-export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVisible, COLLAPSIBLE_FIELD_KEYS }) {
+const VRAM_PROFILE_MANAGED_MESSAGE = '受训练显存档位影响，目前已调整为配置值';
+
+export function createConfigFormRenderer({
+  state,
+  canUseBuiltinPicker,
+  isFieldVisible,
+  COLLAPSIBLE_FIELD_KEYS,
+  getDisplayConfig,
+  isManagedField,
+}) {
+  const configForRender = () => getDisplayConfig?.() || state.config || {};
+  const managedField = (key) => Boolean(isManagedField?.(key));
+  function renderFieldDescription(field, lang = state.lang) {
+    return renderFieldDescriptionTemplate(
+      field,
+      lang,
+      field?.disabled
+        ? String(field.disabledReason || '')
+        : managedField(field.key) ? VRAM_PROFILE_MANAGED_MESSAGE : '',
+      // 英文的 `key@typeId` override 要用当前训练类型才查得到。这个漏斗覆盖 configForm 里
+      // 全部 desc 渲染,包括作为回调传进 configFormTemplates 的那两处。
+      state.activeTrainingType,
+    );
+  }
+
   function renderGhostReplayHelperCard() {
-    if (!state.config.lulynx_ghost_replay) {
+    if (!configForRender().lulynx_ghost_replay) {
       return '';
     }
     return renderGhostReplayHelperCardTemplate(state.ghostReplayRecorder || {});
   }
 
   function getPreviewGroupsForRender() {
-    return getTemplatePreviewGroupsForRender(state.config || {});
+    return getTemplatePreviewGroupsForRender(configForRender());
   }
 
   function renderPreviewGroupsField(field, disabledAttr, disabledCls, modCls, conflictWith, renderHeader) {
@@ -73,54 +104,81 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     });
   }
 
+  // 留空到底继承了谁,由后端与 apply_launcher_gpu_default 同源报出来,不在这里猜。
+  function deviceEmptyHint() {
+    const inherited = String(state.runtime?.runtime?.launcher_selection || '').trim();
+    return inherited
+      ? `未选择显卡（留空＝继承 launcher 启动时选择的：${inherited}）`
+      : '未选择显卡（launcher 未指定，将使用全部可见显卡）';
+  }
+
+  // 逐选项的运行时约束(如 rocm-amd 上那几个 8bit / paged 优化器)。字段自己的静态理由
+  // 更具体,所以已有 disabledReason 的不覆盖。
+  function applyRuntimeOptionBlocks(field, options) {
+    const blocked = optionConstraints(field, state.executionProfiles, runtimeConstraintContext());
+    if (!Object.keys(blocked).length) return options;
+    return options.map((option) => {
+      const isObject = option && typeof option === 'object';
+      const value = String(isObject ? option.value : option);
+      if (!blocked[value]) return option;
+      const base = isObject ? { ...option } : { value };
+      return { ...base, disabled: true, disabledReason: base.disabledReason || blocked[value] };
+    });
+  }
+
   function resolveFieldOptions(field) {
+    const config = configForRender();
+    // 设备表来自机器,不是 schema 写死的候选集
+    if (field.deviceListOptions) return deviceOptions(state.runtime?.cards);
     const source = typeof field.options === 'function'
-      ? field.options(state.config || {})
+      ? field.options(config)
       : field.options;
     const options = source && typeof source !== 'string' && source[Symbol.iterator]
       ? Array.from(source)
       : [];
     if (field.attentionBackendOptions) {
-      return makeAttentionOptions(options, state.executionProfiles || [], { ...(state.config || {}), runtime: state.runtime });
+      return applyRuntimeOptionBlocks(field, makeAttentionOptions(options, state.executionProfiles, {
+        ...config,
+        activeTrainingType: state.activeTrainingType,
+        runtime: state.runtime,
+        lang: state.lang,
+      }));
     }
-    return options;
+    return applyRuntimeOptionBlocks(field, options);
+  }
+
+  function runtimeConstraintContext() {
+    return {
+      ...configForRender(),
+      activeTrainingType: state.activeTrainingType,
+      runtime: state.runtime,
+      lang: state.lang,
+    };
   }
 
   function getAttentionBackendBlocker(field) {
-    if (!field.requiresAttentionBackend) return '';
-    const context = { ...(state.config || {}), runtime: state.runtime };
-    if (isAttentionBackendAvailable(field.requiresAttentionBackend, state.executionProfiles || [], context)) {
-      return '';
-    }
-    const runtimeInfo = state.runtime?.runtime || {};
-    const profile = String(
-      state.config.execution_profile_id
-      || state.config.runtime_id
-      || runtimeInfo.runtime_id
-      || runtimeInfo.environment
-      || 'standard'
-    );
-    return `当前 ${profile || 'standard'} 运行时不可用`;
+    return attentionBackendBlockReason(field, state.executionProfiles, runtimeConstraintContext());
   }
 
   function getFieldConflict(field) {
-    return getTemplateFieldConflict(field, state.config || {});
+    return getTemplateFieldConflict(field, configForRender());
   }
 
   function renderField(field) {
-    const value = state.config[field.key];
-    const label = resolveFieldLabel(field, state.lang);
+    const config = configForRender();
+    const value = config[field.key];
+    const label = resolveFieldLabel(field, state.lang, state.activeTrainingType);
     const defaultValue = field.defaultValue ?? '';
     if (field.type === 'ui_group') {
       return `
         <div class="config-group group-heading" data-field-key="${field.key}">
           <div class="group-heading-title">${escapeHtml(label || '')}</div>
-          ${(resolveFieldDesc(field, state.lang) || field.desc) ? `<p class="group-heading-desc">${escapeHtml(resolveFieldDesc(field, state.lang) || field.desc)}</p>` : ''}
+          ${(resolveFieldDesc(field, state.lang, state.activeTrainingType) || field.desc) ? `<p class="group-heading-desc">${escapeHtml(resolveFieldDesc(field, state.lang, state.activeTrainingType) || field.desc)}</p>` : ''}
         </div>
       `;
     }
     if (field.type === 'action') {
-      const summaryRaw = state.config[field.summaryKey] || '';
+      const summaryRaw = config[field.summaryKey] || '';
       const summary = summaryRaw ? String(summaryRaw) : '';
       const handler = String(field.handler || '').replace(/'/g, "\\'");
       return `
@@ -129,7 +187,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
             <div class="action-field-header">
               <label><span>${escapeHtml(label || '')}</span></label>
             </div>
-            ${resolveFieldDesc(field, state.lang) ? `<p class="action-field-desc">${escapeHtml(resolveFieldDesc(field, state.lang))}</p>` : ''}
+            ${resolveFieldDesc(field, state.lang, state.activeTrainingType) ? `<p class="action-field-desc">${escapeHtml(resolveFieldDesc(field, state.lang, state.activeTrainingType))}</p>` : ''}
           </div>
           <div class="action-field-button-wrapper">
             <button class="btn btn-outline config-action-btn-full" type="button" onclick="${handler ? `window['${handler}'] && window['${handler}']()` : ''}">
@@ -148,14 +206,36 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
     const pickerMode = field.pickerType || field.type;
     const builtinPickerIcon = (pickerMode === 'folder' || pickerMode === 'output-folder') ? '#icon-folder' : '#icon-file';
     const attentionBackendBlocker = getAttentionBackendBlocker(field);
-    const conflictWith = getFieldConflict(field) || attentionBackendBlocker;
+    // 当前运行时会强制覆盖这个字段(forced)⇒ 与冲突同等对待,置灰并给理由;
+    // advisory(如 rocm-amd 的 mixed_precision:只有 BF16 不可用时才降 fp16,而 fp16 正是
+    // 这条路线想要的档)只出提示,置灰它等于把用户锁在选不了 fp16 的状态。
+    const runtimeForced = runtimeForcedReason(field, state.executionProfiles, runtimeConstraintContext());
+    const runtimeAdvisory = runtimeAdvisoryNote(field, state.executionProfiles, runtimeConstraintContext());
+    const conflictWith = getFieldConflict(field) || attentionBackendBlocker || runtimeForced || runtimeAdvisory;
     const keepActiveAttentionToggleEditable = field.type === 'boolean' && attentionBackendBlocker && toBool(value);
     // execution_backend 拿到冲突时只出提示,不置灰整个下拉框:互斥的是 thunder /
     // torch_compile 两个选项(由逐 option disabled 拦住),optimized / eager 是化解冲突的
     // 出路。整个禁掉等于把选了编译后端的用户锁在冲突态里,只能回头去关 module offload。
     // 这与布尔字段"已开可关"是同一条原则:永远留一条退出路径。
     const keepBackendSelectEditable = field.key === 'execution_backend';
-    const disabledAttr = conflictWith && !keepActiveAttentionToggleEditable && !keepBackendSelectEditable ? ' disabled' : '';
+    // 梯度检查点拿到的是"流式 block 驻留档依赖它",不是互斥 —— 后端对这个组合让跑、只发
+    // 警告说槽位预算无效。置灰会把它变成硬锁,用户连关都关不掉,与后端裁决不符:提示照出,
+    // 复选框仍可点。判据取依赖型前缀而不是字段名:同一字段在模块级 Offload / Layer Swap
+    // 下还有一条真互斥规则,那条得继续置灰。
+    const keepDependedOnToggleEditable = isDependencyConflict(conflictWith);
+    // advisory 走的是同一条提示位,但不能夺走控制权 —— 与上面三条 keep* 同一条原则。
+    const keepRuntimeAdvisoryEditable = Boolean(runtimeAdvisory)
+      && !getFieldConflict(field) && !attentionBackendBlocker && !runtimeForced;
+    const profileManaged = managedField(field.key);
+    // schema 自己锁死的控件（后端对非默认值直接 400）走与显存档接管同一条置灰路，
+    // 只是理由文案由字段自带。上面那四条 keep* 不适用：那些讲的是「后端让跑、只发警告」。
+    const schemaLocked = Boolean(field?.disabled);
+    const conflictDisabled = conflictWith
+      && !keepActiveAttentionToggleEditable
+      && !keepBackendSelectEditable
+      && !keepDependedOnToggleEditable
+      && !keepRuntimeAdvisoryEditable;
+    const disabledAttr = schemaLocked || profileManaged || conflictDisabled ? ' disabled' : '';
     const fieldKeyArg = escapeHtml(JSON.stringify(String(field.key || '')));
     const renderHeader = () => `
       <div class="field-header-row">
@@ -164,8 +244,8 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
           <button class="field-help-btn" type="button" title="查看参数说明" aria-label="查看参数说明" onclick="event.preventDefault(); event.stopPropagation(); openTrainingOptionHelp(${fieldKeyArg})">?</button>
         </label>
         <div class="field-inline-actions" data-field-key="${field.key}">
-          <button class="field-menu-toggle" type="button" title="参数更多操作" data-field-menu-key="${field.key}">···</button>
-          ${showBuiltinPicker ? `<button class="picker-mode-icon-btn" type="button" title="内置文件选择器" onclick="openNativePicker('${field.key}', '${pickerMode}')"><svg class="icon"><use href="${builtinPickerIcon}"></use></svg></button>` : ''}
+          <button class="field-menu-toggle" type="button" title="${profileManaged ? VRAM_PROFILE_MANAGED_MESSAGE : '参数更多操作'}" data-field-menu-key="${field.key}"${profileManaged ? ' disabled' : ''}>···</button>
+          ${showBuiltinPicker ? `<button class="picker-mode-icon-btn" type="button" title="${profileManaged ? VRAM_PROFILE_MANAGED_MESSAGE : '内置文件选择器'}"${profileManaged ? ' disabled' : ''} onclick="openNativePicker('${field.key}', '${pickerMode}')"><svg class="icon"><use href="${builtinPickerIcon}"></use></svg></button>` : ''}
         </div>
       </div>
     `;
@@ -183,7 +263,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
             <span class="collapsible-field-value${summaryClass}">${escapeHtml(summaryValue)}</span>
             <span class="collapsible-caret" aria-hidden="true">⌄</span>
           </summary>
-          ${resolveFieldDesc(field, state.lang) ? `<p class="field-desc collapsible-field-desc">${escapeHtml(resolveFieldDesc(field, state.lang))}</p>` : ''}
+          ${resolveFieldDesc(field, state.lang, state.activeTrainingType) ? `<p class="field-desc collapsible-field-desc">${escapeHtml(resolveFieldDesc(field, state.lang, state.activeTrainingType))}</p>` : ''}
           <div class="collapsible-field-body">
             ${bodyHtml}
           </div>
@@ -264,7 +344,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
         disabledCls,
         modCls,
         conflictWith,
-        config: state.config,
+        config,
         segmentationUi: state.semanticSegmentationUi,
         renderHeader,
         renderFieldDescription,
@@ -286,8 +366,15 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
       });
     }
     if (field.type === 'ordered_multiselect') {
-      return renderOrderedMultiSelectField({
-        field,
+      // 只有设备表这一种候选集来自机器;其余字段的候选集在 ORDERED_MULTISELECT_CATALOGS
+      // 里按 key 反查,塞一个空 options 进去会把它们的候选池清空(空数组也是 truthy)。
+      // 显卡表读不到时干脆不渲染这个控件:候选池空着,连手填这条唯一的路也被拿走了。
+      // 那种情况落到函数末尾的通用输入框,行为回到改动之前。
+      const deviceOverride = field.deviceListOptions ? resolveFieldOptions(field) : null;
+      if (!deviceOverride || deviceOverride.length) return renderOrderedMultiSelectField({
+        field: deviceOverride
+          ? { ...field, options: deviceOverride, emptyHint: deviceEmptyHint() }
+          : field,
         value,
         disabledAttr,
         disabledCls,
@@ -378,15 +465,15 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
   }
 
   function renderNetworkOptionGroup(title, note, fields, dataFieldKey) {
-    return renderNetworkOptionGroupTemplate({ title, note, fields, dataFieldKey, config: state.config || {}, renderField });
+    return renderNetworkOptionGroupTemplate({ title, note, fields, dataFieldKey, config: configForRender(), renderField });
   }
 
   function renderCaptionTagDropoutGroup(fields) {
-    return renderCaptionTagDropoutGroupTemplate({ fields, config: state.config || {}, renderField });
+    return renderCaptionTagDropoutGroupTemplate({ fields, config: configForRender(), renderField });
   }
 
   function renderRegularizationFieldGroup(regField, priorField) {
-    return renderRegularizationFieldGroupTemplate({ regField, priorField, config: state.config || {} });
+    return renderRegularizationFieldGroupTemplate({ regField, priorField, config: configForRender() });
   }
 
   function renderDatasetSettingsContent(fields) {
@@ -398,7 +485,7 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
   }
 
   function renderNetworkSettingsContent(fields) {
-    return renderNetworkSettingsContentLayout({ fields, config: state.config || {}, renderField, renderNetworkOptionGroup });
+    return renderNetworkSettingsContentLayout({ fields, config: configForRender(), renderField, renderNetworkOptionGroup });
   }
 
   function renderOptimizerSettingsContent(fields) {
@@ -406,11 +493,12 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
   }
 
   function renderTrainingSettingsContent(fields) {
-    return renderTrainingSettingsContentLayout({ fields, config: state.config || {}, renderField });
+    return renderTrainingSettingsContentLayout({ fields, config: configForRender(), renderField });
   }
 
   function renderSection(section) {
-    const fields = section.fields.filter((field) => field.type !== 'hidden' && isFieldVisible(field, state.config));
+    const config = configForRender();
+    const fields = section.fields.filter((field) => field.type !== 'hidden' && isFieldVisible(field, config));
     const realFieldCount = fields.filter((field) => field.type !== 'ui_group').length;
     const sectionTitle = resolveSectionTitle(section, state.lang);
     const sectionDescription = section.id === 'noise-settings'
@@ -430,14 +518,14 @@ export function createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVi
               ? renderTrainingSettingsContent(fields)
         : fields.map((field) => renderField(field)).join('');
     const showGhostReplayHelper = !!(
-      state.config.lulynx_ghost_replay
+      config.lulynx_ghost_replay
       && fields.some((field) => String(field.key || '').startsWith('lulynx_ghost_'))
     );
     const contentWithHelpers = content
       + (showGhostReplayHelper ? renderGhostReplayHelperCard() : '')
       + (section.id === 'weight-composer' ? renderWeightComposerPreview() : '')
       + (section.id === 'training-intent-profile' ? renderTrainingIntentProfilePreview() : '');
-    if (section.id === 'weight-composer') scheduleWeightComposerPreview(state.config || {}, api);
+    if (section.id === 'weight-composer') scheduleWeightComposerPreview(config, api);
 
     if (section.id === 'data-aug-settings' || section.id === 'noise-settings' || section.id === 'validation-settings') {
       const panelClass = section.id === 'noise-settings'

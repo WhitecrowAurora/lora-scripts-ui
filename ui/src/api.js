@@ -74,6 +74,10 @@ export const api = {
     return postJson('/api/train/training-intent/preview', { config, intent, explicit_fields: explicitFields });
   },
 
+  resolveTrainingConfig(payload) {
+    return postJson('/api/train/config/resolve', payload || {});
+  },
+
   startSampleDifficultyScoring(payload) {
     return postJson('/api/train/sample-difficulty/score', payload);
   },
@@ -245,13 +249,21 @@ export const api = {
   },
 
   /**
-   * 在训练启动前检查输出目录是否已有同名 LoRA 文件（冲突检测）。
+   * 在训练启动前检查输出目录是否已有同名训练产物（冲突检测）。
    * @param {string} outputDir   输出目录绝对路径
    * @param {string} outputName  LoRA 输出名（不含扩展名）
-   * @returns {{ conflict: boolean, existing_files: string[] }}
+   * @param {{ saveTo?: string, resumePath?: string }} [extra] 真实写盘目录与续训豁免
+   * @returns {{ conflict: boolean, blocked: boolean, checked: boolean, existing_files: string[] }}
    */
-  checkOutputConflict(outputDir, outputName) {
-    return postJson('/api/check_output_conflict', { output_dir: outputDir, output_name: outputName });
+  checkOutputConflict(outputDir, outputName, extra = {}) {
+    return postJson('/api/check_output_conflict', {
+      output_dir: outputDir,
+      output_name: outputName,
+      // save_to 在写盘侧优先于 output_dir，resume_path 是后端唯一允许写同名的豁免；
+      // 少传这两个字段就是查了一个不会被写的目录。
+      save_to: extra.saveTo || '',
+      resume_path: extra.resumePath || '',
+    });
   },
 
   /**
@@ -326,7 +338,7 @@ export const api = {
   },
 
   deleteSavedConfig(name) {
-    return request(`/api/saved_configs/delete?name=${encodeURIComponent(name)}`);
+    return request(`/api/saved_configs/delete?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
   },
 
   renameSavedConfig(oldName, newName) {
@@ -435,6 +447,13 @@ export const api = {
   },
 
   runTraining(config) {
+    // yolo 不是扩散路线：/api/run 会把它交给 entry_train.py，而那边的
+    // select_trainer_key 对 yolo 没有分支，会落到通用 lulynx 扩散训练器。
+    // 专属路由 /api/yolo/train 才走 entry_yolo.py，也只有它会把
+    // save_every_n_epochs 映射成 ultralytics 认的 save_period。
+    if (String(config?.model_train_type || '').trim().toLowerCase() === 'yolo') {
+      return postJson('/api/yolo/train', config);
+    }
     return postJson('/api/run', {
       allow_attention_fallback: true,
       ...config,

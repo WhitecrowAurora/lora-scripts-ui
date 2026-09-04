@@ -8,6 +8,8 @@
 // 早先的无属性写法只有 vite 能解析,导致所有 node 跑的 smoke 一碰 i18n 就整条挂掉。
 import labelsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldLabelsEn.json' with { type: 'json' }
 import descsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldDescsEn.json' with { type: 'json' }
+import labelsEnByType from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldLabelsEnByType.json' with { type: 'json' }
+import descsEnByType from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldDescsEnByType.json' with { type: 'json' }
 import optionsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaFieldOptionsEn.json' with { type: 'json' }
 import tabsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaTabsEn.json' with { type: 'json' }
 import groupsEn from '../../../Lulynx-evolution-ui/ui/src/i18n/schemaGroupsEn.json' with { type: 'json' }
@@ -18,20 +20,35 @@ function langOf(lang) {
   return 'zh'
 }
 
-export function resolveFieldLabel(field, lang = 'zh') {
+// `key@typeId` 维度。同一个键在不同训练类型下常常声明了不同的中文(最坏的
+// pretrained_model_name_or_path 有 18 种 desc / 23 种 label),平表一个键只装得下一条英文
+// ⇒ 其余类型换到英文后会显示别的类型那句。嵌套表只收「与该键多数变体不同」的那些对。
+// 与 label_en/desc_en 的关系:内联英文本来就是按类型写的,仍然优先。
+function byTypeText(table, key, typeId) {
+  if (!key || !typeId) return ''
+  const bucket = table[key]
+  const text = bucket && typeof bucket === 'object' ? bucket[String(typeId)] : ''
+  return typeof text === 'string' && text.trim() ? text : ''
+}
+
+export function resolveFieldLabel(field, lang = 'zh', typeId = '') {
   if (!field) return ''
   if (langOf(lang) !== 'en') return field.label || field.key || ''
   const key = String(field.key || '')
   if (field.label_en) return field.label_en
+  const scoped = byTypeText(labelsEnByType, key, typeId)
+  if (scoped) return scoped
   if (key && labelsEn[key]) return labelsEn[key]
   return field.label || key
 }
 
-export function resolveFieldDesc(field, lang = 'zh') {
+export function resolveFieldDesc(field, lang = 'zh', typeId = '') {
   if (!field) return ''
   if (langOf(lang) !== 'en') return field.desc || ''
   const key = String(field.key || '')
   if (field.desc_en) return field.desc_en
+  const scoped = byTypeText(descsEnByType, key, typeId)
+  if (scoped) return scoped
   if (key && descsEn[key]) return descsEn[key]
   return field.desc || ''
 }

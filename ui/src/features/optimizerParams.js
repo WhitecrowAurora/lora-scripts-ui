@@ -25,7 +25,7 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
     defaultValue: 0.99, min: 0, max: 1, step: 0.001,
     visibleWhen: isOpt('adan', 'pytorch_optimizer.adan') },
   { key: 'opt_adan_no_prox', type: 'boolean', label: 'Adan no_prox',
-    desc: '禁用近端更新（weight decay',
+    desc: '禁用近端更新（weight decay 不走 Adan 的近端算子）。',
     defaultValue: false,
     visibleWhen: isOpt('adan', 'pytorch_optimizer.adan') },
 
@@ -46,7 +46,7 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── Schedule-Free ─────────────────────────────────────────────────────────
   { key: 'opt_sf_warmup_steps', type: 'number', label: 'Schedule-Free warmup_steps',
-    desc: 'Schedule-Free 内置预热步数（与外部',
+    desc: 'Schedule-Free 内置预热步数（与外部调度器的 warmup 独立；0 = 关闭）。',
     defaultValue: 0, min: 0, step: 10,
     visibleWhen: isOpt('adamwschedulefree', 'radamschedulefree', 'sgdschedulefree') },
   { key: 'opt_sf_beta', type: 'number', label: 'Schedule-Free β (beta)',
@@ -190,12 +190,12 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── DAdapt 系列 ───────────────────────────────────────────────────────────
   { key: 'opt_dadapt_growth_rate', type: 'number', label: 'DAdapt growth_rate',
-    desc: '学习率自动增长上界（D-Adapt',
+    desc: '学习率自动增长上界（D-Adaptation 自动放大 lr 的速度上限；留空 = 不设上界）。',
     defaultValue: '', step: 0.1,
     visibleWhen: isOpt('dadaptation', 'dadaptadam', 'dadaptadampreprint', 'dadaptlion', 'dadaptsgd',
       'dadaptadagrad', 'dadaptadan', 'dadaptadanip') },
   { key: 'opt_dadapt_d0', type: 'number', label: 'DAdapt d0',
-    desc: '初始步长估计 d0，推荐 1e-6（小值让 D-Adapt',
+    desc: '初始步长估计 d0，推荐 1e-6（小值让 D-Adaptation 自己把它长上去）。',
     defaultValue: 1e-6, min: 0, step: 1e-7,
     visibleWhen: isOpt('dadaptation', 'dadaptadam', 'dadaptadampreprint', 'dadaptlion', 'dadaptsgd',
       'dadaptadagrad', 'dadaptadan', 'dadaptadanip') },
@@ -210,20 +210,20 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
     defaultValue: true,
     visibleWhen: isOpt('muon', 'pytorch_optimizer.muon', 'distributedmuon') },
 
-  // ── Riemannion ────────────────────────────────────────────────────────────
-  { key: 'opt_riemannion_momentum', type: 'number', label: 'Riemannion momentum',
-    desc: '流形动量系数，推荐 0.9。',
+  // ── lulynx Riemannion 扩展（历史 optimizer identifier: Riemannion） ───────
+  { key: 'opt_riemannion_momentum', type: 'number', label: 'lulynx 流形动量',
+    desc: '默认 identity transport 的工程动量；momentum=0 才保留基础参数化不变边界。',
     defaultValue: 0.9, min: 0, max: 1, step: 0.01,
     visibleWhen: isOpt('riemannion') },
-  { key: 'opt_riemannion_orthogonalize', type: 'boolean', label: 'Riemannion orthogonalize',
-    desc: '对更新做 Newton-Schulz 正交化，稳定固定秩流形上的步长。',
+  { key: 'opt_riemannion_orthogonalize', type: 'boolean', label: 'lulynx 更新白化',
+    desc: '对切向更新追加 Newton-Schulz 白化；这是 lulynx 扩展，不是论文等价保证。',
     defaultValue: true,
     visibleWhen: isOpt('riemannion') },
-  { key: 'opt_riemannion_ns_steps', type: 'number', label: 'Riemannion ns_steps',
+  { key: 'opt_riemannion_ns_steps', type: 'number', label: 'lulynx 白化迭代步数',
     desc: 'Newton-Schulz 迭代步数，越大越精确但越慢。',
     defaultValue: 5, min: 1, step: 1,
     visibleWhen: isOpt('riemannion') },
-  { key: 'opt_riemannion_solve_eps', type: 'number', label: 'Riemannion solve_eps',
+  { key: 'opt_riemannion_solve_eps', type: 'number', label: 'lulynx 流形求解阻尼',
     desc: '流形求解的数值阻尼，避免病态矩阵求逆。',
     defaultValue: 1e-6, min: 0, step: 1e-7,
     visibleWhen: isOpt('riemannion') },

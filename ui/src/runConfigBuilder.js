@@ -5,6 +5,7 @@ import {
   SUPPORTED_LYCORIS_ALGOS as UI_LYCORIS_ALGOS
 } from './schemaCommon.js';
 import { getPerfMode } from './actions/perfModeToggle.js';
+import { normalizeTheoryNameAliases } from './utils/theoryNameAliases.js';
 
 const STANDARD_SCHEDULERS = [
   'linear',
@@ -15,13 +16,21 @@ const STANDARD_SCHEDULERS = [
   'constant_with_warmup',
   'adafactor',
   'inverse_sqrt',
-  'reduce_lr_on_plateau',
   'cosine_with_min_lr',
-  'cosine_warmup_with_min_lr',
   'loss_gated_cosine',
   'loss_weighted_annealed_cosine',
   'warmup_stable_decay',
   'piecewise_constant',
+  'one_cycle',
+  'restart_linear',
+  'lulynx_exponential_warmup',
+  'cosine_warmup_restarts',
+  'rex',
+  'linear_with_warmup',
+  'chebyshev',
+  'step',
+  'multi_step',
+  'cyclic',
 ];
 
 const LR_KEYS = new Set(['learning_rate', 'unet_lr', 'text_encoder_lr', 'control_net_lr']);
@@ -70,7 +79,6 @@ function collectVisiblePayload(config, typeId, getSectionsForType, isFieldVisibl
         const parsed = Number(value);
         if (!Number.isNaN(parsed)) {
           if (parsed === 0 && (field.key === 'network_dropout' || field.key === 'dropout')) continue;
-          if (field.key === 'clip_skip' && parsed === 2) continue;
           payload[field.key] = parsed;
         }
         continue;
@@ -91,8 +99,20 @@ function collectVisiblePayload(config, typeId, getSectionsForType, isFieldVisibl
 }
 
 function normalizeScheduler(payload) {
-  if (payload.lr_scheduler && SCHEDULER_VALUE_TO_TYPE[payload.lr_scheduler]) {
-    payload.lr_scheduler_type = SCHEDULER_VALUE_TO_TYPE[payload.lr_scheduler];
+  // 目标是成员名时改写 lr_scheduler 本身。老写法一律把 lr_scheduler 钉成 constant、
+  // 把值搬进 lr_scheduler_type，那是为了绕后端 enum 墙；现在这些调度器都是
+  // SchedulerType 成员，钉 constant 只会在后端任何一处认不出 spec 时静默按恒定
+  // 学习率跑完整轮训练——那是无声降级，不是保护。
+  const mapped = payload.lr_scheduler && SCHEDULER_VALUE_TO_TYPE[payload.lr_scheduler];
+  if (mapped && STANDARD_SCHEDULERS.includes(mapped)) {
+    payload.lr_scheduler = mapped;
+    if (payload.lr_scheduler_type === mapped) delete payload.lr_scheduler_type;
+    return;
+  }
+  // 剩下的是真第三方类路径：operator 自己在 lr_scheduler_type 里填的自由文本，
+  // 仍旧走那条通道。
+  if (mapped) {
+    payload.lr_scheduler_type = mapped;
     payload.lr_scheduler = 'constant';
   } else if (payload.lr_scheduler && !STANDARD_SCHEDULERS.includes(payload.lr_scheduler)) {
     payload.lr_scheduler_type = payload.lr_scheduler;
@@ -203,6 +223,17 @@ function normalizeLycorisNetworkArgs(payload, typeId) {
   let algo = String(payload.lycoris_algo || 'locon').trim().toLowerCase().replace(/_/g, '-');
   if (!SUPPORTED_LYCORIS_ALGOS.has(algo)) algo = 'locon';
   payload.lycoris_algo = algo;
+  if (algo === 'loha') {
+    const implementation = String(payload.lycoris_loha_implementation || 'lycoris_standard')
+      .trim()
+      .toLowerCase()
+      .replace(/-/g, '_');
+    payload.lycoris_loha_implementation = implementation === 'lulynx_simplified'
+      ? 'lulynx_simplified'
+      : 'lycoris_standard';
+  } else {
+    delete payload.lycoris_loha_implementation;
+  }
   networkArgs.push('algo=' + algo);
   if (payload.conv_dim != null && String(payload.conv_dim) !== '') {
     payload.lycoris_conv_dim = payload.conv_dim;
@@ -325,6 +356,21 @@ function _normalizeAttentionId(value) {
   return raw;
 }
 
+
+function normalizeAnimaVramOptimizer(payload) {
+  const enabled = _truthyFlag(payload.anima_vram_optimizer);
+  const backend = _normalizeAttentionId(payload.attention_backend);
+  if (!enabled || backend !== 'flash2') {
+    payload.anima_vram_optimizer = false;
+    payload.anima_packed_attention_backend = 'dense';
+    return;
+  }
+  payload.anima_vram_optimizer = true;
+  payload.anima_packed_attention_backend = 'flash2_varlen';
+  payload.anima_block_checkpointing = true;
+  payload.anima_block_checkpointing_mode = 'block';
+  payload.anima_block_checkpointing_interval = 1;
+}
 function normalizeAttention(payload) {
   // Advanced overrides win; no-intent path stays auto so launcher runtime
   // default_attention_backend can apply. Bare schema sdpa=true alone is not intent.
@@ -394,7 +440,29 @@ function normalizeAdapterEnabledFlags(payload) {
   normalizeAdapterEntityMutex(payload);
 }
 
+function normalizeDoraVariant(payload) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'dora_variant')) return;
+  const raw = String(payload.dora_variant || 'classic')
+    .trim()
+    .toLowerCase()
+    .replaceAll('-', '_');
+  const legacyLulynxAliases = new Set([
+    'set',
+    'set_dora',
+    'setdora',
+    'stabilized',
+    'lulynx_set_dora',
+  ]);
+  payload.dora_variant = legacyLulynxAliases.has(raw) || raw === 'lulynx_stopgrad_dora'
+    ? 'lulynx_stopgrad_dora'
+    : 'classic';
+}
+
 function removeUiOnlyFields(payload) {
+  if (payload.ui_custom_params != null && String(payload.ui_custom_params).trim() && !payload.custom_toml) {
+    payload.custom_toml = payload.ui_custom_params;
+  }
+  delete payload.ui_custom_params;
   // F-purge: evo legacy draft key wan22_tower_choice -> configs wan22_noise_stage
   if (payload && payload.wan22_tower_choice != null && (payload.wan22_noise_stage == null || payload.wan22_noise_stage === '')) {
     payload.wan22_noise_stage = payload.wan22_tower_choice;
@@ -582,27 +650,21 @@ function normalizeSemanticRegionWeights(payload) {
   }];
 }
 
-function normalizeUniversalDitRoute(payload) {
-  if (payload.universal_dit_enabled) {
-    // Universal DiT remains an internal LoRA route override rather than a
-    // new training type. Keep the selected schema id for its existing field
-    // contract, but make the native architecture route explicit.
-    payload.model_type = 'universal_dit';
-  }
-}
 export function buildRunConfigFromSections(config, typeId, { getSectionsForType, isFieldVisible }) {
-  const resolvedTypeId = typeId || config.model_train_type || 'sdxl-lora';
-  const payload = collectVisiblePayload(config, resolvedTypeId, getSectionsForType, isFieldVisible);
+  const normalizedConfig = normalizeTheoryNameAliases(config);
+  const resolvedTypeId = typeId || normalizedConfig.model_train_type || 'sdxl-lora';
+  const payload = collectVisiblePayload(normalizedConfig, resolvedTypeId, getSectionsForType, isFieldVisible);
   normalizeScheduler(payload);
   normalizeOptimizerArgs(payload);
   normalizeLycorisNetworkArgs(payload, resolvedTypeId);
   normalizeListTextareas(payload);
   normalizeAdapterEnabledFlags(payload);
+  normalizeDoraVariant(payload);
   removeUiOnlyFields(payload);
   normalizeAttention(payload);
+  normalizeAnimaVramOptimizer(payload);
   normalizeLayeredAlpha(payload);
   normalizeSemanticRegionWeights(payload);
-  normalizeUniversalDitRoute(payload);
   payload.lulynx_optimization_enabled = getPerfMode() === 'lulynx';
   return payload;
 }

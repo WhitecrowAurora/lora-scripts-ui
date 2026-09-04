@@ -1446,6 +1446,12 @@ input[type="range"]::-webkit-slider-thumb {
   opacity: 1;
 }
 
+.config-group.field-disabled .field-managed-hint {
+  color: var(--accent);
+  font-weight: 700;
+  opacity: 1;
+}
+
 .config-group.field-disabled input:disabled,
 .config-group.field-disabled select:disabled,
 .config-group.field-disabled textarea:disabled,
@@ -7810,4 +7816,3 @@ body.compact-layout .config-group.row {
   .train-log-search-input { width: 130px; }
   .train-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-

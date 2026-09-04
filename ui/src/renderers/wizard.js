@@ -24,6 +24,7 @@ export function createWizardRenderer({ state, updateConfigValue, getFieldDefinit
       ['network_dim', 'Rank', c.network_dim],
       ['network_alpha', 'Alpha', c.network_alpha],
       ['lycoris_algo', 'LyCORIS算法', c.network_module === 'lycoris.kohya' ? c.lycoris_algo : ''],
+      ['lycoris_loha_implementation', 'LoHa 实现', c.network_module === 'lycoris.kohya' && c.lycoris_algo === 'loha' ? (c.lycoris_loha_implementation || 'lycoris_standard') : ''],
       ['full_matrix', 'LoKr 全矩阵', c.network_module === 'lycoris.kohya' && c.lycoris_algo === 'lokr' && c.full_matrix ? '开启' : ''],
       ['unet_lr', 'U-Net 学习率', c.unet_lr],
       ['optimizer_type', '优化器', c.optimizer_type],
@@ -59,6 +60,7 @@ export function createWizardRenderer({ state, updateConfigValue, getFieldDefinit
     }).join('');
     var lycoVisible = c.network_module === 'lycoris.kohya' ? '' : 'display:none;';
     var lokrVisible = (c.network_module === 'lycoris.kohya' && c.lycoris_algo === 'lokr') ? '' :'display:none;';
+    var lohaVisible = (c.network_module === 'lycoris.kohya' && c.lycoris_algo === 'loha') ? '' : 'display:none;';
 
     //优化器选项
     var optimizers = getFieldDefinition?.('optimizer_type', state.activeTrainingType)?.options || ['AdamW8bit', 'Prodigy', 'prodigyplus.ProdigyPlusScheduleFree', 'AdamW'];
@@ -147,6 +149,13 @@ export function createWizardRenderer({ state, updateConfigValue, getFieldDefinit
                 <div style="${lycoVisible}">
                   <label style="font-size:0.82rem;color:var(--text-muted);">LyCORIS 算法</label>
                   <select class="field-select" onchange="wizardSet('lycoris_algo', this.value); renderView('wizard')">${lycoSelect}</select>
+                </div>
+                <div style="${lohaVisible}">
+                  <label style="font-size:0.82rem;color:var(--text-muted);">LoHa 实现方案</label>
+                  <select class="field-select" onchange="wizardSet('lycoris_loha_implementation', this.value); renderView('wizard')">
+                    <option value="lycoris_standard"${(c.lycoris_loha_implementation || 'lycoris_standard') === 'lycoris_standard' ? ' selected' : ''}>标准 LyCORIS LoHa（推荐）</option>
+                    <option value="lulynx_simplified"${c.lycoris_loha_implementation === 'lulynx_simplified' ? ' selected' : ''}>Lulynx 简化 LoHa（兼容旧训练）</option>
+                  </select>
                 </div>
                 <div>
                   <label style="font-size:0.82rem;color:var(--text-muted);">网络维度 (Rank)</label>
@@ -299,7 +308,17 @@ export function createWizardRenderer({ state, updateConfigValue, getFieldDefinit
     if (!c.sample_at_first) updateConfigValue('sample_at_first', true);
     if (!c.sample_width || c.sample_width === 512) updateConfigValue('sample_width', 832);
     if (!c.sample_height || c.sample_height === 512) updateConfigValue('sample_height', 1216);
-    if (!c.sample_cfg || c.sample_cfg === 7) updateConfigValue('sample_cfg', 5);
+    // 预览 CFG：向导一直偏好比共享 schema 默认（7）更低的档。rectified-flow 族的
+    // 可用上限比这更低——实测该族 cfg 5.0 已有 56.9% 近黑像素、7.5 全黑——所以那两族
+    // 取该族 schema 自己的默认值，不在这里再写死一个数（否则 schema 改了会被向导拖回来）。
+    // 取不到就一个字都不写：schema 自己的默认值本来就是对的，写 undefined 才是新缺陷。
+    var flowPreview = /^(anima|newbie)-/.test(String(state.activeTrainingType || ''));
+    var wizardCfg = flowPreview
+      ? getFieldDefinition?.('sample_cfg', state.activeTrainingType)?.defaultValue
+      : 5;
+    if ((!c.sample_cfg || c.sample_cfg === 7) && Number.isFinite(wizardCfg)) {
+      updateConfigValue('sample_cfg', wizardCfg);
+    }
     if (!c.sample_seed) updateConfigValue('sample_seed', 2778);
     if (c.sample_sampler !== 'euler_a') updateConfigValue('sample_sampler', 'euler_a');
     // 缓存文本编码器默认关闭

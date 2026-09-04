@@ -430,17 +430,17 @@ var statusDot = '', statusText = '';
  if (lt === 'lora') networkAlgo = 'LoRA (Anima)';
       else if (lt === 'lora_fa') networkAlgo = 'LoRA-FA (Anima)';
       else if (lt === 'vera')networkAlgo = 'VeRA (Anima)';
-      else if (lt === 'tlora') networkAlgo = 'T-LoRA (Anima)';
+      else if (lt === 'tlora') networkAlgo = 'lulynx Progressive Rank LoRA (Anima)';
       else if (lt === 'lokr') networkAlgo = 'LoKr (Anima)';
     }
     if (networkAlgo === 'lycoris.kohya' && state.config.lycoris_algo) {
       networkAlgo = 'LyCORIS / ' + state.config.lycoris_algo;
     } else if (networkAlgo === 'networks.lora') { networkAlgo = 'LoRA'; }
     else if (networkAlgo === 'networks.lora_flux') { networkAlgo = 'LoRA (FLUX)'; }
-    else if (networkAlgo === 'networks.tlora_flux') { networkAlgo = 'T-LoRA (FLUX)'; }
+    else if (networkAlgo === 'networks.tlora_flux') { networkAlgo = 'lulynx Progressive Rank LoRA (FLUX)'; }
     else if (networkAlgo === 'networks.oft_flux') { networkAlgo = 'OFT (FLUX)'; }
     else if (networkAlgo === 'networks.lora_anima') { networkAlgo = 'LoRA (Anima)'; }
-    else if (networkAlgo === 'networks.tlora_anima') { networkAlgo = 'T-LoRA (Anima)'; }
+    else if (networkAlgo === 'networks.tlora_anima') { networkAlgo = 'lulynx Progressive Rank LoRA (Anima)'; }
     else if (networkAlgo === 'networks.lora_lumina') { networkAlgo = 'LoRA (Lumina)'; }
     else if (networkAlgo === 'networks.lora_qwen_image') { networkAlgo = 'LoRA (Qwen Image)'; }
     else if (networkAlgo === 'networks.lora_hunyuan_dit' || networkAlgo === 'networks.lora_hunyuan_image') { networkAlgo = 'LoRA (HunyuanDiT)'; }

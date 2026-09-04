@@ -1,5 +1,6 @@
 const H3_CHECKPOINT_OPTIONS = [
   { value: 'unsloth', label: 'Unsloth（推荐）' },
+  { value: 'ffn', label: 'FFN-only（仅重算前馈层）' },
   { value: 'selective', label: 'Selective' },
   { value: 'full', label: 'Full recompute' },
 ];

@@ -162,8 +162,16 @@ export function createTrainingChromeActions({
     return hits;
   }
 
+  // 词条要讲全部可选值，包含当前配置下被禁用的那些，所以按空配置解析函数式 options。
+  // 空配置下每个 gater 都返回未加工的全量表（`module_offload_enabled` 缺省为假、
+  // 梯度检查点缺省按开），正是这里要的东西。
+  function resolveHelpOptions(field) {
+    const raw = typeof field?.options === 'function' ? field.options({}) : field?.options;
+    return Array.isArray(raw) ? raw : [];
+  }
+
   function renderSelectOptionsHelp(field, entry) {
-    const schemaOpts = Array.isArray(field?.options) ? field.options : [];
+    const schemaOpts = resolveHelpOptions(field);
     const wikiDesc = {
       ...asStringMap(entry?.optionDescriptions),
       ...asStringMap(entry?.standard?.optionDescriptions),

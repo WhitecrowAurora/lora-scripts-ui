@@ -9,7 +9,7 @@ import { TARGET_LORA_OPTIMIZERS, schedulerOptions } from './features/settingsOpt
 import { buildRunConfigFromSections } from './runConfigBuilder.js';
 import {
   SDXL_LORA_SECTIONS, SDXL_ILECO_SECTIONS, SDXL_ADDIFT_SECTIONS, SDXL_MULTI_ADDIFT_SECTIONS,
-  SDXL_FT_SECTIONS, SDXL_CN_SECTIONS, SDXL_TI_SECTIONS,
+  SDXL_FT_SECTIONS, SDXL_CN_SECTIONS, SDXL_CN_LLLITE_SECTIONS, SDXL_TI_SECTIONS,
 } from './sdxlSchema.js';
 import {
   ANIMA_LORA_SECTIONS, ANIMA_EDIT_MODEL_SECTIONS, ANIMA_ILECO_SECTIONS, ANIMA_ADDIFT_SECTIONS,
@@ -20,17 +20,17 @@ import {
   DB_SECTIONS, SD_CN_SECTIONS, SD_TI_SECTIONS, YOLO_SECTIONS, AESTHETIC_SCORER_SECTIONS,
 } from './otherSchemas.js';
 import {
-  FLUX_LORA_SECTIONS, LUMINA_LORA_SECTIONS, QWEN_IMAGE_LORA_SECTIONS, HUNYUAN_DIT_LORA_SECTIONS,
+  FLUX_LORA_SECTIONS, SD3_LORA_SECTIONS, LUMINA_LORA_SECTIONS, QWEN_IMAGE_LORA_SECTIONS, HUNYUAN_DIT_LORA_SECTIONS,
   HUNYUAN_IMAGE_COMPAT_SECTIONS, FLUX_FT_SECTIONS, LUMINA_FT_SECTIONS, FLUX_CN_SECTIONS, NEWBIE_LORA_SECTIONS,
-  KREA2_LORA_SECTIONS, FLUX2_LORA_SECTIONS, ZIMAGE_LORA_SECTIONS, WAN22_TI2V_LORA_SECTIONS, WAN22_T2V_A14B_LORA_SECTIONS, LTX23_LORA_SECTIONS, BOOGU_LORA_SECTIONS, BOOGU_EDIT_LORA_SECTIONS,
+  KREA2_LORA_SECTIONS, KREA2_FT_SECTIONS, FLUX2_LORA_SECTIONS, ZIMAGE_LORA_SECTIONS, WAN22_TI2V_LORA_SECTIONS, WAN22_T2V_A14B_LORA_SECTIONS, LTX23_LORA_SECTIONS, LTX25_LORA_SECTIONS, BOOGU_LORA_SECTIONS, BOOGU_EDIT_LORA_SECTIONS, BOOGU_FT_SECTIONS, LTX23_FT_SECTIONS, LTX25_FT_SECTIONS, FLUX2_FT_SECTIONS, ZIMAGE_FT_SECTIONS, WAN22_FT_SECTIONS,
 } from './otherDitSchemas.js';
-import { MINIMAX_H3_LORA_SECTIONS } from './minimaxH3Schema.js';
+import { MINIMAX_H3_LORA_SECTIONS, MINIMAX_H3_FT_SECTIONS } from './minimaxH3Schema.js';
 import {
   LAB_DISTILLER_SECTIONS, SDXL_TURBO_LORA_SECTIONS, ANIMA_FEW_STEP_LORA_SECTIONS, NEWBIE_FEW_STEP_LORA_SECTIONS,
 } from './experimentalTrainingSchemas.js';
 import { CONCEPT_EDIT_UNIFIED_SECTIONS } from './conceptEditUnifiedSchema.js';
 import { S_TRAINING_INTENT_PROFILE, S_DATASET_INTELLIGENCE } from './schemaFrontierGroups.js';
-import { S_UNIVERSAL_DIT } from './universalDitFields.js';
+import { UNIVERSAL_DIT_SECTIONS } from './universalDitFields.js';
 
 export { ALL_TRAINING_TYPES, UI_TABS };
 export const TRAINING_TYPES = VISIBLE_TRAINING_TYPES;
@@ -50,6 +50,7 @@ const SECTIONS_MAP = {
   'sd-addift':              SD15_ADDIFT_SECTIONS,
   'sd-multi-addift':        SD15_MULTI_ADDIFT_SECTIONS,
   'flux-lora':              FLUX_LORA_SECTIONS,
+  'sd3-lora':               SD3_LORA_SECTIONS,
   'lumina-lora':            LUMINA_LORA_SECTIONS,
   'qwen-image-lora':        QWEN_IMAGE_LORA_SECTIONS,
   'hunyuan-dit-lora':       HUNYUAN_DIT_LORA_SECTIONS,
@@ -67,6 +68,7 @@ const SECTIONS_MAP = {
   'wan22-t2v-a14b-lora':     WAN22_T2V_A14B_LORA_SECTIONS,
   'minimax-h3-lora':        MINIMAX_H3_LORA_SECTIONS,
   'ltx23-lora':             LTX23_LORA_SECTIONS,
+  'ltx25-lora':             LTX25_LORA_SECTIONS,
   'boogu-lora':             BOOGU_LORA_SECTIONS,
   'boogu-edit-lora': BOOGU_EDIT_LORA_SECTIONS,
   'lab-distiller':          LAB_DISTILLER_SECTIONS,
@@ -79,14 +81,24 @@ const SECTIONS_MAP = {
   'flux-finetune':          FLUX_FT_SECTIONS,
   'lumina-finetune':        LUMINA_FT_SECTIONS,
   'anima-finetune':         ANIMA_FT_SECTIONS,
+  'krea2-finetune':         KREA2_FT_SECTIONS,
+  'boogu-finetune':         BOOGU_FT_SECTIONS,
+  'ltx23-finetune':         LTX23_FT_SECTIONS,
+  'ltx25-finetune':         LTX25_FT_SECTIONS,
+  'flux2-finetune':         FLUX2_FT_SECTIONS,
+  'zimage-finetune':        ZIMAGE_FT_SECTIONS,
+  'wan22-finetune':         WAN22_FT_SECTIONS,
+  'minimax-h3-finetune':    MINIMAX_H3_FT_SECTIONS,
   'sd-controlnet':          SD_CN_SECTIONS,
   'sdxl-controlnet':        SDXL_CN_SECTIONS,
+  'sdxl-controlnet-lllite': SDXL_CN_LLLITE_SECTIONS,
   'anima-controlnet':       ANIMA_CN_SECTIONS,
   'flux-controlnet':        FLUX_CN_SECTIONS,
   'sd-textual-inversion':   SD_TI_SECTIONS,
   'sdxl-textual-inversion': SDXL_TI_SECTIONS,
   'yolo':                   YOLO_SECTIONS,
   'aesthetic-scorer':       AESTHETIC_SCORER_SECTIONS,
+  'universal-dit-lora':     UNIVERSAL_DIT_SECTIONS,
 };
 
 const TARGET_OPTIMIZER_TRAINING_TYPES = new Set([
@@ -116,13 +128,6 @@ const TRAINING_INTENT_SUPPORTED_TYPES = new Set([
   'anima-few-step-lora',
   'newbie-few-step-lora',
 ]);
-const UNIVERSAL_DIT_SECTION = {
-  id: 'universal-dit-settings',
-  tab: 'advanced',
-  title: 'Universal DiT LoRA fallback',
-  description: '对未被专用族路由识别的 DiT/Transformer 提供的探测与基础 LoRA 接入。',
-  fields: S_UNIVERSAL_DIT,
-};
 const TRAINING_INTENT_PROFILE_SECTION = {
   id: 'training-intent-profile',
   tab: 'training',
@@ -154,7 +159,7 @@ export function getSectionsForType(typeId) {
   if (!_profiledSectionsCache[typeId]) {
     const base = withDatasetIntelligence(SECTIONS_MAP[typeId] || SDXL_LORA_SECTIONS);
     _profiledSectionsCache[typeId] = TRAINING_INTENT_SUPPORTED_TYPES.has(typeId)
-      ? [TRAINING_INTENT_PROFILE_SECTION, UNIVERSAL_DIT_SECTION, ...base]
+      ? [TRAINING_INTENT_PROFILE_SECTION, ...base]
       : base;
   }
   return _profiledSectionsCache[typeId];

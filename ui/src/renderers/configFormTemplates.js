@@ -1,6 +1,6 @@
 import { resolveFieldDesc } from '../schemaFieldI18n.js';
 import { escapeHtml } from '../utils/dom.js';
-import { getAdapterEntityConflict } from '../schemaCommon.js';
+import { getAdapterEntityConflict, streamingResidencyFamilies } from '../schemaCommon.js';
 import { renderSemanticRegionCurveEditor } from './semanticRegionCurveEditor.js';
 
 export function renderGhostReplayHelperCard(recorderState = {}) {
@@ -203,11 +203,14 @@ export function renderSemanticRegionWeightsField({ field, value, config = {}, se
       <div data-semantic-region-weights style="overflow-x:auto;padding-bottom:4px">${rowBlocks}</div>
     </div>`;
 }
-export function renderFieldDescription(field, lang = 'zh') {
-  const desc = resolveFieldDesc(field, lang) || field.desc || '';
+export function renderFieldDescription(field, lang = 'zh', managedMessage = '', typeId = '') {
+  const desc = resolveFieldDesc(field, lang, typeId) || field.desc || '';
   const normal = desc ? `<p class="field-desc">${escapeHtml(desc)}</p>` : '';
   const important = field.importantDesc ? `<p class="field-desc field-desc-strong">${escapeHtml(field.importantDesc || '')}</p>` : '';
-  return normal + important;
+  const managed = managedMessage
+    ? `<p class="field-desc field-managed-hint">${escapeHtml(managedMessage)}</p>`
+    : '';
+  return normal + important + managed;
 }
 
 export function toBool(value) {
@@ -218,6 +221,16 @@ export function toBool(value) {
 export function toNum(value) {
   const n = Number(value);
   return Number.isNaN(n) ? 0 : n;
+}
+
+// conflictWith 是个纯字符串通道,三种关系靠前缀区分:'当前 ' 开头是运行时能力受限,
+// 这个前缀是"别人依赖本字段"(关掉会让对方失效),其余是硬互斥。
+const RESIDENCY_DEPENDENCY_PREFIX = 'Block Offload：';
+
+// 让 configForm 只对"依赖型"冲突放开禁用,不要按字段名整体豁免 —— gradient_checkpointing
+// 同时还有一条真互斥规则(模块级 Offload / Layer Swap 下不允许开),那条必须继续置灰。
+export function isDependencyConflict(conflictWith) {
+  return Boolean(conflictWith) && String(conflictWith).startsWith(RESIDENCY_DEPENDENCY_PREFIX);
 }
 
 export function getFieldConflict(field, config = {}) {
@@ -246,6 +259,13 @@ export function getFieldConflict(field, config = {}) {
     return 'TurboCore（顶栏 CUDA）';
   }
 
+  // 下面两条反向极性规则(字段"已开"时才提示)要用这三个值,而 isActive 分水岭之后的
+  // 那批 const 要到几十行后才声明 —— 在这里读它们会撞 TDZ,对 execution_backend 是
+  // 无条件抛 ReferenceError。所以三个值提到分水岭之前声明,后面那批不再重复。
+  const swapMode = String(config.swap_granularity || 'off').trim().toLowerCase().replace('-', '_');
+  const swapActive = swapMode !== '' && swapMode !== 'off';
+  const moduleOffload = toBool(config.module_offload_enabled);
+
   // 反向提示挂在 execution_backend 这个活下拉框上。原先挂的是 torch_compile,那个字段现在是
   // LEGACY_BACKEND_FIELD_HIDDEN(永久隐藏),规则渲染不出来 —— 用户在下拉框里选了编译后端,
   // 得不到任何"与模块级 Offload 互斥"的提示,直到 preflight 才被拒。
@@ -256,6 +276,16 @@ export function getFieldConflict(field, config = {}) {
   // disabled 承担,否则用户连切回 optimized 都做不到,会把自己锁死。
   if (key === 'execution_backend' && (swapActive || moduleOffload)) {
     return [swapActive ? '显存交换模式' : '', moduleOffload ? '模块级 Offload' : ''].filter(Boolean).join(' / ');
+  }
+
+  // 依赖(不是互斥):流式 block 驻留档只有在梯度检查点开着时才真省显存。关掉重算后前向整段
+  // 留在 autograd 图里,每个流入 GPU 的 block 都被钉到 backward,槽位预算填几都一样。
+  // 同样必须放在分水岭之前:提示要在梯度检查点**已开**时就出现(告诉用户有东西依赖它),
+  // 而分水岭之后只剩"关着想开"那一侧。后端不拦这个组合、只发警告,所以这里也不锁 ——
+  // configForm.js 的 conflictDisabled 对本字段留了豁免,复选框照旧可点。
+  if (key === 'gradient_checkpointing' && isActive) {
+    const families = streamingResidencyFamilies(config);
+    if (families.length) return `${RESIDENCY_DEPENDENCY_PREFIX}${families.join(' / ')}`;
   }
 
   if (isActive) return '';
@@ -273,9 +303,6 @@ export function getFieldConflict(field, config = {}) {
   const textEncoderOnly = toBool(config.network_train_text_encoder_only);
   const flowEnabled = toBool(config.flow_model) || String(config.flow_model || '').trim() === 'rectified_flow' || String(config.flow_model || '').trim() === 'cfm';
   const vParameterization = toBool(config.v_parameterization);
-  const swapMode = String(config.swap_granularity || 'off').trim().toLowerCase().replace('-', '_');
-  const swapActive = swapMode !== '' && swapMode !== 'off';
-  const moduleOffload = toBool(config.module_offload_enabled);
   const vramSwapToRam = toBool(config.vram_swap_to_ram);
   // 编译后端事实源:活控件是 execution_backend 下拉框,torch_compile / thunder_jit_enabled
   // 两个旧布尔在 schemaFieldGroups.js 里是 LEGACY_BACKEND_FIELD_HIDDEN(永久隐藏、仅供老配置
@@ -365,14 +392,13 @@ export function getFieldConflict(field, config = {}) {
   // 反向提示挂在 execution_backend 这个活下拉框上。原先挂的是 torch_compile,那个字段现在是
   // LEGACY_BACKEND_FIELD_HIDDEN(永久隐藏),规则渲染不出来 —— 用户在下拉框里选了编译后端,
   // 得不到任何"与模块级 Offload 互斥"的提示,直到 preflight 才被拒。
-  if (key === 'execution_backend' && (swapActive || moduleOffload)) {
-    return [swapActive ? '显存交换模式' : '', moduleOffload ? '模块级 Offload' : ''].filter(Boolean).join(' / ');
-  }
   if (key === 'torch_compile' && (swapActive || moduleOffload)) {
     // 保留这条死规则:torch_compile 字段已永久隐藏,但它仍是旧配置迁移兼容的字段,
-    // 万一老存档直接带这个键,这里仍会给出提示。活字段的规则在上面 execution_backend。
+    // 万一老存档直接带这个键,这里仍会给出提示。活字段 execution_backend 的同形规则在
+    // 分水岭之前 —— 那一条会先返回,所以这里不再重复写 execution_backend。
     return [swapActive ? '显存交换模式' : '', moduleOffload ? '模块级 Offload' : ''].filter(Boolean).join(' / ');
-  }  if (key === 'gradient_checkpointing') {
+  }
+  if (key === 'gradient_checkpointing') {
     if (moduleOffload) return '模块级 Offload';
     if (swapMode === 'layer') return 'Layer Swap';
   }
@@ -390,6 +416,9 @@ export function renderConflictHint(conflictWith) {
   if (!conflictWith) return '';
   if (String(conflictWith).startsWith('当前 ')) {
     return `<p class="field-desc field-conflict-hint">${escapeHtml(conflictWith)}，请切换运行时或使用 SDPA/自动。</p>`;
+  }
+  if (String(conflictWith).startsWith(RESIDENCY_DEPENDENCY_PREFIX)) {
+    return `<p class="field-desc field-conflict-hint">${escapeHtml(conflictWith)} 正依赖本选项，关闭后流式卸载不再省显存（峰值≈全骨干驻留），GPU 槽位设置一并失效。</p>`;
   }
   return `<p class="field-desc field-conflict-hint">与「${escapeHtml(conflictWith)}」互斥，请关闭后开启本选项。</p>`;
 }

@@ -23,7 +23,7 @@ import {
   ALL_TRAINING_TYPES,
   TRAINING_TYPES,
   applyBackendConfigOptions,
-  buildRunConfig,
+  buildRunConfig as buildSchemaRunConfig,
   createDefaultConfig,
   getAvailableTabs,
   getFieldDefinition,
@@ -82,6 +82,11 @@ import { installGlobalErrorReporter } from './utils/errorReporter.js';
 import { reportWebuiError } from './utils/errorReporter.js';
 import { applyUiUrlState, readUiUrlState, writeUiUrlState } from './utils/urlState.js';
 import { installRouteChunkRecovery } from './utils/routeRecovery.js';
+import {
+  applyTrainingVramProfileOverlay,
+  createTrainingVramProfileController,
+  isTrainingVramManagedField,
+} from './utils/trainingVramProfile.js';
 
 import { createAboutRenderer, renderGuide, renderLogs, refreshTensorBoardStatus, refreshWebuiErrorLogs, startTensorBoardFromLogs, stopTensorBoardFromLogs, createBuiltinPickerRenderer, createStatusDeckRenderer, createNavigatorRenderer, createSettingsRenderer, createConfigFormRenderer, createConfigPageRenderer, createPreflightRenderer, createSamplesRenderer, createWizardRenderer, createPluginsRenderer, createToolsRenderer, createDatasetRenderer, createSysMonitorRenderer, createTrainingRenderer, createExperimentalTrainingRenderer, createConfigShellRenderer, createAppViewRenderer, renderTurboCore, turboCoreProbeStatus, turboCoreCopyFlags } from './renderers/index.js';
 import { createThemeActions, createTrainTabsActions, createJsonPanelActions, createFieldMenuActions, createTaskHistoryActions, createSearchActions, createPickerActions, createLayoutActions, createConfigActions, createSampleActions, createWizardActions, createPluginsActions, createToolsActions, createNavActions, createRuntimeActions, createTerminateActions, createSavedConfigsActions, createTrainingActions, createTrainingMetadataActions, createTrainingChromeActions, createPreviewGroupsActions, createExperimentalTrainingActions, createDeveloperModeChromeActions } from './actions/index.js';
@@ -97,6 +102,21 @@ import { createOrderedMultiSelectActions } from './actions/orderedMultiSelectAct
 import { createQueueWorkbenchActions } from './actions/queueWorkbench.js';
 
 const state = createInitialAppState({ createDefaultConfig });
+function getTrainingVramDisplayConfig(config = state.config, typeId = state.activeTrainingType) {
+  return applyTrainingVramProfileOverlay(config || {}, state.trainingVramProfileUi, typeId);
+}
+function isTrainingVramFieldManaged(key) {
+  return isTrainingVramManagedField(
+    state.config || {},
+    state.trainingVramProfileUi,
+    state.activeTrainingType,
+    key,
+  );
+}
+function buildRunConfig(config, typeId) {
+  const resolvedTypeId = typeId || state.activeTrainingType;
+  return buildSchemaRunConfig(getTrainingVramDisplayConfig(config, resolvedTypeId), resolvedTypeId);
+}
 const initialUiUrlState = readUiUrlState();
 applyUiUrlState(state, { ...initialUiUrlState, trainingType: '' });
 installRouteChunkRecovery();
@@ -142,7 +162,14 @@ const {
   startSampleDifficultyScoring,
   previewTrainingIntentProfile,
   applyTrainingIntentSuggestions,
-} = createConfigFormRenderer({ state, canUseBuiltinPicker, isFieldVisible, COLLAPSIBLE_FIELD_KEYS });
+} = createConfigFormRenderer({
+  state,
+  canUseBuiltinPicker,
+  isFieldVisible,
+  COLLAPSIBLE_FIELD_KEYS,
+  getDisplayConfig: () => getTrainingVramDisplayConfig(),
+  isManagedField: isTrainingVramFieldManaged,
+});
 bindWindowActions({ startSampleDifficultyScoring, previewTrainingIntentProfile, applyTrainingIntentSuggestions });
 const { renderSections: renderConfigSections } = createConfigShellRenderer({
   state,
@@ -152,6 +179,7 @@ const { renderSections: renderConfigSections } = createConfigShellRenderer({
   isFieldVisible,
   renderSection,
   escapeHtml,
+  getDisplayConfig: () => getTrainingVramDisplayConfig(),
 });
 const {
   renderExperimentalTrainingPanel,
@@ -373,6 +401,14 @@ const { switchTrainTab } = createTrainTabsActions({
   refreshSampleImages,
 });
 const { setupJsonPanel, updateJSONPreview } = createJsonPanelActions({ state, buildRunConfig });
+const trainingVramProfileController = createTrainingVramProfileController({
+  state,
+  api,
+  onResolved: () => {
+    updateJSONPreview();
+    if (state.activeModule === 'config') renderView('config');
+  },
+});
 const { setupFieldMenus } = createFieldMenuActions({ state, getFieldDefinition });
 bindWindowActions({ switchTrainTab });
 // taskHistory 包含 mergeTaskHistory / deleteTaskHistory / clearAllTaskHistory 等
@@ -650,6 +686,13 @@ const {
   updateJSONPreview,
   renderView,
  resetTransientState,
+  onConfigChanged: (key) => {
+    const pending = trainingVramProfileController.refresh();
+    if (state.activeModule === 'config' && ['training_vram_profile', 'wan22_model_variant', 'model_variant', 'checkpoint_variant'].includes(key)) {
+      renderView('config');
+    }
+    return pending;
+  },
 });
 _appBootstrap = createAppBootstrap({
   state,
@@ -972,6 +1015,8 @@ _renderConfigImpl = createConfigPageRenderer({
   setupWaterfallScrollSpy: (container) => _trainingChromeActions?.setupWaterfallScrollSpy(container),
   getFieldConditionalParents,
   getFieldDefinition,
+  getDisplayConfig: () => getTrainingVramDisplayConfig(),
+  ensureTrainingVramProfile: () => trainingVramProfileController.refresh(),
 }).renderConfig;
 _renderViewImpl = createAppViewRenderer({
   state,

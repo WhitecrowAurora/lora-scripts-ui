@@ -8,10 +8,14 @@ export function createConfigShellRenderer({
   isFieldVisible,
   renderSection,
   escapeHtml,
+  getDisplayConfig,
 }) {
+  const configForRender = () => getDisplayConfig?.() || state.config || {};
+
   function visibleSectionPredicate(section) {
-    if (section.expert && !state.config.performance_expert_mode) return false;
-    return section.fields.some((field) => field.type !== 'hidden' && isFieldVisible(field, state.config));
+    const config = configForRender();
+    if (section.expert && !config.performance_expert_mode) return false;
+    return section.fields.some((field) => field.type !== 'hidden' && isFieldVisible(field, config));
   }
 
   function getVisibleSections(trainingType, waterfall) {
@@ -25,7 +29,7 @@ export function createConfigShellRenderer({
     }
 
     const allSections = [];
-    const availableTabKeys = getAvailableTabs(trainingType, state.config).map((tab) => tab.key);
+    const availableTabKeys = getAvailableTabs(trainingType, configForRender()).map((tab) => tab.key);
     for (const tabKey of availableTabKeys) {
       const tabSections = getSectionsForTab(tabKey, trainingType);
       for (const section of tabSections) {

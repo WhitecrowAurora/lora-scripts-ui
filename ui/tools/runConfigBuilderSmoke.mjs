@@ -6,6 +6,7 @@ import {
   createDefaultConfig,
   getFieldDefinition,
 } from '../src/schemaIndex.js';
+import { normalizeTheoryNameAliases, THEORY_NAME_ALIASES } from '../src/utils/theoryNameAliases.js';
 
 function optionValues(options) {
   if (!Array.isArray(options)) return [];
@@ -31,11 +32,100 @@ assert.equal(visibleTrainingTypeIds.has('krea2-lora'), true, 'krea2-lora should 
 assert.equal(visibleTrainingTypeIds.has('concept-edit'), false, 'concept-edit must stay hidden until backend route is wired');
 assert.equal(Boolean(allTrainingTypeEntries.get('krea2-lora')?.disabled), false, 'krea2-lora should be selectable');
 assert.equal(allTrainingTypeEntries.get('concept-edit')?.disabled, true);
+for (const key of [
+  'sd3_block_residency',
+  'sd3_block_offload_ratio',
+  'sd3_block_offload_min_param_mb',
+  'sd3_block_offload_gpu_slots',
+  'sd3_block_offload_prefetch_depth',
+  'sd3_block_offload_pin_memory',
+]) {
+  assert.ok(getFieldDefinition(key, 'sd3-lora'), `${key} must be visible on SD3 LoRA`);
+}
+const sd3Defaults = createDefaultConfig('sd3-lora');
+assert.equal(sd3Defaults.sd3_block_residency, 'block_offload');
+assert.equal(sd3Defaults.sd3_block_offload_gpu_slots, 2);
+assert.equal(sd3Defaults.sd3_block_offload_prefetch_depth, 1);
+assert.equal(sd3Defaults.sd3_block_offload_pin_memory, false);
 for (const legacyTypeId of ['sdxl-ileco', 'sdxl-addift', 'sdxl-multi-addift', 'anima-ileco', 'anima-addift', 'anima-multi-addift']) {
   assert.equal(visibleTrainingTypeIds.has(legacyTypeId), false, `${legacyTypeId} should stay hidden from the navigator`);
   assert.equal(allTrainingTypeEntries.has(legacyTypeId), true, `${legacyTypeId} should remain loadable for saved configs`);
   assert.equal(Boolean(allTrainingTypeEntries.get(legacyTypeId)?.disabled), false, `${legacyTypeId} saved configs should not be rejected as disabled`);
 }
+
+const theoryLegacyKeys = Object.keys(THEORY_NAME_ALIASES);
+for (const legacyKey of theoryLegacyKeys) {
+  assert.equal(getFieldDefinition(legacyKey, 'anima-lora'), undefined, `${legacyKey} must be read-only`);
+}
+for (const canonicalKey of Object.values(THEORY_NAME_ALIASES)) {
+  assert.ok(getFieldDefinition(canonicalKey, 'anima-lora'), `${canonicalKey} must be exposed by schema`);
+}
+
+const legacyTheoryConfig = {
+  prefix_tuning_length: 2,
+  postfix_tuning_length: 3,
+  prefix_tuning_init: 'uniform',
+  svd_grad_proj_enabled: true,
+  svd_grad_proj_rank: 12,
+  svd_grad_proj_update_interval: 25,
+  svd_grad_proj_warmup_steps: 3,
+  svd_grad_proj_scale: 0.75,
+  anima_ema_feat_align_enabled: true,
+  anima_ema_feat_align_weight: 0.35,
+  anima_ema_feat_align_teacher_layers: '8',
+  anima_ema_feat_align_student_layers: '4',
+  anima_ema_feat_align_decay: 0.97,
+  lpips_latent_enabled: true,
+  lpips_latent_weight: 0.45,
+  lpips_latent_feature_layers: '0,1',
+  lpips_latent_feature_weight: '1,2',
+  lpips_latent_normalize_features: false,
+  lpips_latent_min_t: 0.2,
+  lpips_latent_max_t: 0.8,
+};
+const migratedTheoryConfig = normalizeTheoryNameAliases(legacyTheoryConfig);
+assert.equal(migratedTheoryConfig.lulynx_hidden_state_prelude_length, 2);
+assert.equal(migratedTheoryConfig.lulynx_hidden_state_epilogue_length, 3);
+assert.equal(migratedTheoryConfig.lulynx_hidden_state_prompt_init, 'uniform');
+assert.equal(migratedTheoryConfig.lulynx_svd_gradient_filter_enabled, true);
+assert.equal(migratedTheoryConfig.lulynx_svd_gradient_filter_rank, 12);
+assert.equal(migratedTheoryConfig.lulynx_svd_gradient_filter_update_interval, 25);
+assert.equal(migratedTheoryConfig.lulynx_svd_gradient_filter_warmup_steps, 3);
+assert.equal(migratedTheoryConfig.lulynx_svd_gradient_filter_scale, 0.75);
+assert.equal(migratedTheoryConfig.lulynx_ema_cosine_self_distill_enabled, true);
+assert.equal(migratedTheoryConfig.lulynx_latent_feature_distillation_enabled, true);
+for (const legacyKey of theoryLegacyKeys) assert.equal(legacyKey in migratedTheoryConfig, false);
+
+const legacyTheoryPayload = buildRunConfig(legacyTheoryConfig, 'anima-lora');
+assert.equal(legacyTheoryPayload.lulynx_hidden_state_prelude_length, 2);
+assert.equal(legacyTheoryPayload.lulynx_hidden_state_epilogue_length, 3);
+assert.equal(legacyTheoryPayload.lulynx_hidden_state_prompt_init, 'uniform');
+assert.equal(legacyTheoryPayload.lulynx_svd_gradient_filter_enabled, true);
+assert.equal(legacyTheoryPayload.lulynx_svd_gradient_filter_rank, 12);
+assert.equal(legacyTheoryPayload.lulynx_svd_gradient_filter_update_interval, 25);
+assert.equal(legacyTheoryPayload.lulynx_svd_gradient_filter_warmup_steps, 3);
+assert.equal(legacyTheoryPayload.lulynx_svd_gradient_filter_scale, 0.75);
+assert.equal(legacyTheoryPayload.lulynx_ema_cosine_self_distill_enabled, true);
+assert.equal(legacyTheoryPayload.lulynx_ema_cosine_self_distill_weight, 0.35);
+assert.equal(legacyTheoryPayload.lulynx_ema_cosine_self_distill_teacher_layers, '8');
+assert.equal(legacyTheoryPayload.lulynx_latent_feature_distillation_enabled, true);
+assert.equal(legacyTheoryPayload.lulynx_latent_feature_distillation_layer_weights, '1,2');
+assert.equal(legacyTheoryPayload.lulynx_latent_feature_distillation_normalize, false);
+for (const legacyKey of theoryLegacyKeys) assert.equal(legacyKey in legacyTheoryPayload, false);
+
+const canonicalWins = normalizeTheoryNameAliases({
+  anima_ema_feat_align_enabled: true,
+  lulynx_ema_cosine_self_distill_enabled: false,
+});
+assert.equal(canonicalWins.lulynx_ema_cosine_self_distill_enabled, false);
+assert.equal('anima_ema_feat_align_enabled' in canonicalWins, false);
+
+const canonicalPromptWins = normalizeTheoryNameAliases({
+  prefix_tuning_length: 9,
+  lulynx_hidden_state_prelude_length: 1,
+});
+assert.equal(canonicalPromptWins.lulynx_hidden_state_prelude_length, 1);
+assert.equal('prefix_tuning_length' in canonicalPromptWins, false);
 
 const prodigyConfig = {
   ...createDefaultConfig('sdxl-lora'),
@@ -57,6 +147,88 @@ assert.deepEqual(prodigyPayload.optimizer_args, [
   'extra_flag=True',
 ]);
 assert.equal(prodigyPayload.attention_backend, 'auto');
+
+const canonicalLulynxScheduler = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  lr_scheduler: 'lulynx_exponential_warmup',
+}, 'sdxl-lora');
+assert.equal(canonicalLulynxScheduler.lr_scheduler, 'lulynx_exponential_warmup');
+assert.equal(canonicalLulynxScheduler.lr_scheduler_type, undefined);
+
+const legacyRexScheduler = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  lr_scheduler: 'rex',
+}, 'sdxl-lora');
+assert.equal(legacyRexScheduler.lr_scheduler, 'lulynx_exponential_warmup');
+assert.equal(legacyRexScheduler.lr_scheduler_type, undefined);
+
+const thirdPartyRexScheduler = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  lr_scheduler: 'pytorch_optimizer.REXScheduler',
+}, 'sdxl-lora');
+assert.equal(thirdPartyRexScheduler.lr_scheduler, 'constant');
+assert.equal(thirdPartyRexScheduler.lr_scheduler_type, 'pytorch_optimizer.REXScheduler');
+
+const doraVariantField = getFieldDefinition('dora_variant', 'sdxl-lora');
+assert.ok(doraVariantField, 'DoRA algorithm selector must be visible in LoRA WebUI');
+assert.deepEqual(fieldOptionValues('dora_variant', 'sdxl-lora'), [
+  'classic',
+  'lulynx_stopgrad_dora',
+]);
+assert.deepEqual(fieldOptionValues('dora_mode', 'sdxl-lora'), [
+  'full',
+  'style',
+  'structure',
+]);
+for (const [input, expected] of [
+  ['classic', 'classic'],
+  ['lulynx_stopgrad_dora', 'lulynx_stopgrad_dora'],
+  ['set', 'lulynx_stopgrad_dora'],
+]) {
+  const payload = buildRunConfig({
+    ...createDefaultConfig('sdxl-lora'),
+    dora_enabled: true,
+    dora_variant: input,
+  }, 'sdxl-lora');
+  assert.equal(payload.dora_variant, expected, `DoRA variant ${input} should normalize`);
+}
+const doraOptions = fieldOptionValues('dora_variant', 'sdxl-lora');
+assert.equal(doraOptions.includes('set'), false, 'WebUI must never emit legacy Set-DoRA name');
+
+assert.equal(
+  getFieldDefinition('ed_lora_enabled', 'sdxl-lora'),
+  undefined,
+  'incomplete ED-LoRA training master must stay hidden',
+);
+const edFusionField = getFieldDefinition('merge_ed_lora_fusion', 'sdxl-lora');
+assert.ok(edFusionField, 'independent merge-time ED-LoRA fusion must remain visible');
+const edFusionPayload = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  merge_ed_lora_fusion: true,
+  ed_lora_fusion_steps: 12,
+  ed_lora_fusion_lr: 0.002,
+  ed_lora_fusion_rank: 6,
+  ed_lora_fusion_alpha: 3,
+}, 'sdxl-lora');
+assert.equal(edFusionPayload.merge_ed_lora_fusion, true);
+assert.equal(edFusionPayload.ed_lora_fusion_steps, 12);
+assert.equal(edFusionPayload.ed_lora_fusion_lr, 0.002);
+assert.equal(edFusionPayload.ed_lora_fusion_rank, 6);
+assert.equal(edFusionPayload.ed_lora_fusion_alpha, 3);
+
+for (const typeId of ['sdxl-lora', 'anima-lora', 'flux-lora']) {
+  const thinSvdEnabled = getFieldDefinition('thin_svd_export_enabled', typeId);
+  const thinSvdRank = getFieldDefinition('thin_svd_export_rank', typeId);
+  assert.equal(thinSvdEnabled?.defaultValue, false, `${typeId} Thin-SVD must default off`);
+  assert.equal(thinSvdRank?.defaultValue, 0, `${typeId} Thin-SVD rank default must be zero`);
+  const payload = buildRunConfig({
+    ...createDefaultConfig(typeId),
+    thin_svd_export_enabled: true,
+    thin_svd_export_rank: 4,
+  }, typeId);
+  assert.equal(payload.thin_svd_export_enabled, true);
+  assert.equal(payload.thin_svd_export_rank, 4);
+}
 
 const lycorisConfig = {
   ...createDefaultConfig('sdxl-lora'),
@@ -144,6 +316,22 @@ const lycorisAliasPayload = buildRunConfig({
 }, 'sdxl-lora');
 assert.equal(lycorisAliasPayload.network_module, 'lycoris.kohya');
 assert.equal(lycorisAliasPayload.lycoris_algo, 'loha');
+
+const standardLohaPayload = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  network_module: 'lycoris.kohya',
+  lycoris_algo: 'loha',
+  lycoris_loha_implementation: 'lycoris_standard',
+}, 'sdxl-lora');
+assert.equal(standardLohaPayload.lycoris_loha_implementation, 'lycoris_standard');
+
+const simplifiedLohaPayload = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  network_module: 'lycoris.kohya',
+  lycoris_algo: 'loha',
+  lycoris_loha_implementation: 'lulynx_simplified',
+}, 'sdxl-lora');
+assert.equal(simplifiedLohaPayload.lycoris_loha_implementation, 'lulynx_simplified');
 assert.ok(lycorisAliasPayload.network_args.includes('algo=loha'));
 assert.ok(lycorisAliasPayload.network_args.includes('dropout=0.1'));
 
@@ -160,9 +348,12 @@ const newbiePayload = buildRunConfig({
 assert.equal(newbiePayload.adapter_type, 'full');
 
 for (const [typeId, fieldKey] of [['anima-lora', 'lora_type'], ['newbie-lora', 'adapter_type']]) {
-  const adapterOptions = getFieldDefinition(fieldKey, typeId)?.options || [];
-  for (const adapter of ['lora', 'lora_plus', 'rs_lora', 'lora_fa', 'vera', 'tlora', 'flexrank', 'fera', 'gdlokr', 'locon', 'loha', 'lokr', 'glora', 'glokr', 'ia3', 'full', 'diag-oft', 'oft']) {
+  const adapterOptions = optionValues(getFieldDefinition(fieldKey, typeId)?.options || []);
+  for (const adapter of ['lora', 'lora_plus', 'rs_lora', 'lulynx_frozen_a_lora', 'vera', 'lulynx_progressive_rank_lora', 'flexrank', 'fera', 'gdlokr', 'locon', 'loha', 'lokr', 'glora', 'glokr', 'ia3', 'full', 'diag-oft', 'oft']) {
     assert.ok(adapterOptions.includes(adapter), `${typeId} should expose adapter ${adapter}`);
+  }
+  for (const legacyAdapter of ['lora_fa', 'tlora']) {
+    assert.equal(adapterOptions.includes(legacyAdapter), false, `${typeId} must not expose legacy adapter ${legacyAdapter}`);
   }
   for (const separateToggle of ['dora', 'hydralora']) {
     assert.equal(adapterOptions.includes(separateToggle), false, `${typeId} should expose ${separateToggle} through its dedicated switch only`);
@@ -174,8 +365,11 @@ for (const [typeId, fieldKey] of [['anima-lora', 'lora_type'], ['newbie-lora', '
 }
 
 const sdxlNetworkOptions = fieldOptionValues('network_module', 'sdxl-lora');
-for (const networkModule of ['networks.lora', 'networks.lora_fa', 'networks.vera', 'networks.tlora', 'networks.flexrank_lora', 'networks.oft', 'lycoris.kohya']) {
+for (const networkModule of ['networks.lora', 'networks.lulynx_frozen_a_lora', 'networks.vera', 'networks.lulynx_progressive_rank_lora', 'networks.flexrank_lora', 'networks.oft', 'lycoris.kohya']) {
   assert.ok(sdxlNetworkOptions.includes(networkModule), `sdxl-lora should expose network module ${networkModule}`);
+}
+for (const legacyModule of ['networks.lora_fa', 'networks.tlora']) {
+  assert.equal(sdxlNetworkOptions.includes(legacyModule), false, `sdxl-lora must not expose legacy module ${legacyModule}`);
 }
 for (const unsupported of ['networks.dylora', 'networks.boft', 'networks.qlora']) {
   assert.equal(sdxlNetworkOptions.includes(unsupported), false, `sdxl-lora should not expose unsupported module ${unsupported}`);

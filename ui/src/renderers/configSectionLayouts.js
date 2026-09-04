@@ -124,6 +124,7 @@ export function renderNetworkSettingsContentLayout({ fields, config = {}, render
   }
   pushField('__ui_group_lycoris_');
   pushField('lycoris_algo');
+  pushField('lycoris_loha_implementation');
   pushField('train_norm');
   pushField('conv_dim');
   pushField('conv_alpha');

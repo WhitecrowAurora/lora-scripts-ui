@@ -1,7 +1,16 @@
 // MiniMax H3 keeps its audio/video and guidance-preserving contract separate
 // from the image-only DiT schemas so unsupported distillation fields cannot leak in.
 import { sec, when } from './schemaCommon.js';
-import { S_LR_DIT, S_SAVE, S_TRAIN } from './schemaFieldGroups.js';
+import {
+  S_LR_DIT,
+  S_LR_FT_DIT,
+  S_SAVE,
+  S_TRAIN,
+  TRAINING_VRAM_PROFILE_CONTROL_FIELDS,
+  TRAINING_VRAM_PROFILE_FIELD,
+  ATTENTION_BACKEND_FIELD,
+  S_SYSTEM_ENV,
+} from './schemaFieldGroups.js';
 import { getMiniMaxH3CheckpointOptions } from './features/minimaxH3Config.js';
 
 const H3_SAVE_FIELDS = S_SAVE
@@ -12,8 +21,23 @@ const H3_SAVE_FIELDS = S_SAVE
     return field;
   });
 
-const H3_TRAIN_FIELDS = S_TRAIN(10).filter((field) => field.key !== 'gradient_checkpointing');
-const H3_LR_FIELDS = S_LR_DIT.map((field) => (
+const H3_P2_FIELDS = [
+  { key: 'p2_weighting_mode', type: 'select', label: 'P2 感知加权模式', title: 'p2_weighting_mode', desc: '标准 P2 使用 (k+SNR)^-gamma；lulynx 模式保留原饱和工程权重；off 保持基线。', defaultValue: 'off', options: [
+    { value: 'off', label: '关闭' },
+    { value: 'p2', label: '标准 P2（论文公式）' },
+    { value: 'lulynx_structure', label: 'lulynx 结构增强（高噪声）' },
+    { value: 'lulynx_detail', label: 'lulynx 细节增强（低噪声）' },
+  ] },
+  { key: 'p2_weighting_strength', type: 'number', label: 'P2 加权强度', title: 'p2_weighting_strength', desc: '0 为恒等权重；建议从 0.25~0.5 起步。', defaultValue: 0.0, min: 0, max: 1, step: 0.05, visibleWhen: (config) => String(config.p2_weighting_mode || 'off') !== 'off' },
+];
+const H3_TRAIN_FIELDS = [
+  ...S_TRAIN(10).filter((field) => !new Set([
+    'gradient_checkpointing', 'te_dropout',
+    'network_train_unet_only', 'network_train_text_encoder_only',
+  ]).has(field.key)),
+  ...H3_P2_FIELDS,
+];
+const H3_LR_FIELDS = S_LR_DIT.filter((field) => field.key !== 'text_encoder_lr').map((field) => (
   ['learning_rate', 'unet_lr'].includes(field.key)
     ? { ...field, defaultValue: '1e-5' }
     : field
@@ -67,6 +91,8 @@ export const MINIMAX_H3_LORA_SECTIONS = [
   sec('training-settings', 'training', '训练参数', '', H3_TRAIN_FIELDS),
   sec('save-settings', 'model', '保存设置', '', H3_SAVE_FIELDS),
   sec('h3-memory-settings', 'speed', 'H3 低显存运行时', '缓存、Block Swap 与激活检查点共用 H3 原生运行时。', [
+    TRAINING_VRAM_PROFILE_FIELD,
+    ...TRAINING_VRAM_PROFILE_CONTROL_FIELDS,
     { key: 'mixed_precision', type: 'select', label: '混合精度', title: 'mixed_precision', defaultValue: 'bf16', options: ['bf16', 'fp16', 'no'] },
     { key: 'h3_cache_latents', type: 'boolean', label: '缓存音视频 Latent', title: 'h3_cache_latents', desc: '预编码 Video/Audio VAE 输出，减少训练时显存与重复计算。', defaultValue: true },
     { key: 'h3_cache_text_encoder_outputs', type: 'boolean', label: '缓存文本编码器输出', title: 'h3_cache_text_encoder_outputs', desc: '预编码 conditional 与 unconditional 文本张量。', defaultValue: true },
@@ -84,7 +110,41 @@ export const MINIMAX_H3_LORA_SECTIONS = [
       { value: 'auto', label: 'Auto' },
     ] },
     { key: 'h3_preserve_lora_master_dtype', type: 'boolean', label: 'FP32 LoRA Master', title: 'h3_preserve_lora_master_dtype', desc: '保持 LoRA 参数为 FP32，避免 BF16 小更新被量化吞掉；主干仍为 BF16/INT8。', defaultValue: true },
-    { key: 'h3_checkpoint_mode', type: 'select', label: '激活检查点模式', title: 'h3_checkpoint_mode', desc: 'Block Swap 开启时必须使用 Unsloth；Full/Selective 仅适合所有 block 常驻 GPU 的诊断。', defaultValue: 'unsloth', options: getMiniMaxH3CheckpointOptions },
+    { key: 'h3_checkpoint_mode', type: 'select', label: '激活检查点模式', title: 'h3_checkpoint_mode', desc: 'Block Swap 开启时必须使用 Unsloth；FFN-only/Full/Selective 仅适合所有 block 常驻 GPU 的场景。', defaultValue: 'unsloth', options: getMiniMaxH3CheckpointOptions },
     { key: 'h3_activation_offload_min_tensor_mb', type: 'number', label: '激活卸载阈值 (MB)', title: 'h3_activation_offload_min_tensor_mb', desc: '只卸载达到该大小的保存张量。', defaultValue: 10.0, min: 0, step: 1 },
   ]),
+  // H3 两个类型手写了全部段落,所以从来没拿到 S_ADV 那批系统字段:界面上既选不了执行环境 Profile
+  // 也选不了显卡,只能继承 launcher 启动时的选择。三个键默认都是空串,不填就不进 payload。
+  // 下面的 FT 派生只剔 adapter-settings 与 H3_FT_EXCLUDED_FIELDS,所以这一段两个类型都会拿到。
+  sec('system-settings', 'advanced', '系统设置', '执行环境 Profile、指定显卡、Attention 后端与自定义 TOML 覆盖。', [...S_SYSTEM_ENV, ATTENTION_BACKEND_FIELD]),
 ];
+
+const H3_DEPTH_EXPANSION_FIELDS = [
+  { key: 'h3_depth_expansion_enabled', type: 'boolean', label: '扩展 Transformer 深度', title: 'h3_depth_expansion_enabled', desc: '交错复制 H3 block，并将新增层的输出投影置零为恒等残差。保存完整扩展底座。', defaultValue: false },
+  { key: 'h3_depth_expansion_target_layers', type: 'number', label: '目标层数', title: 'h3_depth_expansion_target_layers', desc: '扩层后的 H3 Transformer block 总数。', defaultValue: 64, min: 2, step: 1, visibleWhen: when('h3_depth_expansion_enabled', true) },
+  { key: 'h3_depth_expansion_train_scope', type: 'select', label: '训练范围', title: 'h3_depth_expansion_train_scope', desc: '选择只训练新增层、同时训练外围模块，或训练全部参数。', defaultValue: 'new_layers', visibleWhen: when('h3_depth_expansion_enabled', true), options: [
+    { value: 'new_layers', label: '只训练新增层' },
+    { value: 'new_layers_periphery', label: '新增层 + 外围模块' },
+    { value: 'all', label: '全部参数' },
+  ] },
+];
+
+const H3_FT_EXCLUDED_FIELDS = new Set([
+  'network_module', 'network_dim', 'network_alpha', 'network_dropout', 'network_weights',
+  'merge_export', 'export_comfy_int8_base', 'export_comfy_int8_engine',
+]);
+
+export const MINIMAX_H3_FT_SECTIONS = MINIMAX_H3_LORA_SECTIONS
+  .filter((section) => section.id !== 'adapter-settings')
+  .map((section) => {
+    const sourceFields = section.id === 'optimizer-settings' ? S_LR_FT_DIT : section.fields;
+    const fields = sourceFields
+      .filter((field) => !H3_FT_EXCLUDED_FIELDS.has(field.key))
+      .map((field) => {
+        if (field.key === 'model_train_type') return { ...field, defaultValue: 'minimax-h3-finetune' };
+        if (field.key === 'output_name') return { ...field, label: '底座输出名称', desc: '完整 H3 扩展底座输出名称', defaultValue: 'minimax-h3-expanded' };
+        return field;
+      });
+    if (section.id !== 'model-settings') return { ...section, fields };
+    return { ...section, title: 'MiniMax H3 全参微调', description: '训练完整 H3 Transformer，或扩展深度后只训练新增层。', fields: [...fields, ...H3_DEPTH_EXPANSION_FIELDS] };
+  });

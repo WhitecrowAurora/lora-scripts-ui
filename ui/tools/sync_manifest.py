@@ -1,6 +1,12 @@
 """
 将 entries/ 目录中所有已存在但未在 manifest 注册的条目批量注册进去
 运行: python tools/sync_manifest.py
+
+注意: 权威工具是 devtools/docs/sync_training_wiki.py。本脚本只"增"不"改" ——
+已注册的条目会被 continue 跳过, 所以它修不了已存在条目的 aliases 漂移;
+而且它写的是 ui/public/training-wiki, 那份会被 vite 插件
+copyTrainingWikiAssets 在每次 build 时从 resources/training_wiki 强制覆盖。
+改词条内容或别名请改 resources/training_wiki 再跑权威工具。
 """
 import json, os, glob
 

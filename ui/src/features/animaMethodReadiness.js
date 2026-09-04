@@ -106,7 +106,7 @@ const entries = [
  },
  {
  id: 'smoothcache_probe',
- label: 'SmoothCache Probe',
+ label: 'lulynx Error-guided Cache Probe',
  group: 'inference',
  source: 'anima-1.8.1',
  routeId: null,
@@ -117,7 +117,7 @@ const entries = [
  runtimeActivationEnabled: true,
  trainingLaunchAllowed: false,
  visibleTrainingToggleAllowed: false,
- reason: 'Real-GPU block-level A/B verified: probe+seam real reuse now wired via the unified cache seam. Error-guided (threshold 0.08), so data-adaptive: on synthetic random latents it stayed conservative (no reuse triggered -> 1.02x, MSE 0.0, +27MB), real correlated latents expected to trigger more reuse. Generation-side accel, not training core;。 default path, user via UI.',
+ reason: 'Lulynx relative-L1 probe and cache seam are wired and GPU-smoked. This is a local engineering approximation inspired by SmoothCache, not its layer-wise calibration schedule; published SmoothCache speed/quality claims do not transfer.',
  },
  {
  id: 'tgate_probe',
@@ -225,16 +225,22 @@ const entries = [
  group: 'distillation',
  source: 'anima-1.8.1',
  routeId: null,
+ // 载体是 schema 字段而不是训练路由:蒸馏挂在 distillation_enabled 布尔 +
+ // distillation_mode / dp_dmd_variant 两个 select 上(schemaFrontierGroups.js:351-353),
+ // 没有独立的 TRAINING_TYPES 条目。此前只写 routeId: null 又不申报 fieldKey,
+ // readiness 表就声称"可见且可启动"却指不出任何载体。与 dit_blockskip 同型,
+ // 后者早已用 fieldKey 申报;判据是该 key 必须真出现在 getSectionsForType 枚举里。
+ fieldKey: 'distillation_enabled',
  guideEntryKey: 'dp_dmd_turbo',
  backendContractReady: true,
  smokeEvidence: true,
- requestFieldsEmitted: false,
- runtimeActivationEnabled: false,
- trainingLaunchAllowed: false,
- visibleTrainingToggleAllowed: false,
+ requestFieldsEmitted: true,
+ runtimeActivationEnabled: true,
+ trainingLaunchAllowed: true,
+ visibleTrainingToggleAllowed: true,
  reserveSeamWired: true,
  reserveSeamModule: 'dp_dmd_spd_reserve_seam.py',
- reason: 'Real DP-DMD/Turbo loss composition wired (dp_dmd_spd_reserve_seam.compose_dp_dmd_turbo_loss): disabled returns the base loss unchanged, enabled adds consistency/diversity/fake-critic terms that backprop. Validation 6/6 + 8 unit tests. Trainer wiring and quality A/B stay gated; Runtime activation remains gated.',
+ reason: 'DP-DMD is wired through the normal request/config/runtime path with explicit lulynx_optimized and standard variants. Standard requires independent real/fake score providers and fails fast when its contract is unavailable. Single-GPU short-cycle execution and resume evidence exist; quality, long-training convergence, NCCL, and FSDP2 equivalence remain unverified.',
  },
  {
  id: 'spd_inference',
@@ -302,7 +308,7 @@ const entries = [
  },
  {
  id: 'tlora',
- label: 'T-LoRA Timestep Rank Schedule',
+ label: 'lulynx Progressive Rank LoRA',
  group: 'adapter',
  source: 'frontier',
  routeId: null,
@@ -313,7 +319,7 @@ const entries = [
  runtimeActivationEnabled: false,
  trainingLaunchAllowed: false,
  visibleTrainingToggleAllowed: false,
- reason: 'Real-GPU 40-step A/B verified: linear/geometric timestep rank schedule saves ~62MB VRAM, 0.84-0.93x step time, -0.009 final loss (no regression). Runtime activation remains gated.',
+ reason: 'The current implementation schedules rank by global training progress, not by each sample denoising timestep; the old T-LoRA label is retained only as a compatibility key. Runtime activation remains gated.',
  },
  {
  id: 'dit_blockskip',

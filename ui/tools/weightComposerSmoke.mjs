@@ -14,6 +14,19 @@ import {
 } from '../../../Lulynx-evolution-ui/ui/src/schema/schemaIndex.js';
 import { S_WEIGHT_COMPOSER as reactComposerFields } from '../../../Lulynx-evolution-ui/ui/src/schema/schemaFrontierGroups.js';
 
+// 这张表是"哪些 schema 挂 WeightComposer"的漂移守卫,不是能力白名单 —— 保持写死,
+// 不要改成从注册表反推,否则误挂/漏挂都会自动变绿。
+//
+// 2026-08-18:原表停在 13 项(建表时的全部类型),实测两套 UI 各挂 21 项,差 8 项。
+// 判定为 schema 长出来了而不是误挂,判据三条:
+//   1. 两套 UI 的挂载集合逐项相同(21 vs 21),不存在单侧漂移;
+//   2. 8 个新增全是 ALL_TRAINING_TYPES 里的真实注册类型,且各自恰好挂 1 个
+//      weight-composer section(不是重复挂载);
+//   3. ltx25 在 backend arch_capability_registry.py:60,119 是 ltx23 的正式别名,
+//      不是幽灵 schema。
+// composer 暴露的三个开关(timestep/noise/sample_difficulty weighting)是训练循环级
+// loss 加权,与 adapter 形态无关,所以 *-finetune 挂它是对的。字段级契约仍由
+// validateComposerGroup 单独验(三个 boolean 恰好、默认全 false、metadata 选择器)。
 const TARGET_TYPES = [
   'anima-edit-model',
   'anima-lora',
@@ -26,8 +39,16 @@ const TARGET_TYPES = [
   'wan22-ti2v-lora',
   'wan22-t2v-a14b-lora',
   'ltx23-lora',
+  'ltx25-lora',
   'boogu-lora',
   'boogu-edit-lora',
+  'boogu-finetune',
+  'flux2-finetune',
+  'krea2-finetune',
+  'ltx23-finetune',
+  'ltx25-finetune',
+  'wan22-finetune',
+  'zimage-finetune',
 ];
 const ENABLED_KEYS = [
   'timestep_weighting_enabled',

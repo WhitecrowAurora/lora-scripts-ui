@@ -82,19 +82,6 @@ export function createTaskPolling({
     else badge.innerHTML = '<span style="color:var(--text-dim);">空闲</span>';
   }
 
-  function markRunningTasksTerminated() {
-    const hadRunning = getRunningTasks(state.tasks).length > 0;
-    state.tasks.forEach((task) => {
-      if (isTaskRunning(task)) task.status = 'TERMINATED';
-    });
-    if (hadRunning) {
-      state.trainingSummary = null;
-      state.trainingFailed = true;
-      syncFooterAction();
-      if (state.activeModule === 'training') renderView('training');
-    }
-  }
-
   async function poll() {
     try {
       const hadRunning = getRunningTasks(state.tasks).length > 0;
@@ -142,9 +129,8 @@ export function createTaskPolling({
         renderTaskStatus();
         syncFooterAction();
       }
-      if (pollFailCount >= 3) {
-        markRunningTasksTerminated();
-      }
+      // Observation failure is not a training terminal state. Keep the last
+      // authoritative task snapshot and recover it on the next successful poll.
     }
 
     const delay = pollFailCount > 0

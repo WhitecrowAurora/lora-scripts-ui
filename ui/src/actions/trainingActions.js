@@ -199,10 +199,10 @@ export function createTrainingActions({
       }
       if (isAnimaRoute) {
         if (!['lora', 'lora_fa', 'vera', 'tlora'].includes(loraType)) {
-          warnings.push(`已启用「VRAM Swap to RAM」，但当前 Anima 适配器类型「${c.lora_type || '未识别'}」暂不支持。现阶段仅支持 LoRA / LoRA-FA / VeRA / T-LoRA，后端会自动忽略该项。`);
+          warnings.push(`已启用「VRAM Swap to RAM」，但当前 Anima 适配器类型「${c.lora_type || '未识别'}」暂不支持。现阶段仅支持 LoRA / LoRA-FA / VeRA / lulynx 渐进秩 LoRA，后端会自动忽略该项。`);
         }
       } else if (!supportedVramSwapModules.has(networkModule)) {
-        warnings.push(`已启用「VRAM Swap to RAM」，但当前网络路线「${c.network_module || '未识别'}」暂不支持。现阶段仅支持原生 LoRA / LoRA-FA / VeRA / T-LoRA 路线，后端会自动忽略该项。`);
+        warnings.push(`已启用「VRAM Swap to RAM」，但当前网络路线「${c.network_module || '未识别'}」暂不支持。现阶段仅支持原生 LoRA / LoRA-FA / VeRA / lulynx 渐进秩 LoRA 路线，后端会自动忽略该项。`);
       }
     }
 
@@ -366,18 +366,23 @@ export function createTrainingActions({
         const conflictResp = await api.checkOutputConflict(
           runConfig.output_dir || '',
           runConfig.output_name || '',
+          { saveTo: runConfig.save_to || '', resumePath: runConfig.resume_path || '' },
         );
         const conflictData = conflictResp?.data;
-        if (conflictData?.conflict && conflictData.existing_files?.length > 0) {
-          const fileList = conflictData.existing_files.join('、');
+        // blocked === false 是后端已经放行的冲突（配了续训路径），不该再问一遍。
+        if (conflictData?.conflict && conflictData.blocked !== false) {
+          const fileList = (conflictData.existing_files || []).join('、');
           const proceed = confirm(
-            `⚠ 输出目录中已存在同名 LoRA 文件：${fileList}\n\n继续训练将覆盖已有文件，是否继续？`
+            conflictData.message
+              || `⚠ 输出目录中已存在同名训练产物：${fileList}\n\n继续训练将覆盖已有文件，是否继续？`
           );
           if (!proceed) {
             state.loading.run = false;
             syncFooterAction();
             return;
           }
+          // 后端提交闸默认 abort，只认这个字段；不发就会被 400 拦下。
+          runConfig.output_collision_policy = 'overwrite';
         }
       } catch (_e) {
         // 冲突检测失败不阻断训练

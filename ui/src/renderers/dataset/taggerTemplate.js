@@ -117,6 +117,19 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
           </select>
         </div>
         <div class="config-group">
+          <label>处理范围</label>
+          <select id="llm-caption-scope">
+            <option value="auto" selected>按模板自动</option>
+            <option value="all">全部图片</option>
+            <option value="missing">仅缺少 Caption</option>
+            <option value="existing">仅已有 Caption</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label>并发请求数</label>
+          <input class="text-input" type="number" id="llm-batch-concurrency" value="1" min="1" max="8" step="1">
+        </div>
+        <div class="config-group">
           <label>Temperature</label>
           <input class="text-input" type="number" id="llm-temperature" value="0.2" min="0" max="2" step="0.1">
         </div>
@@ -139,6 +152,10 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
         <div class="config-group row boolean-card">
           <div class="label-col"><label>自动回退备用通道</label></div>
           <label class="switch switch-compact"><input type="checkbox" id="llm-fallback-enabled" checked><span class="slider round"></span></label>
+        </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>仅预演，不调用模型</label></div>
+          <label class="switch switch-compact"><input type="checkbox" id="llm-dry-run"><span class="slider round"></span></label>
         </div>
         <div class="config-group" style="grid-column:1/-1;">
           <label>通道管理</label>

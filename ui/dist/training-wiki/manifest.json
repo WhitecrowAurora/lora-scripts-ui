@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-11",
+  "updatedAt": "2026-09-04",
   "title": "Lulynx Training Wiki",
   "description": "Shared help entries for WebUI option hints and the launcher learning center.",
   "entries": [
@@ -102,8 +102,7 @@
       "summary": "智能训练控制器，根据 loss、CLIP 漂移、梯度秩等指标自动调整学习率、触发早停或冻结文本编码器。适合长时间无人值守训练。",
       "entry": "entries/ac_enabled.json",
       "aliases": [
-        "lulynx_auto_controller_enabled",
-        "auto_controller_enabled"
+        "lulynx_auto_controller_enabled"
       ]
     },
     {
@@ -205,6 +204,13 @@
       "entry": "entries/activation_cpu_offload_enabled.json"
     },
     {
+      "key": "activation_memory_budget",
+      "title": "激活显存预算（AOT partitioner）",
+      "category": "显存优化 / 激活",
+      "summary": "torch.compile 路线下限制 AOT partitioner 保留的激活量：取值 (0,1] 表示相对完整保存的比例，超出预算的中间量在反传时重算。0 = 关闭。",
+      "entry": "entries/activation_memory_budget.json"
+    },
+    {
       "key": "adaln_guidance",
       "title": "AdaLN Guidance (自适应层归一化引导)",
       "category": "DiT / 实验性",
@@ -296,13 +302,8 @@
       "entry": "entries/advanced_stats_enabled.json",
       "aliases": [
         "layer_monitor_enabled",
-        "layer_monitor_mode",
         "step_phase_profile_enabled",
         "deep_diagnostics_enabled",
-        "fim_scan_enabled",
-        "fim_scan_tool",
-        "data_transfer_profile_enabled",
-        "data_transfer_profile_mode",
         "data_transfer_profile_window",
         "forgetting_probe_enabled",
         "bubble_controller_allow_optimizer_swap"
@@ -376,11 +377,7 @@
       "title": "Anima Block 预取（CPU Offload）",
       "category": "速度 / 显存",
       "summary": "将 Anima DiT block 的权重在不使用时卸载到 CPU（offload），使用前预取回 GPU，显著降低 VRAM 峰值，代价是训练速度下降。",
-      "entry": "entries/anima_block_prefetch.json",
-      "aliases": [
-        "anima_block_prefetch_depth",
-        "anima_block_prefetch_mode"
-      ]
+      "entry": "entries/anima_block_prefetch.json"
     },
     {
       "key": "anima_block_prefetch_depth",
@@ -404,6 +401,20 @@
       "entry": "entries/anima_block_residency.json"
     },
     {
+      "key": "anima_cache_resize_mode",
+      "title": "Anima 缓存前缩放模式",
+      "category": "Anima / 配置",
+      "summary": "Anima 首轮 VAE 缓存构建前对源图的缩放方式：longest（默认，最长边对齐目标）、shortest（最短边对齐）、freefit（自由适配多档位）。所有模式都保持宽高比。",
+      "entry": "entries/anima_cache_resize_mode.json"
+    },
+    {
+      "key": "anima_cache_target_resolution",
+      "title": "Anima 缓存目标分辨率",
+      "category": "Anima / 配置",
+      "summary": "Anima 缓存构建前把源图缩放到的目标分辨率：0（默认）跟随训练 resolution，>0 时按 anima_cache_resize_mode 的语义缩放到该目标，负数才是「保持源图尺寸」。",
+      "entry": "entries/anima_cache_target_resolution.json"
+    },
+    {
       "key": "anima_cached_training",
       "title": "Anima 缓存训练模式",
       "category": "速度 / Anima 专用",
@@ -424,8 +435,6 @@
       "summary": "控制 torch.compile 应用于 Anima 模型的哪些部分：block（逐 block 编译）/ full_core（编译整个 DiT 核心）/ off（不编译）。",
       "entry": "entries/anima_compile_scope.json",
       "aliases": [
-        "compile_anima_full_core_enabled",
-        "compile_cache_enabled",
         "compile_cache_prewarm"
       ]
     },
@@ -443,27 +452,36 @@
       "summary": "分别设置 Anima 各注意力类型（cross-attn / self-attn / mlp / modulation）的独立学习率，实现细粒度的学习率差异化控制。",
       "entry": "entries/anima_cross_attn_lr.json",
       "aliases": [
-        "anima_self_attn_lr",
-        "anima_mlp_lr",
-        "anima_mod_lr"
+        "anima_mlp_lr"
       ]
     },
     {
-      "key": "anima_ema_feat_align_enabled",
-      "title": "EMA 特征自蒸馏",
-      "category": "前沿储备 / Anima",
-      "summary": "（实验性）使用 EMA 影子模型输出的特征作为教师信号，通过特征对齐 loss 约束主模型训练，类似知识蒸馏机制。",
-      "entry": "entries/anima_ema_feat_align_enabled.json",
-      "aliases": [
-        "anima_ema_feat_align_weight"
-      ]
+      "key": "anima_depth_expansion_enabled",
+      "title": "Anima 模型扩层（Depth Up-Scaling）",
+      "category": "Anima / 高级",
+      "summary": "训练加载时把 Anima DiT 交错复制相邻层扩到更多层数，新层的输出投影归零（恒等残差），得到一个更深的可训练底座。仅支持 Anima 全参微调。",
+      "entry": "entries/anima_depth_expansion_enabled.json"
     },
     {
-      "key": "anima_ema_feat_align_student_layers",
-      "title": "EMA Student 层",
-      "category": "训练参数",
-      "summary": "逗号分隔的 student 层索引，如 \"4\"",
-      "entry": "entries/anima_ema_feat_align_student_layers.json"
+      "key": "anima_depth_expansion_target_layers",
+      "title": "扩层目标层数",
+      "category": "Anima / 高级",
+      "summary": "Anima 扩层后的 DiT 总层数，必须大于底座实际层数。Anima Base 28 层常见扩到 40。默认 40。",
+      "entry": "entries/anima_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "anima_depth_expansion_train_scope",
+      "title": "扩层训练范围",
+      "category": "Anima / 高级",
+      "summary": "Anima 扩层后哪些参数参与训练：new_layers（默认，只训练新增层）、new_layers_periphery（新层+外围模块：输入、时间嵌入、最终输出层）、all（全部参数）。",
+      "entry": "entries/anima_depth_expansion_train_scope.json"
+    },
+    {
+      "key": "anima_dit_adapter_path",
+      "title": "Anima DiT Adapter 路径",
+      "category": "Anima / 配置",
+      "summary": "训练开始前应用到 Anima DiT 的 adapter checkpoint（如已有 LoRA/adapter 权重）；留空则不加载。UI 上以 dit_adapter_path 填写时会自动映射到本键。",
+      "entry": "entries/anima_dit_adapter_path.json"
     },
     {
       "key": "anima_faithful_forward",
@@ -484,10 +502,7 @@
       "title": "Anima 固定视觉 Token 数",
       "category": "训练 / Anima 专用",
       "summary": "将训练的视觉 token（图像 patch 序列）长度固定为指定值，避免因批内图像尺寸不同导致的变长序列重编译开销。",
-      "entry": "entries/anima_fixed_visual_tokens.json",
-      "aliases": [
-        "anima_fixed_text_tokens"
-      ]
+      "entry": "entries/anima_fixed_visual_tokens.json"
     },
     {
       "key": "anima_fused_qkv",
@@ -525,6 +540,13 @@
       "entry": "entries/anima_model_config.json"
     },
     {
+      "key": "anima_model_prediction_type",
+      "title": "Anima 预测类型",
+      "category": "Anima / 配置",
+      "summary": "Anima DiT 训练目标的形式：velocity（Flow 默认）、noise、epsilon、sample。决定模型输出被解释和监督的方式。",
+      "entry": "entries/anima_model_prediction_type.json"
+    },
+    {
       "key": "anima_native_block_count",
       "title": "Anima Native Block 数",
       "category": "训练 / Anima 专用",
@@ -550,10 +572,7 @@
       "title": "Anima 可重物化 Block",
       "category": "速度 / Anima 专用",
       "summary": "将特定 DiT block 标记为\"可重物化\"（rematerializable），允许在显存压力下按需放弃这些 block 的激活并在需要时重新计算，比 gradient checkpointing 更灵活。",
-      "entry": "entries/anima_rematerializable_block_enabled.json",
-      "aliases": [
-        "anima_rematerializable_block_mode"
-      ]
+      "entry": "entries/anima_rematerializable_block_enabled.json"
     },
     {
       "key": "anima_rematerializable_block_mode",
@@ -583,7 +602,6 @@
       "summary": "是否训练 Anima 中 LLM（大语言模型）部分的 Adapter 层，以增强文本理解和图文对齐能力。",
       "entry": "entries/anima_train_llm_adapter.json",
       "aliases": [
-        "anima_llm_adapter_lr",
         "anima_cache_llm_adapter_outputs"
       ]
     },
@@ -613,10 +631,7 @@
       "title": "ANT（自适应噪声训练）",
       "category": "前沿储备 / 训练",
       "summary": "（实验性）ANT（Adaptive Noise Training）：在训练噪声中加入来自数据集的可学习对抗噪声，使模型更鲁棒。",
-      "entry": "entries/ant_enabled.json",
-      "aliases": [
-        "ant_blend"
-      ]
+      "entry": "entries/ant_enabled.json"
     },
     {
       "key": "ant_loss_sampler_enabled",
@@ -638,17 +653,19 @@
       "entry": "entries/attention_backend.json"
     },
     {
+      "key": "attention_slicing",
+      "title": "Attention 分片",
+      "category": "显存优化 / 激活",
+      "summary": "把 UNet attention 计算按 head/batch 切成小片顺序执行，降低注意力矩阵的峰值显存。默认开启。",
+      "entry": "entries/attention_slicing.json"
+    },
+    {
       "key": "attn_mode",
       "title": "注意力模式",
       "category": "速度 / 注意力",
       "summary": "选择注意力计算的实现方式：sdpa（默认，PyTorch 内置）/ flash（FlashAttention）/ sage（SageAttention）/ xformers / vanilla（标准 PyTorch，最慢）。",
       "entry": "entries/attn_mode.json",
       "aliases": [
-        "cross_attn_fused_kv",
-        "fused_projection_memory_mode",
-        "experimental_attention_profile_enabled",
-        "experimental_attention_profile_backend",
-        "experimental_attention_profile_torch_max_tokens",
         "experimental_attention_profile_window"
       ]
     },
@@ -722,10 +739,7 @@
       "title": "换入/换出的 Block 数",
       "category": "速度 / 显存",
       "summary": "将指定数量的 transformer block 权重换出到 CPU 内存，只在需要时换入 GPU，降低 VRAM 峰值。",
-      "entry": "entries/blocks_to_swap.json",
-      "aliases": [
-        "block_swap_strategy"
-      ]
+      "entry": "entries/blocks_to_swap.json"
     },
     {
       "key": "blockwise_fused_optimizers",
@@ -768,6 +782,27 @@
       "category": "训练参数",
       "summary": "默认 resident（Layer Offload",
       "entry": "entries/boogu_block_residency.json"
+    },
+    {
+      "key": "boogu_depth_expansion_enabled",
+      "title": "Boogu-Image 模型扩层（Depth Up-Scaling）",
+      "category": "Boogu / 高级",
+      "summary": "训练加载时把 Boogu-Image 的 单流 single_stream_layers block（原生 32） 交错复制扩到更多层数，attn.to_out[0] 与 feed_forward.linear_2 权重归零，使新增层以恒等残差初始化，得到一个更深的可训练底座。仅支持全参微调（boogu-fine...",
+      "entry": "entries/boogu_depth_expansion_enabled.json"
+    },
+    {
+      "key": "boogu_depth_expansion_target_layers",
+      "title": "Boogu-Image 扩层目标层数",
+      "category": "Boogu / 高级",
+      "summary": "扩层后的 单流 single_stream_layers block（原生 32） 总数，必须大于原生层数。默认 40。",
+      "entry": "entries/boogu_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "boogu_depth_expansion_train_scope",
+      "title": "Boogu-Image 扩层训练范围",
+      "category": "Boogu / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/boogu_depth_expansion_train_scope.json"
     },
     {
       "key": "boogu_model_version",
@@ -981,7 +1016,6 @@
       "entry": "entries/caption_tag_dropout_targets.json",
       "aliases": [
         "caption_tag_dropout_target_count",
-        "caption_tag_dropout_target_mode",
         "anima_caption_variant_cache",
         "dual_caption_long_key",
         "dual_caption_short_key"
@@ -1004,8 +1038,6 @@
       "summary": "在训练中混入 caption 变体（同一图像的多种描述方式）的比例。有助于提升 LoRA 对不同描述风格的适应性。",
       "entry": "entries/caption_variant_ratio.json",
       "aliases": [
-        "caption_variants",
-        "caption_variant_schedule",
         "caption_variant_loss_adaptive",
         "caption_variant_custom_sequence"
       ]
@@ -1044,6 +1076,13 @@
       ]
     },
     {
+      "key": "cfm_lambda",
+      "title": "对比 Flow Matching 权重 λ",
+      "category": "训练 / Flow",
+      "summary": "∆FM 对比项的权重系数 λ，控制「推离其它样本流方向」的力度。论文推荐 0.05，也是默认值。",
+      "entry": "entries/cfm_lambda.json"
+    },
+    {
       "key": "checkpoint_policy",
       "title": "Checkpoint 保存策略",
       "category": "训练 / 保存",
@@ -1058,17 +1097,20 @@
       "entry": "entries/chimera_hydra_enabled.json"
     },
     {
+      "key": "class_prompt",
+      "title": "DreamBooth 类别提示词",
+      "category": "训练 / DreamBooth",
+      "summary": "Prior preservation（先验保持）使用的类别描述，如 \"a person\"，描述实例所属的一般类别而非具体主体。",
+      "entry": "entries/class_prompt.json"
+    },
+    {
       "key": "clear_dataset_npz_before_train",
       "title": "训练前清除缓存",
       "category": "数据集 / 缓存",
       "summary": "clear_dataset_npz_before_train = 开始训练前删除旧的 .npz 缓存文件，强制重新生成（当数据集图像已更新时使用）。",
       "entry": "entries/clear_dataset_npz_before_train.json",
       "aliases": [
-        "persistent_data_loader_workers",
-        "cached_collate_mode",
-        "bucket_selection_mode",
-        "image_decode_backend",
-        "image_decode_cache_size"
+        "persistent_data_loader_workers"
       ]
     },
     {
@@ -1169,8 +1211,15 @@
       "key": "concept_direction_enabled",
       "title": "概念方向训练",
       "category": "训练 / 高级",
-      "summary": "通过定义概念方向对（如 '微笑的人' vs '普通人'）来训练 LoRA 学习特定的概念变化方向，而不是完整的图像生成。",
+      "summary": "通过定义概念方向对（如 '微笑的人' vs '普通人'）来训练 LoRA 学习特定的概念变化方向，而不是完整的图像生成。仅支持 SD1.5/SDXL LoRA 路线；在 V2 WebUI 的先锋视图「概念方向训练」分区开启。",
       "entry": "entries/concept_direction_enabled.json"
+    },
+    {
+      "key": "concept_edit_base_model",
+      "title": "概念编辑底座模型族",
+      "category": "训练参数",
+      "summary": "概念编辑（concept-edit）训练所基于的模型家族：anima（默认）/ sdxl / sd15 / newbie / flux。决定加载哪套模型组件与训练路线。",
+      "entry": "entries/concept_edit_base_model.json"
     },
     {
       "key": "concept_edit_data_dir",
@@ -1194,24 +1243,38 @@
       "entry": "entries/concept_edit_fixed_timestep_per_batch.json"
     },
     {
+      "key": "concept_edit_method",
+      "title": "概念编辑方法",
+      "category": "训练参数",
+      "summary": "概念编辑的算法路线：ileco（默认，基于 caption 的概念方向学习）或 addift（基于成对图像的潜空间差分学习）。",
+      "entry": "entries/concept_edit_method.json"
+    },
+    {
       "key": "concept_edit_mode",
       "title": "Concept Edit 模式",
       "category": "训练 / 概念编辑",
       "summary": "概念编辑训练模式：在保留模型其他能力的同时，针对性地修改或替换特定概念（如修改特定角色外观、移除特定风格倾向）。",
       "entry": "entries/concept_edit_mode.json",
       "aliases": [
-        "concept_edit_data_dir",
-        "concept_edit_diff_alt_ratio",
-        "concept_edit_fixed_timestep_per_batch",
-        "concept_edit_use_diff_mask",
-        "concept_geometry_compute_backend",
         "concept_geometry_density_power",
         "concept_geometry_loss_weighting",
-        "concept_geometry_path",
-        "concept_geometry_sampler_mode",
         "concept_geometry_semantic_enabled",
         "concept_geometry_translation_enabled"
       ]
+    },
+    {
+      "key": "concept_edit_timestep_curriculum",
+      "title": "概念编辑时间步课程学习",
+      "category": "训练 / 高级",
+      "summary": "概念编辑训练中把 timestep 采样限制在一个逐步轮换的窄 band 内，按「由易到难」的课程顺序覆盖整个时间步区间。默认关闭（保持全窗口均匀采样）。",
+      "entry": "entries/concept_edit_timestep_curriculum.json"
+    },
+    {
+      "key": "concept_edit_timestep_curriculum_buckets",
+      "title": "课程 Band 数",
+      "category": "训练 / 高级",
+      "summary": "概念编辑时间步课程每个循环划分的 band 数量。默认 10，范围 2~50。",
+      "entry": "entries/concept_edit_timestep_curriculum_buckets.json"
     },
     {
       "key": "concept_edit_use_diff_mask",
@@ -1292,8 +1355,6 @@
       "aliases": [
         "controlnet_model_name_or_path",
         "control_net_lr",
-        "model_to_condition_enabled",
-        "diff_target_name",
         "target_image_path",
         "target_prompt",
         "original_image_path",
@@ -1301,6 +1362,13 @@
         "dop_weight",
         "dpo_weight"
       ]
+    },
+    {
+      "key": "contrastive_flow_matching",
+      "title": "对比 Flow Matching（∆FM）",
+      "category": "训练 / Flow",
+      "summary": "在 flow matching 损失上增加对比项：逐样本减去 λ·MSE(预测, 打乱后的负样本目标)，把每个样本的预测流「推离」batch 内其它样本的流方向。需要 Rectified Flow（flow_model）开启。",
+      "entry": "entries/contrastive_flow_matching.json"
     },
     {
       "key": "contrastive_latent_enabled",
@@ -1348,7 +1416,6 @@
       "summary": "训练辅助工具：copilot 在训练过程中提供实时建议（如 LR 调整建议、过拟合预警）；goal_forecast 预测达到目标 loss 所需的额外步数；ui_custom_params 允许传递自定义 UI 参数。",
       "entry": "entries/copilot_tool.json",
       "aliases": [
-        "goal_forecast_tool",
         "ui_custom_params"
       ]
     },
@@ -1446,9 +1513,7 @@
       "summary": "将 gradient checkpoint 的中间激活值卸载到 CPU，而非只是丢弃（标准 checkpointing 是丢弃后重算）。比标准 checkpointing 节省更多 VRAM，但增加 CPU-GPU 传输开销。",
       "entry": "entries/cpu_offload_checkpointing.json",
       "aliases": [
-        "cpu_offload_checkpointing_mode",
-        "cpu_offload_checkpointing_pool_gb",
-        "te_vae_offload_strategy"
+        "cpu_offload_checkpointing_pool_gb"
       ]
     },
     {
@@ -1529,15 +1594,8 @@
       "entry": "entries/delta_lora_enabled.json",
       "aliases": [
         "hydralora_balance_loss_weight",
-        "tensorring_lora_enabled",
-        "flexrank_lora_rank_range_min",
         "fractional_grad_damping_enabled",
-        "grad_cosine_enabled",
-        "lora_type",
-        "lora_activation_recompute_mode",
-        "lokr_factor",
-        "loftq_bits",
-        "loftq_quant_type"
+        "grad_cosine_enabled"
       ]
     },
     {
@@ -1573,10 +1631,7 @@
       "title": "知识蒸馏",
       "category": "前沿储备 / 训练",
       "summary": "（实验性）知识蒸馏：使用大型教师模型的输出来指导 LoRA 训练，替代或补充标准扩散 loss，提升学习效率。",
-      "entry": "entries/distillation_enabled.json",
-      "aliases": [
-        "distillation_mode"
-      ]
+      "entry": "entries/distillation_enabled.json"
     },
     {
       "key": "distillation_mode",
@@ -1598,6 +1653,13 @@
       "category": "训练参数",
       "summary": "蒸馏预测类型 的可选值说明（自动补全骨架，可继续润色）。",
       "entry": "entries/distillation_prediction_type.json"
+    },
+    {
+      "key": "distributed_strategy",
+      "title": "分布式策略",
+      "category": "训练 / 分布式",
+      "summary": "选择多卡/多机并行算法：auto（按 GPU 数推断，多卡→ddp、单卡→none）、none（单进程）、ddp（数据并行）、fsdp2（参数分片）、deepspeed（需额外安装）。",
+      "entry": "entries/distributed_strategy.json"
     },
     {
       "key": "dit_compute_reducer_skip_every",
@@ -1653,11 +1715,7 @@
       "title": "DoRA（方向-幅度分解 LoRA）",
       "category": "LoRA 变体 / DoRA",
       "summary": "DoRA（Weight-Decomposed Low-Rank Adaptation）：将权重更新分解为方向变化（LoRA 负责）和幅度变化（可学习缩放负责），更精确地模拟全量微调的行为。",
-      "entry": "entries/dora_enabled.json",
-      "aliases": [
-        "dora_mode",
-        "dora_wd"
-      ]
+      "entry": "entries/dora_enabled.json"
     },
     {
       "key": "dora_mode",
@@ -1682,9 +1740,9 @@
     },
     {
       "key": "dp_dmd_turbo",
-      "title": "DP-DMD / Turbo",
+      "title": "DP-DMD / Turbo（标准与 lulynx 模式）",
       "category": "训练 / 蒸馏",
-      "summary": "DP-DMD / Turbo 是 Anima/Newbie few-step 学生路线，包含 CFG-baked teacher target、consistency loss、fake critic 和 diversity anchor。",
+      "summary": "提供标准 DP-DMD 与 lulynx_optimized 两条模式。standard 使用独立 teacher/fake 双 score provider；lulynx_optimized 是本仓 teacher-regression 组合。",
       "entry": "entries/dp_dmd_turbo.json"
     },
     {
@@ -1896,15 +1954,12 @@
       "key": "enable_inference_accel",
       "title": "推理加速（采样预览）",
       "category": "速度 / 推理加速",
-      "summary": "enable_inference_accel 为训练中的采样预览启用推理加速（SmoothCache/SpeculativeDecoding 等）；其他 enable_* 字段是各功能的主开关。",
+      "summary": "enable_inference_accel 为训练中的采样预览启用 lulynx 推理加速工程路径；缓存后端可能受 SmoothCache 等研究启发，但不承诺论文等价。",
       "entry": "entries/enable_inference_accel.json",
       "aliases": [
         "enable_preview",
         "enable_base_weight",
-        "enable_block_weights",
-        "enable_block_weight_filter",
-        "enable_distributed_training",
-        "enable_sequential_cpu_offload"
+        "enable_block_weight_filter"
       ]
     },
     {
@@ -1928,8 +1983,7 @@
       "summary": "开启增强防护模式时，训练器会在多个层面加强稳定性保护：更频繁的梯度检查、自动 LR 回退、内存压力监控等。swap_count/ratio 控制相关的交换操作参数。",
       "entry": "entries/enhanced_protection_mode.json",
       "aliases": [
-        "swap_count",
-        "swap_ratio"
+        "swap_count"
       ]
     },
     {
@@ -2010,9 +2064,7 @@
       "entry": "entries/fg_lora_rank_policy.json",
       "aliases": [
         "fg_lora_rank_min",
-        "fg_lora_rank_max",
-        "fg_lora_rank_conserve_budget",
-        "fg_lora_rank_map_json"
+        "fg_lora_rank_max"
       ]
     },
     {
@@ -2021,6 +2073,13 @@
       "category": "训练参数",
       "summary": "仅 orthogonal_redistribute 使用（详见 ?）",
       "entry": "entries/fg_lora_rank_profile.json"
+    },
+    {
+      "key": "fid_real_image_dir",
+      "title": "FID 真实图像目录",
+      "category": "质量评估",
+      "summary": "FID / LPIPS 指标使用的真实参照图片目录。留空时这两个指标会被跳过（日志告警），不会伪造分数。",
+      "entry": "entries/fid_real_image_dir.json"
     },
     {
       "key": "fim_scan_enabled",
@@ -2072,8 +2131,6 @@
       "entry": "entries/flow_logit_mean.json",
       "aliases": [
         "flow_logit_std",
-        "flow_uncertainty_weighting_enabled",
-        "flow_uncertainty_weighting_channels",
         "flow_uncertainty_weighting_lr"
       ]
     },
@@ -2134,6 +2191,27 @@
       "entry": "entries/flux2_block_residency.json"
     },
     {
+      "key": "flux2_depth_expansion_enabled",
+      "title": "FLUX.2 Klein 模型扩层（Depth Up-Scaling）",
+      "category": "FLUX.2 / 高级",
+      "summary": "训练加载时把 FLUX.2 Klein 的 单流 single_transformer_blocks（Klein-9B 原生 48；8 个双流 block 不参与） 交错复制扩到更多层数，并行块的注意力/MLP 融合输出投影 attn.to_out 归零（Klein 无 bias），使新增层以恒等残差初始化，得到...",
+      "entry": "entries/flux2_depth_expansion_enabled.json"
+    },
+    {
+      "key": "flux2_depth_expansion_target_layers",
+      "title": "FLUX.2 Klein 扩层目标层数",
+      "category": "FLUX.2 / 高级",
+      "summary": "扩层后的 单流 single_transformer_blocks（Klein-9B 原生 48；8 个双流 block 不参与） 总数，必须大于原生层数。默认 60。",
+      "entry": "entries/flux2_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "flux2_depth_expansion_train_scope",
+      "title": "FLUX.2 Klein 扩层训练范围",
+      "category": "FLUX.2 / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/flux2_depth_expansion_train_scope.json"
+    },
+    {
       "key": "flux2_model_version",
       "title": "模型版本（flux2_model_version）",
       "category": "训练参数",
@@ -2158,11 +2236,7 @@
         "full_bf16",
         "full_fp16",
         "no_half_vae",
-        "loss_precision",
-        "flashattn",
         "sageattn",
-        "sdpa",
-        "mem_eff_attn",
         "split_attn"
       ]
     },
@@ -2179,6 +2253,20 @@
       "category": "训练参数",
       "summary": "LoKr 强制走 full matrix 路线",
       "entry": "entries/full_matrix.json"
+    },
+    {
+      "key": "fused_backward_grad_clip_mode",
+      "title": "LOMO 梯度裁剪档位",
+      "category": "优化器 / 进阶",
+      "summary": "为 LOMO/AdaLOMO 这类「反传中逐参数就地更新」的融合反传优化器选择梯度裁剪档位：default 单遍反传不裁剪，full 额外跑一次预反传让 max_grad_norm 真正生效。",
+      "entry": "entries/fused_backward_grad_clip_mode.json"
+    },
+    {
+      "key": "fused_optimizer",
+      "title": "FusedAdamW 优化器",
+      "category": "优化器 / 进阶",
+      "summary": "把标准 AdamW 的 step 替换为融合实现（FusedAdamW），一次 kernel 完成整批参数更新，减少 kernel launch 开销。",
+      "entry": "entries/fused_optimizer.json"
     },
     {
       "key": "fused_projection_memory_mode",
@@ -2200,6 +2288,20 @@
       "category": "训练参数",
       "summary": "full=方向+magnitude（详见 ?）",
       "entry": "entries/gdlokr_mode.json"
+    },
+    {
+      "key": "glokr_export_mode",
+      "title": "GLoKr 导出模式",
+      "category": "LoRA 变体 / Kronecker",
+      "summary": "GLoKr（Kronecker 参数化广义适配器）训练完成后的保存格式：lora_compatible（默认）导出为 ComfyUI/A1111 可读的标准 LoRA；native 保留 Kronecker 原生布局。",
+      "entry": "entries/glokr_export_mode.json"
+    },
+    {
+      "key": "glora_export_mode",
+      "title": "GLoRA 导出模式",
+      "category": "LoRA / 变体",
+      "summary": "GLoRA 适配器训练完成后的保存格式：lora_compatible（默认）导出为 ComfyUI/A1111 可直接加载的标准 LoRA 布局；native 保留 GLoRA 原生参数布局。",
+      "entry": "entries/glora_export_mode.json"
     },
     {
       "key": "glora_rank_dropout",
@@ -2226,7 +2328,7 @@
       "key": "gpu_ids",
       "title": "指定显卡",
       "category": "训练参数",
-      "summary": "指定参与训练的 GPU 编号，多卡用逗号分隔（如 0,1）。",
+      "summary": "指定参与训练的 GPU 编号，多卡用逗号分隔（如 0,1）；此处只接受数字编号。留空时继承 launcher 启动时选择的显卡。",
       "entry": "entries/gpu_ids.json"
     },
     {
@@ -2236,9 +2338,7 @@
       "summary": "GPU 性能管理：锁定 GPU 时钟频率（防止 boost 引起不稳定）、设置功耗上限、设置温度目标（超温自动降频）。",
       "entry": "entries/gpu_lock_clocks_mhz.json",
       "aliases": [
-        "gpu_ids",
-        "gpu_power_limit_w",
-        "gpu_target_temp_c"
+        "gpu_power_limit_w"
       ]
     },
     {
@@ -2255,7 +2355,6 @@
       "summary": "高级梯度累积控制：mode 选择标准梯度累积（standard）还是即时梯度释放（immediate）；release_mode 控制 fused backward 中的梯度释放时机。",
       "entry": "entries/gradient_accumulation_mode.json",
       "aliases": [
-        "gradient_release_mode",
         "gradient_guard_agc_clip_factor",
         "gradient_guard_agc_eps"
       ]
@@ -2316,6 +2415,83 @@
       "entry": "entries/guidance_scale.json"
     },
     {
+      "key": "h3_block_swap_strategy",
+      "title": "H3 Block Swap 策略",
+      "category": "显存 / 自动策略",
+      "summary": "H3 block 交换的调度策略：async（默认，异步预取）、sync（同步搬运）、pipeline（流水线深度预取）、auto。",
+      "entry": "entries/h3_block_swap_strategy.json"
+    },
+    {
+      "key": "h3_blocks_to_swap",
+      "title": "H3 交换 Block 数",
+      "category": "显存 / 自动策略",
+      "summary": "MiniMax H3 训练时交换到 CPU 的 Transformer block 数量。16GB 显存的默认配方是交换全部 48 个。",
+      "entry": "entries/h3_blocks_to_swap.json"
+    },
+    {
+      "key": "h3_cfg_preservation_enabled",
+      "title": "H3 CFG 保真训练",
+      "category": "训练 / 高级",
+      "summary": "用无梯度的 unconditional 分支恢复 raw conditional 训练目标，避免对 CFG 蒸馏过的 H3 checkpoint 做常规微调时逐步「解蒸馏」。默认开启，使用常数 CFG（h3_cfg_scale，推荐 4）。",
+      "entry": "entries/h3_cfg_preservation_enabled.json"
+    },
+    {
+      "key": "h3_cfg_scale",
+      "title": "H3 CFG 保真强度",
+      "category": "训练 / 高级",
+      "summary": "H3 CFG 保真训练使用的 guidance 强度，范围 1~16，推荐并默认 4。",
+      "entry": "entries/h3_cfg_scale.json"
+    },
+    {
+      "key": "h3_checkpoint_mode",
+      "title": "H3 激活检查点模式",
+      "category": "显存优化 / 激活",
+      "summary": "H3 的激活检查点实现：unsloth（默认）、selective、full。Block Swap 开启时必须用 unsloth；full/selective 仅适合所有 block 常驻 GPU 的诊断场景。",
+      "entry": "entries/h3_checkpoint_mode.json"
+    },
+    {
+      "key": "h3_depth_expansion_enabled",
+      "title": "MiniMax H3 模型扩层（Depth Up-Scaling）",
+      "category": "MiniMax H3 / 高级",
+      "summary": "训练加载时把 MiniMax H3 的 H3 Transformer block 交错复制扩到更多层数，新增层的输出投影归零，使新增层以恒等残差初始化，得到一个更深的可训练底座。仅支持全参微调（minimax-h3-finetune）。",
+      "entry": "entries/h3_depth_expansion_enabled.json"
+    },
+    {
+      "key": "h3_depth_expansion_target_layers",
+      "title": "MiniMax H3 扩层目标层数",
+      "category": "MiniMax H3 / 高级",
+      "summary": "扩层后的 H3 Transformer block 总数，必须大于原生层数。默认 64。",
+      "entry": "entries/h3_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "h3_depth_expansion_train_scope",
+      "title": "MiniMax H3 扩层训练范围",
+      "category": "MiniMax H3 / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/h3_depth_expansion_train_scope.json"
+    },
+    {
+      "key": "h3_int8_gemm_mode",
+      "title": "H3 INT8 GEMM 模式",
+      "category": "性能 / 内核",
+      "summary": "H3 冻结主干矩阵乘的 INT8 执行模式。oracle（默认）是速度与数值的平衡点；w8a16 可再省约 1.55GB reserved 显存，但实测慢约 46%。",
+      "entry": "entries/h3_int8_gemm_mode.json"
+    },
+    {
+      "key": "h3_preserve_lora_master_dtype",
+      "title": "H3 FP32 LoRA Master 权重",
+      "category": "优化器 / 进阶",
+      "summary": "保持 H3 LoRA 参数为 FP32 master 权重，避免 BF16 表示下小学习率更新被量化吞掉；主干仍为 BF16/INT8。默认开启。",
+      "entry": "entries/h3_preserve_lora_master_dtype.json"
+    },
+    {
+      "key": "h3_timestep_shift",
+      "title": "H3 视频训练 Timestep Shift",
+      "category": "训练 / 噪声控制",
+      "summary": "H3 视频样本训练时 timestep 分布的 shift 系数：12（默认）对齐默认推理映射；调低（如 8）把训练密度移向低噪声端，可加强细节但可能削弱运动结构。",
+      "entry": "entries/h3_timestep_shift.json"
+    },
+    {
       "key": "hard_negative_mining_enabled",
       "title": "启用困难样本挖掘 (Hard Negative Mining)",
       "category": "训练参数",
@@ -2335,6 +2511,27 @@
       "category": "训练参数",
       "summary": "Threshold 模式的阈值系数 (threshold =",
       "entry": "entries/hard_negative_mining_threshold_multiplier.json"
+    },
+    {
+      "key": "huber_auto_percentile",
+      "title": "Huber auto 调度分位数",
+      "category": "正则 / Loss",
+      "summary": "huber_schedule=auto 时，用当前 batch 逐样本残差 L2 范数的该分位数动态估计 Huber 阈值 delta。",
+      "entry": "entries/huber_auto_percentile.json"
+    },
+    {
+      "key": "huber_c",
+      "title": "Huber 损失阈值 c / delta",
+      "category": "正则 / Loss",
+      "summary": "huber / smooth_l1 / pseudo_huber 损失的阈值参数（delta）：残差小于阈值时按 L2 处理，大于阈值时按 L1 处理。",
+      "entry": "entries/huber_c.json"
+    },
+    {
+      "key": "huber_scale",
+      "title": "Huber 阈值缩放系数",
+      "category": "正则 / Loss",
+      "summary": "对 Huber 损失阈值做整体缩放的系数，实际生效阈值 = huber_c × huber_scale。",
+      "entry": "entries/huber_scale.json"
     },
     {
       "key": "huber_schedule",
@@ -2373,9 +2570,9 @@
     },
     {
       "key": "immiscible_diffusion_enabled",
-      "title": "Immiscible Diffusion (不可混扩散)",
+      "title": "Immiscible（标准与 lulynx 配对方案）",
       "category": "训练 / Flow",
-      "summary": "在每个 mini-batch 内，按 L2 距离重新排列噪声到数据的配对——让噪声和对应数据在特征空间中更匹配，改善训练信号质量。",
+      "summary": "l2 路径提供 standard 全局最小成本 Hungarian assignment 与 lulynx_greedy 逐行贪心；cosine 继续使用既有 flow OT 路径。",
       "entry": "entries/immiscible_diffusion_enabled.json"
     },
     {
@@ -2447,6 +2644,27 @@
       "entry": "entries/krea2_block_residency.json"
     },
     {
+      "key": "krea2_depth_expansion_enabled",
+      "title": "Krea-2 模型扩层（Depth Up-Scaling）",
+      "category": "Krea-2 / 高级",
+      "summary": "训练加载时把 Krea-2 的 Krea-2 DiT block 交错复制扩到更多层数，新增层的注意力与 FFN 输出投影归零，使新增层以恒等残差初始化，得到一个更深的可训练底座。仅支持全参微调（krea2-finetune）。",
+      "entry": "entries/krea2_depth_expansion_enabled.json"
+    },
+    {
+      "key": "krea2_depth_expansion_target_layers",
+      "title": "Krea-2 扩层目标层数",
+      "category": "Krea-2 / 高级",
+      "summary": "扩层后的 Krea-2 DiT block 总数，必须大于原生层数。默认 40。",
+      "entry": "entries/krea2_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "krea2_depth_expansion_train_scope",
+      "title": "Krea-2 扩层训练范围",
+      "category": "Krea-2 / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/krea2_depth_expansion_train_scope.json"
+    },
+    {
       "key": "krea2_sigma_selective_threshold",
       "title": "Sigma Selective 阈值（krea2_sigma_selective_threshold）",
       "category": "训练参数",
@@ -2476,7 +2694,7 @@
       "aliases": [
         "krona_factor_in",
         "krona_factor_out",
-        "krona_allora"
+        "krona_lulynx_gradient_norm_rescale_enabled"
       ]
     },
     {
@@ -2493,12 +2711,7 @@
       "summary": "原版缓存引擎（lossless_cache_replacement_mode=off）下，latent 缓存文件的存储格式和精度。",
       "entry": "entries/latent_cache_disk_format.json",
       "aliases": [
-        "latent_cache_disk_dtype",
-        "text_encoder_outputs_cache_disk_format",
-        "text_encoder_outputs_cache_disk_dtype",
-        "cache_latents_to_disk",
-        "cache_text_encoder_outputs_to_disk",
-        "text_encoder_outputs_cache_dtype"
+        "cache_text_encoder_outputs_to_disk"
       ]
     },
     {
@@ -2601,9 +2814,6 @@
         "log_prefix",
         "log_tracker_name",
         "log_tracker_config",
-        "pytorch_cuda_expandable_segments",
-        "cuda_cache_release_interval",
-        "cuda_cache_release_strategy",
         "gloo_socket_ifname",
         "nccl_socket_ifname",
         "machine_rank"
@@ -2666,14 +2876,18 @@
       "entry": "entries/lora_plus_enabled.json"
     },
     {
+      "key": "lora_rank",
+      "title": "DreamBooth LoRA Rank",
+      "category": "训练 / DreamBooth",
+      "summary": "DreamBooth 的 use_lora 开启时使用的 LoRA 秩（rank）。默认 16。是 network_dim 在 DreamBooth 路线上的别名入口。",
+      "entry": "entries/lora_rank.json"
+    },
+    {
       "key": "lora_rank_dropout",
       "title": "LoRA Rank Dropout",
       "category": "LoRA / 网络结构",
       "summary": "训练时随机丢弃 LoRA 的部分 rank 维度，类似于 Dropout 的正则化效果。默认 0（不丢弃）。",
-      "entry": "entries/lora_rank_dropout.json",
-      "aliases": [
-        "network_dropout"
-      ]
+      "entry": "entries/lora_rank_dropout.json"
     },
     {
       "key": "lora_target_linear",
@@ -2710,14 +2924,9 @@
       "summary": "Loss 门控余弦（loss_gated_cosine）/ Loss 加权退火余弦（loss_weighted_annealed_cosine）调度器的 EMA 平滑系数，控制 loss 平滑度以过滤 batch 抖动。",
       "entry": "entries/loss_scheduler_ema_alpha.json",
       "aliases": [
-        "loss_scheduler_min_delta",
-        "loss_scheduler_relative_delta",
         "loss_scheduler_patience",
         "loss_scheduler_cooldown",
-        "loss_scheduler_max_hold_steps",
-        "loss_scheduler_late_gamma",
-        "loss_scheduler_lock_weight_threshold",
-        "loss_scheduler_min_advance_ratio"
+        "loss_scheduler_late_gamma"
       ]
     },
     {
@@ -2790,11 +2999,7 @@
       "summary": "选择训练缓存的存储引擎后端：off = 原版 npz/safetensors；lxfs/lynx = Lulynx 无损压缩引擎，提供更快的读写速度和更小的磁盘占用。",
       "entry": "entries/lossless_cache_replacement_mode.json",
       "aliases": [
-        "lossless_cache_replacement_codecs",
         "lossless_cache_replacement_prefetch_depth",
-        "lossless_cache_replacement_read_mode",
-        "lossless_cache_replacement_fallback_to_raw",
-        "lossless_cache_replacement_decoded_payload_cache",
         "lossless_cache_replacement_decoded_payload_cache_max_bytes"
       ]
     },
@@ -2825,20 +3030,6 @@
       "category": "速度 / 显存",
       "summary": "启用低内存（RAM）模式，将大部分权重保留在 GPU 显存而非系统内存，降低 CPU RAM 占用。",
       "entry": "entries/lowram.json"
-    },
-    {
-      "key": "lpips_latent_enabled",
-      "title": "启用 LPIPS Latent 感知损失",
-      "category": "训练参数",
-      "summary": "利用 DiT 中间层特征计算感知相似度，类似 LPIPS 但在 latent",
-      "entry": "entries/lpips_latent_enabled.json"
-    },
-    {
-      "key": "lpips_latent_feature_layers",
-      "title": "特征层列表",
-      "category": "训练参数",
-      "summary": "使用哪些 DiT 层特征，逗号分隔 (如 \"4,8,12\")。",
-      "entry": "entries/lpips_latent_feature_layers.json"
     },
     {
       "key": "lr_finder_enabled",
@@ -2877,7 +3068,7 @@
       "key": "lr_scheduler_type",
       "title": "自定义调度器类",
       "category": "训练 / 学习率",
-      "summary": "指定自定义学习率调度器的完整类路径，如 torch.optim.lr_scheduler.CosineAnnealingLR。填写后优先于上方调度器选择。",
+      "summary": "填第三方调度器的完整类路径。出厂下拉里的每一项都由训练器自己实现，不需要动这个字段；它是给下拉之外的调度器留的通道。",
       "entry": "entries/lr_scheduler_type.json"
     },
     {
@@ -2893,6 +3084,27 @@
       "category": "训练参数",
       "summary": "LTX-2.3 Block 驻留 可选值（含换档影响）。",
       "entry": "entries/ltx23_block_residency.json"
+    },
+    {
+      "key": "ltx23_depth_expansion_enabled",
+      "title": "LTX-2.3 模型扩层（Depth Up-Scaling）",
+      "category": "LTX-2.3 / 高级",
+      "summary": "训练加载时把 LTX-2.3 的 双流（视频+音频）transformer_blocks（原生 48） 交错复制扩到更多层数，每个 block 的 8 个输出投影（注意力 to_out[0] 与 FFN ff.net[2]，含 bias）全部归零，使新增层以恒等残差初始化，得到一个更深的可训练底座。仅支持全参微调...",
+      "entry": "entries/ltx23_depth_expansion_enabled.json"
+    },
+    {
+      "key": "ltx23_depth_expansion_target_layers",
+      "title": "LTX-2.3 扩层目标层数",
+      "category": "LTX-2.3 / 高级",
+      "summary": "扩层后的 双流（视频+音频）transformer_blocks（原生 48） 总数，必须大于原生层数。默认 64。",
+      "entry": "entries/ltx23_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "ltx23_depth_expansion_train_scope",
+      "title": "LTX-2.3 扩层训练范围",
+      "category": "LTX-2.3 / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/ltx23_depth_expansion_train_scope.json"
     },
     {
       "key": "ltx23_timestep_sampling",
@@ -2912,8 +3124,28 @@
         "lulynx_mid_lr_weight",
         "lulynx_up_lr_weight",
         "lulynx_block_lr_zero_threshold",
-        "lulynx_smart_rank_enabled",
         "lulynx_smart_rank_keep_ratio"
+      ]
+    },
+    {
+      "key": "lulynx_ema_cosine_self_distill_enabled",
+      "title": "lulynx EMA 余弦特征自蒸馏",
+      "category": "前沿储备 / Anima",
+      "summary": "（实验性）使用 EMA 影子模型输出的特征作为教师信号，通过特征对齐 loss 约束主模型训练，类似知识蒸馏机制。",
+      "entry": "entries/lulynx_ema_cosine_self_distill_enabled.json",
+      "aliases": [
+        "anima_ema_feat_align_enabled",
+        "anima_ema_feat_align_weight"
+      ]
+    },
+    {
+      "key": "lulynx_ema_cosine_self_distill_student_layers",
+      "title": "lulynx EMA Student 层",
+      "category": "训练参数",
+      "summary": "逗号分隔的 student 层索引，如 \"4\"",
+      "entry": "entries/lulynx_ema_cosine_self_distill_student_layers.json",
+      "aliases": [
+        "anima_ema_feat_align_student_layers"
       ]
     },
     {
@@ -2955,11 +3187,71 @@
       "entry": "entries/lulynx_geometric_lock.json"
     },
     {
+      "key": "lulynx_gradient_norm_rescale_enabled",
+      "title": "lulynx 梯度范数重缩放（工程启发式）",
+      "category": "优化器 / 进阶",
+      "summary": "在优化器 step 前把每个可训练参数的梯度按 grad/(||param||₂+eps) 重缩放（arXiv:2410.09692），让参数范数小的方向获得相对更大的更新。",
+      "entry": "entries/lulynx_gradient_norm_rescale_enabled.json",
+      "aliases": [
+        "use_allora"
+      ]
+    },
+    {
+      "key": "lulynx_hidden_state_epilogue_length",
+      "title": "lulynx Hidden-State Epilogue Prompt",
+      "category": "训练 / lulynx 实验性",
+      "summary": "在选定模块完成 forward 后，将可学习向量拼接到输出 hidden-state sequence 尾部；0 表示关闭。这是 lulynx 工程 prompt，不是论文 Prefix-Tuning。",
+      "entry": "entries/lulynx_hidden_state_epilogue_length.json",
+      "aliases": [
+        "postfix_tuning_length"
+      ]
+    },
+    {
+      "key": "lulynx_hidden_state_prelude_length",
+      "title": "lulynx Hidden-State Prelude Prompt",
+      "category": "训练 / lulynx 实验性",
+      "summary": "在选定模块完成 forward 后，将可学习向量拼接到输出 hidden-state sequence 前部；0 表示关闭。这是 lulynx 工程 prompt，不是论文 Prefix-Tuning。",
+      "entry": "entries/lulynx_hidden_state_prelude_length.json",
+      "aliases": [
+        "prefix_tuning_length"
+      ]
+    },
+    {
+      "key": "lulynx_hidden_state_prompt_init",
+      "title": "lulynx Hidden-State Prompt 初始化",
+      "category": "训练 / lulynx 实验性",
+      "summary": "选择 lulynx hidden-state prelude/epilogue 向量的初始化方式：normal、uniform 或 zeros。",
+      "entry": "entries/lulynx_hidden_state_prompt_init.json",
+      "aliases": [
+        "prefix_tuning_init"
+      ]
+    },
+    {
       "key": "lulynx_latent_anchor_perceptor",
       "title": "感知锚 Perceptor",
       "category": "训练参数",
       "summary": "感知锚 Perceptor：下列可选值说明含换档影响。",
       "entry": "entries/lulynx_latent_anchor_perceptor.json"
+    },
+    {
+      "key": "lulynx_latent_feature_distillation_enabled",
+      "title": "启用 lulynx Latent 特征蒸馏",
+      "category": "训练参数",
+      "summary": "利用 DiT 中间层特征做归一化可选的加权 MSE；这是 lulynx latent 特征蒸馏，不是 LPIPS。",
+      "entry": "entries/lulynx_latent_feature_distillation_enabled.json",
+      "aliases": [
+        "lpips_latent_enabled"
+      ]
+    },
+    {
+      "key": "lulynx_latent_feature_distillation_layers",
+      "title": "特征层列表",
+      "category": "训练参数",
+      "summary": "使用哪些 DiT 层特征，逗号分隔 (如 \"4,8,12\")。",
+      "entry": "entries/lulynx_latent_feature_distillation_layers.json",
+      "aliases": [
+        "lpips_latent_feature_layers"
+      ]
     },
     {
       "key": "lulynx_precision_swap_enabled",
@@ -2968,9 +3260,6 @@
       "summary": "动态精度管理：在训练过程中自动切换权重精度（bf16/fp32），非激活状态的权重以低精度存储节省 VRAM，激活时升精度计算。",
       "entry": "entries/lulynx_precision_swap_enabled.json",
       "aliases": [
-        "lulynx_precision_swap_strategy",
-        "lulynx_weight_residency",
-        "lulynx_weight_residency_min_params",
         "lulynx_resource_manager_enabled",
         "lulynx_resource_log_interval"
       ]
@@ -2981,6 +3270,37 @@
       "category": "训练参数",
       "summary": "balanced 优先 output/mid 高收益 block",
       "entry": "entries/lulynx_precision_swap_strategy.json"
+    },
+    {
+      "key": "lulynx_progressive_rank_lora",
+      "title": "lulynx 渐进秩 LoRA（历史 T-LoRA key）",
+      "category": "LoRA / 变体",
+      "summary": "本仓让 LoRA 的有效 rank 随训练进度变化；这是 lulynx 渐进秩工程实现，不是论文 T-LoRA 的 timestep 条件化算法。",
+      "entry": "entries/lulynx_progressive_rank_lora.json",
+      "aliases": [
+        "t_lora_enabled"
+      ]
+    },
+    {
+      "key": "lulynx_progressive_rank_min",
+      "title": "lulynx 渐进秩 LoRA 最小 Rank（历史 T-LoRA key）",
+      "category": "训练参数",
+      "summary": "lulynx 渐进秩 LoRA 的最小动态 rank；历史字段名仍为 tlora_min_rank。",
+      "entry": "entries/lulynx_progressive_rank_min.json",
+      "aliases": [
+        "tlora_min_rank"
+      ]
+    },
+    {
+      "key": "lulynx_progressive_rank_schedule",
+      "title": "lulynx 渐进秩调度",
+      "category": "LoRA 变体 / 张量",
+      "summary": "控制 lulynx 渐进秩 LoRA 随全局训练进度变化的有效 rank；不是 Tensor-Ring，也不是论文 T-LoRA 的 timestep schedule。",
+      "entry": "entries/lulynx_progressive_rank_schedule.json",
+      "aliases": [
+        "tlora_rank_schedule",
+        "tlora_orthogonal_init"
+      ]
     },
     {
       "key": "lulynx_safeguard_enabled",
@@ -3002,6 +3322,46 @@
       "category": "训练参数",
       "summary": "周期性压缩低能量 rank 通道。",
       "entry": "entries/lulynx_smart_rank_enabled.json"
+    },
+    {
+      "key": "lulynx_sra2_alignment_enabled",
+      "title": "lulynx SRA2 表征对齐调度",
+      "category": "Loss / 辅助",
+      "summary": "lulynx SRA2 中间层表征对齐 loss：将 DiT 中间层特征与 VAE 编码的 GT latent 对齐，并由本仓 step/decay/plateau heuristic 调度权重；不是已核验的论文 HASTE 复现。",
+      "entry": "entries/lulynx_sra2_alignment_enabled.json",
+      "aliases": [
+        "sra2_haste_enabled"
+      ]
+    },
+    {
+      "key": "lulynx_sra2_alignment_loss_type",
+      "title": "对齐损失类型",
+      "category": "训练参数",
+      "summary": "对齐损失类型：下列可选值说明含换档影响。",
+      "entry": "entries/lulynx_sra2_alignment_loss_type.json",
+      "aliases": [
+        "sra2_haste_loss_type"
+      ]
+    },
+    {
+      "key": "lulynx_svd_gradient_filter_enabled",
+      "title": "lulynx SVD 梯度过滤",
+      "category": "优化器 / 实验性",
+      "summary": "通过双侧 SVD 低秩投影后重构全形状梯度；基础优化器状态仍为全尺寸。这是 lulynx 工程近似，不是 GaLore 的低秩 optimizer-state 路径。",
+      "entry": "entries/lulynx_svd_gradient_filter_enabled.json",
+      "aliases": [
+        "svd_grad_proj_enabled"
+      ]
+    },
+    {
+      "key": "lulynx_tensor_ring_adapter_enabled",
+      "title": "lulynx Tensor-Ring Adapter",
+      "category": "训练参数",
+      "summary": "Tensor-Ring 分解 W*=W₀T+Δ，单步 fused",
+      "entry": "entries/lulynx_tensor_ring_adapter_enabled.json",
+      "aliases": [
+        "tensorring_lora_enabled"
+      ]
     },
     {
       "key": "lulynx_weight_noise_bound_norm",
@@ -3053,6 +3413,13 @@
       "entry": "entries/lycoris_algo.json"
     },
     {
+      "key": "lycoris_loha_implementation",
+      "title": "LoHa 实现方案",
+      "category": "LoRA / LyCORIS",
+      "summary": "选择 LoHa 的数学实现。默认标准 LyCORIS LoHa；Lulynx 简化 LoHa 用于兼容旧训练和旧权重。",
+      "entry": "entries/lycoris_loha_implementation.json"
+    },
+    {
       "key": "lycoris_preset",
       "title": "LyCORIS Preset（preset）",
       "category": "训练参数",
@@ -3075,10 +3442,7 @@
       "aliases": [
         "min_bucket_reso",
         "num_vectors_per_token",
-        "training_comment",
-        "ephemeral_preview_pipeline",
-        "preview_device",
-        "preview_groups"
+        "training_comment"
       ]
     },
     {
@@ -3166,6 +3530,20 @@
       "entry": "entries/mixed_precision.json"
     },
     {
+      "key": "mixed_resolution_profiles_per_sample",
+      "title": "每样本分辨率档位数",
+      "category": "训练参数",
+      "summary": "within_epoch_free_fit 模式下，每个样本可参与训练的分辨率 profile 数量。默认 2，取值被夹在 [2, 活跃 profile 总数]。",
+      "entry": "entries/mixed_resolution_profiles_per_sample.json"
+    },
+    {
+      "key": "mixed_resolution_strategy",
+      "title": "混合分辨率策略",
+      "category": "训练参数",
+      "summary": "enable_mixed_resolution_training 开启时的分辨率组织方式：staged（默认）按 epoch 阶段整体切换分辨率；within_epoch_free_fit 在同一 epoch 内让不同样本使用不同分辨率档位。",
+      "entry": "entries/mixed_resolution_strategy.json"
+    },
+    {
       "key": "mn_lora_enabled",
       "title": "MN-LoRA (矩阵归一化 LoRA)",
       "category": "训练 / MN-LoRA",
@@ -3201,8 +3579,6 @@
       "entry": "entries/module_offload_backbone_ratio.json",
       "aliases": [
         "module_offload_enhanced",
-        "module_offload_exclude_patterns",
-        "module_offload_include_patterns",
         "module_offload_min_param_mb",
         "module_offload_optimizer_enabled",
         "module_offload_optimizer_device",
@@ -3238,8 +3614,6 @@
       "summary": "模块 offload 的预取和性能分析控制：prefetch_enabled 启用异步预取（在当前 block 计算时预取下一个 block）；profile 模式记录每个模块的传输时间；ratio 控制整体 offload 比例。",
       "entry": "entries/module_offload_prefetch_enabled.json",
       "aliases": [
-        "module_offload_prefetch_mode",
-        "module_offload_profile",
         "module_offload_profile_enabled",
         "module_offload_ratio",
         "module_offload_text_encoder_ratio",
@@ -3330,7 +3704,7 @@
       "key": "native_training_method",
       "title": "原生训练方法",
       "category": "DiT / 训练",
-      "summary": "选择 DiT 模型的原生训练方法：lora（标准 LoRA）、ortholora（正交 LoRA）、tlora（T-LoRA）。",
+      "summary": "选择 DiT 模型的原生训练方法：lora（标准 LoRA）、ortholora（正交 LoRA）、tlora（lulynx 渐进秩 LoRA，历史 key）。",
       "entry": "entries/native_training_method.json"
     },
     {
@@ -3483,6 +3857,13 @@
       "entry": "entries/newbie_lora_target.json"
     },
     {
+      "key": "newbie_sigma_schedule",
+      "title": "σ 分布（newbie_sigma_schedule）",
+      "category": "训练参数",
+      "summary": "训练时 σ（噪声档位）的抽样分布：两档都是 logit-normal(0,1) 再按分辨率向高噪声一侧弯折，差别在弯折的力度。标准 = 这个架构本身训练时用的力度；lulynx 优化 = 更缓的一条线。",
+      "entry": "entries/newbie_sigma_schedule.json"
+    },
+    {
       "key": "nl_dropout_rate",
       "title": "NL 描述丢弃概率",
       "category": "训练参数",
@@ -3497,6 +3878,13 @@
       "entry": "entries/noise_offset.json"
     },
     {
+      "key": "num_class_images",
+      "title": "DreamBooth 类别图像数量",
+      "category": "训练 / DreamBooth",
+      "summary": "Prior preservation 需要生成/使用的类别图像张数。默认 100。",
+      "entry": "entries/num_class_images.json"
+    },
+    {
       "key": "num_processes",
       "title": "并行进程数",
       "category": "训练 / 分布式",
@@ -3508,8 +3896,7 @@
         "main_process_port",
         "ddp_gradient_as_bucket_view",
         "ddp_static_graph",
-        "ddp_timeout",
-        "gpu_ids"
+        "ddp_timeout"
       ]
     },
     {
@@ -3537,6 +3924,13 @@
       "category": "训练参数",
       "summary": "自动跳过 OOM (显存不足) 的 batch",
       "entry": "entries/oom_skip_batch_enabled.json"
+    },
+    {
+      "key": "oom_skip_batch_max_consecutive",
+      "title": "OOM 跳批最大连续次数",
+      "category": "训练参数",
+      "summary": "OOM 跳批（oom_skip_batch_enabled）的安全阀：连续多少个 batch 因显存不足被跳过后，停止训练而不是无限空转。默认 3。",
+      "entry": "entries/oom_skip_batch_max_consecutive.json"
     },
     {
       "key": "opt_adan_no_prox",
@@ -3606,10 +4000,7 @@
       "title": "优化器额外参数",
       "category": "训练 / 优化器",
       "summary": "以 key=value 格式（一行一个）向优化器传递额外参数，如 betas 或特定优化器的专有选项。",
-      "entry": "entries/optimizer_args.json",
-      "aliases": [
-        "optimizer_args_custom"
-      ]
+      "entry": "entries/optimizer_args.json"
     },
     {
       "key": "optimizer_args_custom",
@@ -3633,8 +4024,7 @@
       "entry": "entries/optimizer_preset.json",
       "aliases": [
         "optimizer_state_paging_min_tensor_mb",
-        "optimizer_state_paging_pin_memory",
-        "newbie_auto_swap_release"
+        "optimizer_state_paging_pin_memory"
       ]
     },
     {
@@ -3682,6 +4072,20 @@
         "p2_weighting_gamma",
         "p2_weighting_k"
       ]
+    },
+    {
+      "key": "p2_weighting_mode",
+      "title": "P2 / lulynx 感知加权模式",
+      "category": "正则 / Loss",
+      "summary": "提供论文 P2 与 lulynx 工程权重两条模式：p2 使用 w=(k+SNR)^(-gamma)；off 为恒等权重；lulynx_structure/detail 保留本仓饱和式结构/细节偏置。",
+      "entry": "entries/p2_weighting_mode.json"
+    },
+    {
+      "key": "p2_weighting_strength",
+      "title": "P2 加权强度",
+      "category": "正则 / Loss",
+      "summary": "P2 感知加权的强度系数：0 = 关闭（权重恒等 1，位级 parity），典型 0.25~1.0。",
+      "entry": "entries/p2_weighting_strength.json"
     },
     {
       "key": "pattern_loss_enabled",
@@ -3753,11 +4157,8 @@
       "summary": "启用 VRAM 峰值动态管理：实时监控 GPU 显存使用情况，在接近 OOM 时自动触发显存释放或降级措施，防止训练崩溃。",
       "entry": "entries/peak_vram_control_enabled.json",
       "aliases": [
-        "peak_vram_auto_protection_enabled",
         "peak_vram_diagnostics_enabled",
         "peak_vram_diagnostics_interval",
-        "peak_vram_micro_batch_enabled",
-        "peak_vram_micro_batch_size",
         "peak_vram_reduce_enabled",
         "peak_vram_reserved_gb",
         "peak_vram_soft_limit_gb",
@@ -3852,9 +4253,7 @@
       "entry": "entries/pissa_init.json",
       "aliases": [
         "pissa_niter",
-        "pissa_method",
-        "pissa_apply_conv2d",
-        "pissa_export_mode"
+        "pissa_apply_conv2d"
       ]
     },
     {
@@ -3907,11 +4306,18 @@
       "entry": "entries/prefetch_factor.json"
     },
     {
-      "key": "prefix_tuning_length",
-      "title": "Prefix/Postfix Tuning (软提示)",
-      "category": "训练 / 实验性",
-      "summary": "在文本编码器的输出序列前/后添加可学习的软提示向量（soft prompt），不修改文本编码器权重，用额外参数引导生成。",
-      "entry": "entries/prefix_tuning_length.json"
+      "key": "prefuse_adapter_path",
+      "title": "预融合 LoRA 路径",
+      "category": "训练 / 适配器",
+      "summary": "训练开始前把一个已有 LoRA 按 prefuse_adapter_scale 直接合并进底座权重，然后在这个「新底座」上训练新 LoRA。留空 = 不预融合。",
+      "entry": "entries/prefuse_adapter_path.json"
+    },
+    {
+      "key": "prefuse_adapter_scale",
+      "title": "预融合 LoRA 倍率",
+      "category": "训练 / 适配器",
+      "summary": "预融合 LoRA 合并进底座时的缩放系数，等价于推理时给该 LoRA 设的权重。默认 1.0。",
+      "entry": "entries/prefuse_adapter_scale.json"
     },
     {
       "key": "pretrained_model_name_or_path",
@@ -3972,11 +4378,25 @@
       "entry": "entries/pytorch_cuda_expandable_segments.json"
     },
     {
+      "key": "quality_evaluation_compare_base",
+      "title": "质量评估对比基础模型",
+      "category": "质量评估",
+      "summary": "质量评估时用 LoRA 权重 0 与 1 各生成一组样本（同 prompt 同 seed），产出「底模 vs 训练产物」的成对增量证据。默认开启。",
+      "entry": "entries/quality_evaluation_compare_base.json"
+    },
+    {
       "key": "quality_evaluation_enabled",
       "title": "训练结束质量评估",
       "category": "训练参数",
       "summary": "训练完成后计算 FID / CLIP Score /",
       "entry": "entries/quality_evaluation_enabled.json"
+    },
+    {
+      "key": "quality_evaluation_metric_weights",
+      "title": "质量评估多目标指标权重",
+      "category": "质量评估",
+      "summary": "各评估指标聚合为综合分时的权重，JSON 对象格式如 {\"clip_score\":1,\"fid\":0.5}。缺失的指标不会被伪造为 0 分参与聚合。",
+      "entry": "entries/quality_evaluation_metric_weights.json"
     },
     {
       "key": "quality_evaluation_metrics",
@@ -3986,11 +4406,25 @@
       "entry": "entries/quality_evaluation_metrics.json"
     },
     {
+      "key": "quality_evaluation_suite_id",
+      "title": "质量评估验证套件 ID",
+      "category": "质量评估",
+      "summary": "固定验证清单（prompts × seeds × 指标）的稳定标识符，用于跨 checkpoint、跨训练任务对比评估结果。默认 \"default\"。",
+      "entry": "entries/quality_evaluation_suite_id.json"
+    },
+    {
       "key": "quality_evaluation_validation_prompts",
       "title": "评估 / XY 提示词",
       "category": "训练参数",
       "summary": "每行一个。无 preview_groups 时作为指标评估与 XY 的",
       "entry": "entries/quality_evaluation_validation_prompts.json"
+    },
+    {
+      "key": "quality_evaluation_validation_seeds",
+      "title": "质量评估固定验证 Seeds",
+      "category": "质量评估",
+      "summary": "质量评估生成样本时使用的固定随机种子列表（逗号分隔）。相同 prompt/seed 组合会同时用于基础模型与当前 LoRA，产生严格可比的成对样本。",
+      "entry": "entries/quality_evaluation_validation_seeds.json"
     },
     {
       "key": "quality_evaluation_xy_grid",
@@ -4151,10 +4585,7 @@
       "title": "ResLoRA（残差 LoRA）",
       "category": "LoRA 变体 / 残差",
       "summary": "（实验性）ResLoRA：在 LoRA 层之间添加残差连接，缓解深层 LoRA 的梯度消失问题，提升学习稳定性。",
-      "entry": "entries/reslora_enabled.json",
-      "aliases": [
-        "reslora_mode"
-      ]
+      "entry": "entries/reslora_enabled.json"
     },
     {
       "key": "reslora_mode",
@@ -4233,10 +4664,7 @@
       "title": "SafeGuard（训练安全防护）",
       "category": "训练 / 稳定性",
       "summary": "轻量训练安全防护层，实时监控 loss 是否出现 NaN/Inf 或异常 spike，并可自动降低学习率或中止训练，防止训练崩溃。",
-      "entry": "entries/safeguard_enabled.json",
-      "aliases": [
-        "lulynx_safeguard_enabled"
-      ]
+      "entry": "entries/safeguard_enabled.json"
     },
     {
       "key": "safeguard_loss_spike_threshold",
@@ -4289,10 +4717,24 @@
       ]
     },
     {
+      "key": "sageattn_drift_check_interval",
+      "title": "SageAttn 漂移检测间隔",
+      "category": "性能 / 内核",
+      "summary": "使用 SageAttention（量化 attention）后端时，每 N 步把 SageAttn 输出与 SDPA 参考输出对比一次，检测量化漂移。0 = 关闭（默认）。",
+      "entry": "entries/sageattn_drift_check_interval.json"
+    },
+    {
+      "key": "sageattn_drift_fallback",
+      "title": "SageAttn 漂移回退策略",
+      "category": "性能 / 内核",
+      "summary": "SageAttn 漂移检测超阈值后的处置：warn 只记日志继续用 SageAttn；fallback_sdpa 自动把 attention 后端切回 SDPA。",
+      "entry": "entries/sageattn_drift_fallback.json"
+    },
+    {
       "key": "sample_cache_seam_backend",
-      "title": "Preview Cache Seam (预览缓存接缝)",
+      "title": "lulynx Preview Cache Seam（预览缓存接缝）",
       "category": "推理 / DiT 加速",
-      "summary": "在训练时预览采样中，使用缓存接缝技术加速 DiT 推理——跳过部分 step 的完整计算，用缓存的特征代替。支持 spectrum/smoothcache/deepcache/teacache 多种后端。",
+      "summary": "在训练时预览采样中使用 lulynx 缓存接缝工程路径跳过部分 DiT 完整计算。各后端仅是受相关研究启发的本地近似，不承诺对应论文的速度或质量结果。",
       "entry": "entries/sample_cache_seam_backend.json"
     },
     {
@@ -4323,11 +4765,16 @@
       "summary": "每隔 N 步使用当前 LoRA 权重生成预览图，用于监控训练进度。0 = 不生成预览。",
       "entry": "entries/sample_every_n_steps.json",
       "aliases": [
-        "sample_every_n_epochs",
         "sample_at_first",
-        "sample_cfg",
-        "sample_cache_seam_window_size"
+        "sample_cfg"
       ]
+    },
+    {
+      "key": "sample_negative",
+      "title": "采样反向提示词（独立字段）",
+      "category": "训练 / 采样",
+      "summary": "预览与质量评估采样使用的独立 negative prompt 字段；为空时回落到 negative_prompts。UI 上填 negative_prompts 会被自动映射到本键。",
+      "entry": "entries/sample_negative.json"
     },
     {
       "key": "sample_prompts",
@@ -4346,22 +4793,28 @@
         "sample_steps",
         "sample_height",
         "sample_width",
-        "sample_seed",
-        "sample_smoothcache_error_threshold"
+        "sample_seed"
       ]
     },
     {
+      "key": "sample_scheduler",
+      "title": "采样调度器覆盖",
+      "category": "训练 / 采样",
+      "summary": "预览采样器的 scheduler 覆盖字段（如 karras/simple 等噪声调度变体）；留空使用采样器默认调度。",
+      "entry": "entries/sample_scheduler.json"
+    },
+    {
       "key": "sample_smoothcache_error_threshold",
-      "title": "SmoothCache 误差阈值",
+      "title": "lulynx 误差缓存阈值（历史 SmoothCache key）",
       "category": "训练参数",
-      "summary": "块间误差低于该阈值才复用缓存。",
+      "summary": "本仓相邻 step 误差低于该阈值才复用预览缓存；这是 lulynx 工程近似，不是论文 SmoothCache 的 calibration schedule。",
       "entry": "entries/sample_smoothcache_error_threshold.json"
     },
     {
       "key": "sample_smoothcache_probe",
-      "title": "SmoothCache 探针",
+      "title": "lulynx 误差缓存探针（SmoothCache-inspired）",
       "category": "训练参数",
-      "summary": "误差引导缓存探针。默认关闭。",
+      "summary": "受 SmoothCache 启发的 lulynx 误差引导缓存探针。默认关闭；本仓是本地 seam/probe 工程近似，不是 SmoothCache 论文/官方仓库的等价实现。",
       "entry": "entries/sample_smoothcache_probe.json"
     },
     {
@@ -4375,7 +4828,7 @@
       "key": "save_every_n_steps",
       "title": "每 N 步保存一次",
       "category": "训练 / 保存",
-      "summary": "每隔 N 个优化步保存一次 LoRA checkpoint。0 = 只在训练结束时保存。",
+      "summary": "每隔 N 个优化步保存一次 LoRA checkpoint。0 = 禁用按步保存，此时 save_every_n_epochs 必须大于 0。",
       "entry": "entries/save_every_n_steps.json"
     },
     {
@@ -4433,12 +4886,7 @@
       "summary": "对 LoRA 权重矩阵的 Frobenius 范数进行软约束（Max Norm regularization），防止权重无限增大。与 weight_decay 互补。",
       "entry": "entries/scale_weight_norms.json",
       "aliases": [
-        "block_merge_size",
-        "bypass_mode",
-        "down_lr_weight",
         "mid_lr_weight",
-        "up_lr_weight",
-        "disable_mmap_load_safetensors",
         "no_metadata",
         "training_comment"
       ]
@@ -4449,6 +4897,13 @@
       "category": "训练参数",
       "summary": "高级覆盖：强制 SDPA。",
       "entry": "entries/sdpa.json"
+    },
+    {
+      "key": "sdpa_backend_policy",
+      "title": "SDPA 后端策略",
+      "category": "性能 / 内核",
+      "summary": "当 attention 后端解析为 PyTorch SDPA 时，指定优先使用的 kernel：auto（PyTorch 默认调度）、cutlass（efficient attention，默认）、flash、cudnn、math（纯参考实现）。",
+      "entry": "entries/sdpa_backend_policy.json"
     },
     {
       "key": "sds_lora_enabled",
@@ -4464,9 +4919,6 @@
       "summary": "SDXL 专用的 block-level CPU offload 实现，将部分 UNet block 卸载到 CPU 内存以节省 VRAM。",
       "entry": "entries/sdxl_block_swap_enabled.json",
       "aliases": [
-        "sdxl_block_swap_input_blocks",
-        "sdxl_block_swap_middle_block",
-        "sdxl_block_swap_output_blocks",
         "sdxl_block_swap_offload_after_backward",
         "sdxl_block_swap_sequential_cpu_offload"
       ]
@@ -4511,16 +4963,13 @@
         "sdxl_low_vram_bucket_reso_steps",
         "sdxl_low_vram_component_cpu_residency",
         "sdxl_low_vram_fixed_block_swap",
-        "sdxl_low_vram_preview_policy",
-        "sdxl_low_vram_resolution_mode",
         "sdxl_low_vram_two_phase_cache",
         "sdxl_low_vram_swap_input_blocks",
         "sdxl_low_vram_swap_middle_block",
         "sdxl_low_vram_swap_output_blocks",
         "sdxl_low_vram_swap_offload_after_backward",
         "sdxl_low_vram_swap_vram_threshold",
-        "sdxl_block_swap_vram_threshold",
-        "sdxl_unet_backend"
+        "sdxl_block_swap_vram_threshold"
       ]
     },
     {
@@ -4582,8 +5031,8 @@
     {
       "key": "smart_noise_enabled",
       "title": "Smart Noise Scheduler",
-      "category": "训练参数",
-      "summary": "logSNR 感知的自适应 timestep 采样，集中训练在",
+      "category": "训练 / Anima 专用",
+      "summary": "Anima 的 default-off logSNR 混合采样器：在均匀 logSNR 基线与可配置 Gaussian focus 之间逐样本混合。",
       "entry": "entries/smart_noise_enabled.json"
     },
     {
@@ -4675,20 +5124,6 @@
       "entry": "entries/spectrum_probe.json"
     },
     {
-      "key": "sra2_haste_enabled",
-      "title": "SRA2 + HASTE 对齐 Loss",
-      "category": "Loss / 辅助",
-      "summary": "在 DiT 训练中额外添加 VAE 自表示对齐 loss——将 DiT 中间层特征与 VAE 编码的 GT latent 做余弦对齐，通过 HASTE 调度策略控制权重衰减。",
-      "entry": "entries/sra2_haste_enabled.json"
-    },
-    {
-      "key": "sra2_haste_loss_type",
-      "title": "对齐损失类型",
-      "category": "训练参数",
-      "summary": "对齐损失类型：下列可选值说明含换档影响。",
-      "entry": "entries/sra2_haste_loss_type.json"
-    },
-    {
       "key": "staged_resolution_ratio_512",
       "title": "分阶段分辨率（512）",
       "category": "训练 / 分辨率",
@@ -4737,10 +5172,17 @@
       "entry": "entries/stochastic_depth_survival_prob.json"
     },
     {
+      "key": "stochastic_grad_accumulation",
+      "title": "梯度累加随机舍入（未接线 reserve）",
+      "category": "优化器 / 进阶",
+      "summary": "当前训练 loop 只拿到已经量化的 BF16/FP16 grad，没有舍入前 FP32 source；启用会 fail-fast。",
+      "entry": "entries/stochastic_grad_accumulation.json"
+    },
+    {
       "key": "stochastic_rounding",
-      "title": "随机舍入",
+      "title": "随机舍入（FP32 source reserve）",
       "category": "精度 / 优化",
-      "summary": "在 optimizer step 时使用随机舍入代替确定性舍入，减少 BF16/FP16 参数更新的系统性偏差。",
+      "summary": "保留字段。通用 optimizer wrapper 当前拿不到舍入前的 FP32 参数更新，因此启用会 fail-fast，不宣称已实现标准无偏随机舍入。",
       "entry": "entries/stochastic_rounding.json"
     },
     {
@@ -4749,20 +5191,6 @@
       "category": "训练参数",
       "summary": "Student Scheduler（student_scheduler） 可选值（含换档影响）。",
       "entry": "entries/student_scheduler.json"
-    },
-    {
-      "key": "svd_grad_proj_enabled",
-      "title": "SVD 梯度投影",
-      "category": "优化器 / 实验性",
-      "summary": "通过 SVD 分解将梯度投影到低秩子空间中，减少梯度更新的有效维度，实现更内存高效的训练。",
-      "entry": "entries/svd_grad_proj_enabled.json"
-    },
-    {
-      "key": "svd_grad_proj_target",
-      "title": "SVD 投影目标",
-      "category": "训练参数",
-      "summary": "SVD 投影目标：下列可选值说明含换档影响。",
-      "entry": "entries/svd_grad_proj_target.json"
     },
     {
       "key": "swap_granularity",
@@ -4797,13 +5225,6 @@
       ]
     },
     {
-      "key": "t_lora_enabled",
-      "title": "T-LoRA (时间感知 LoRA)",
-      "category": "LoRA / 变体",
-      "summary": "T-LoRA 让 LoRA 的 rank 随 diffusion timestep 变化——高噪声 timestep 用更大 rank 捕获全局结构，低噪声 timestep 用更小 rank 精调细节。",
-      "entry": "entries/t_lora_enabled.json"
-    },
-    {
       "key": "tag_group_shuffle",
       "title": "标签组打乱",
       "category": "Caption / 打乱",
@@ -4832,6 +5253,13 @@
       "entry": "entries/tc_lora_generation_mode.json"
     },
     {
+      "key": "te_dropout",
+      "title": "文本编码器条件丢弃",
+      "category": "训练 / 噪声控制",
+      "summary": "训练时以给定概率把整个文本条件（编码器输出）置空，相当于对条件做 classifier-free 风格的 dropout。0 = 关闭。",
+      "entry": "entries/te_dropout.json"
+    },
+    {
       "key": "te_vae_offload_strategy",
       "title": "TE/VAE Offload 策略",
       "category": "训练参数",
@@ -4858,13 +5286,6 @@
       "category": "性能 / 分布式",
       "summary": "将单个 Transformer 层的计算切分到多个 GPU 上（Tensor Parallelism），或将序列维度切分到多个 GPU 上（Sequence Parallelism），支持超大模型单步训练。",
       "entry": "entries/tensor_parallel_degree.json"
-    },
-    {
-      "key": "tensorring_lora_enabled",
-      "title": "T-LoRA (Tensor-Ring)",
-      "category": "训练参数",
-      "summary": "Tensor-Ring 分解 W*=W₀T+Δ，单步 fused",
-      "entry": "entries/tensorring_lora_enabled.json"
     },
     {
       "key": "tensorring_tr_rank",
@@ -4947,12 +5368,7 @@
       "summary": "控制训练时如何采样噪声时间步（timestep）：uniform（均匀）/ logit_normal（对数正态，推荐）/ sigma_sqrt（平方根加权）/ mode（峰值采样）。",
       "entry": "entries/timestep_sampling.json",
       "aliases": [
-        "timestep_sampling_mode",
-        "timestep_segments",
-        "min_timestep",
-        "max_timestep",
-        "mode_scale",
-        "bypass_mode"
+        "mode_scale"
       ]
     },
     {
@@ -4970,22 +5386,18 @@
       "entry": "entries/timestep_segments.json"
     },
     {
-      "key": "tlora_min_rank",
-      "title": "T-LoRA 最小 Rank",
-      "category": "训练参数",
-      "summary": "T-LoRA 最小动态 rank。",
-      "entry": "entries/tlora_min_rank.json"
+      "key": "tome_enabled",
+      "title": "ToMe 训练时令牌合并",
+      "category": "性能 / 加速",
+      "summary": "训练前向中对视觉 token 做 ToMe（Token Merging）合并，减少 attention 参与的 token 数量以降低计算开销。实验性，默认关闭。",
+      "entry": "entries/tome_enabled.json"
     },
     {
-      "key": "tlora_rank_schedule",
-      "title": "T-LoRA（张量环 LoRA）",
-      "category": "LoRA 变体 / 张量",
-      "summary": "（实验性）T-LoRA（Tensor-Ring LoRA）：使用张量环分解替代标准矩阵分解，在参数量不变的情况下增加 LoRA 的隐式秩。",
-      "entry": "entries/tlora_rank_schedule.json",
-      "aliases": [
-        "tlora_min_rank",
-        "tlora_orthogonal_init"
-      ]
+      "key": "tome_ratio",
+      "title": "ToMe 合并比例",
+      "category": "性能 / 加速",
+      "summary": "ToMe 每步合并的 token 比例（0~1），tome_enabled 开启时生效。默认 0.5。",
+      "entry": "entries/tome_ratio.json"
     },
     {
       "key": "torch_compile",
@@ -4993,6 +5405,13 @@
       "category": "性能 / 编译",
       "summary": "使用 PyTorch 2.0+ 的 torch.compile 将模型 forward 编译为优化的 CUDA kernel，消除 Python 解释器开销和冗余的 kernel launch。通常可提速 10-30%，首次编译需要几十秒到几分钟。",
       "entry": "entries/torch_compile.json"
+    },
+    {
+      "key": "torch_compile_block_indices",
+      "title": "Compile Block 索引子集",
+      "category": "性能 / 加速",
+      "summary": "torch_compile_scope=per_block 模式下只编译指定索引的 block，格式如 \"0,3,5-8\"；留空 = 编译全部 block。",
+      "entry": "entries/torch_compile_block_indices.json"
     },
     {
       "key": "torch_compile_mode",
@@ -5003,7 +5422,6 @@
       "aliases": [
         "torch_compile_fullgraph",
         "torch_compile_dynamic",
-        "torch_compile_scope",
         "torch_compile_allow_full_with_per_block"
       ]
     },
@@ -5028,11 +5446,6 @@
       "summary": "训练图像数据集的目录路径。目录下的图像文件（.png/.jpg 等）和对应的图说文件（.txt/.caption）构成训练数据集。",
       "entry": "entries/train_data_dir.json",
       "aliases": [
-        "train_length_mode",
-        "train_norm",
-        "data_backend",
-        "data_transfer_profile_enabled",
-        "data_transfer_profile_mode",
         "data_transfer_profile_window"
       ]
     },
@@ -5134,8 +5547,7 @@
         "turbocore_fused_backward_enabled",
         "turbocore_fused_backward_mode",
         "turbocore_kernel_autotune_enabled",
-        "turbocore_kernel_autotune_target",
-        "automagic_fused_backward_enabled"
+        "turbocore_kernel_autotune_target"
       ]
     },
     {
@@ -5176,6 +5588,20 @@
       ]
     },
     {
+      "key": "universal_dit_enabled",
+      "title": "Universal DiT 通用训练开关",
+      "category": "DiT / 实验性",
+      "summary": "启用通用 DiT 训练路线：对没有专属训练类型的 DiT 模型做探测式适配（自动识别目标模块与训练目标）。选择 universal_dit 模型类型时必须显式开启。",
+      "entry": "entries/universal_dit_enabled.json"
+    },
+    {
+      "key": "universal_dit_target_policy",
+      "title": "Universal DiT 目标模块策略",
+      "category": "DiT / 实验性",
+      "summary": "通用 DiT 路线选择 LoRA 注入模块的策略，默认 attention_mlp（attention 与 MLP 的线性层都注入）。",
+      "entry": "entries/universal_dit_target_policy.json"
+    },
+    {
       "key": "up_lr_weight",
       "title": "Decoder 分层权重 (12层)",
       "category": "训练参数",
@@ -5191,7 +5617,7 @@
     },
     {
       "key": "use_dora",
-      "title": "DoRA (权重分解 LoRA)",
+      "title": "DoRA / lulynx DoRA 变体",
       "category": "LoRA / 变体",
       "summary": "DoRA 将权重更新分解为方向（direction）和幅度（magnitude）两个独立组件。方向由标准 LoRA 低秩矩阵学习，幅度由额外可训练向量学习。",
       "entry": "entries/use_dora.json"
@@ -5202,6 +5628,13 @@
       "category": "优化器 / 高级",
       "summary": "Lookahead 维护一组慢权重，每 K 步将快权重（正常训练的权重）同步到慢权重。慢权重更平滑稳定，推理时使用慢权重。",
       "entry": "entries/use_lookahead.json"
+    },
+    {
+      "key": "use_lora",
+      "title": "DreamBooth LoRA 模式",
+      "category": "训练 / DreamBooth",
+      "summary": "DreamBooth 路线的训练形态开关：开启后训练 LoRA 适配器而非全参微调；关闭（默认）为经典 DreamBooth 全参。",
+      "entry": "entries/use_lora.json"
     },
     {
       "key": "v_parameterization",
@@ -5232,7 +5665,6 @@
       "entry": "entries/validate_every_n_steps.json",
       "aliases": [
         "validate_every_n_epochs",
-        "eval_data_dir",
         "eval_batch_size",
         "max_validation_steps"
       ]
@@ -5317,12 +5749,8 @@
         "vram_smart_sensing_baseline_steps",
         "vram_smart_sensing_delta_cache_enabled",
         "vram_smart_sensing_slowdown_ratio",
-        "vram_swap_to_ram",
         "anima_block_residency_min_params",
-        "peak_vram_startup_guard_enabled",
-        "peak_vram_startup_guard_mode",
-        "peak_vram_startup_guard_steps",
-        "peak_vram_target_effective_batch"
+        "peak_vram_startup_guard_enabled"
       ]
     },
     {
@@ -5336,7 +5764,7 @@
       "key": "vram_swap_to_ram",
       "title": "VRAM Swap to RAM",
       "category": "训练参数",
-      "summary": "让原生 LoRA / LoRA-FA / T-LoRA / VeRA",
+      "summary": "让原生 LoRA / LoRA-FA / lulynx 渐进秩 LoRA / VeRA",
       "entry": "entries/vram_swap_to_ram.json"
     },
     {
@@ -5345,6 +5773,27 @@
       "category": "训练参数",
       "summary": "resident=全 GPU（详见 ?）",
       "entry": "entries/wan22_block_residency.json"
+    },
+    {
+      "key": "wan22_depth_expansion_enabled",
+      "title": "Wan2.2 TI2V-5B 模型扩层（Depth Up-Scaling）",
+      "category": "Wan2.2 / 高级",
+      "summary": "训练加载时把 Wan2.2 TI2V-5B 的 blocks（TI2V-5B 原生 30） 交错复制扩到更多层数，三条残差支路的输出投影全部归零：attn1.to_out[0]（门控自注意）、attn2.to_out[0]（无门控交叉注意）、ffn.net[2]（门控 FFN），均含 bias，使新增层以恒等残差...",
+      "entry": "entries/wan22_depth_expansion_enabled.json"
+    },
+    {
+      "key": "wan22_depth_expansion_target_layers",
+      "title": "Wan2.2 TI2V-5B 扩层目标层数",
+      "category": "Wan2.2 / 高级",
+      "summary": "扩层后的 blocks（TI2V-5B 原生 30） 总数，必须大于原生层数。默认 38。",
+      "entry": "entries/wan22_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "wan22_depth_expansion_train_scope",
+      "title": "Wan2.2 TI2V-5B 扩层训练范围",
+      "category": "Wan2.2 / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/wan22_depth_expansion_train_scope.json"
     },
     {
       "key": "wan22_model_variant",
@@ -5379,6 +5828,13 @@
         "log_tracker_config",
         "log_prefix"
       ]
+    },
+    {
+      "key": "warmup_ratio",
+      "title": "预热比例",
+      "category": "优化器 / 学习率",
+      "summary": "按总训练步数的比例自动计算学习率预热（warmup）步数，替代手填固定的 lr_warmup_steps。",
+      "entry": "entries/warmup_ratio.json"
     },
     {
       "key": "wavelet_loss_base_loss",
@@ -5416,7 +5872,7 @@
       "key": "weight_compression_format",
       "title": "压缩格式",
       "category": "训练参数",
-      "summary": "底层压缩后端。fp8_e4m3 默认",
+      "summary": "底层压缩后端。fp8_e4m3 默认；fp8_scaled_e4m3 只在 krea2 / FLUX.2 / Z-Image / Wan2.2 上可用",
       "entry": "entries/weight_compression_format.json"
     },
     {
@@ -5474,6 +5930,27 @@
       "category": "训练参数",
       "summary": "resident=全 GPU（详见 ?）",
       "entry": "entries/zimage_block_residency.json"
+    },
+    {
+      "key": "zimage_depth_expansion_enabled",
+      "title": "Z-Image 模型扩层（Depth Up-Scaling）",
+      "category": "Z-Image / 高级",
+      "summary": "训练加载时把 Z-Image 的 主干 layers block（6B 原生 30；noise/context refiner 不参与） 交错复制扩到更多层数，attention.to_out[0] 与 SwiGLU 下投影 feed_forward.w2 归零（三明治归一化下零输入过 RMSNorm 仍为零），...",
+      "entry": "entries/zimage_depth_expansion_enabled.json"
+    },
+    {
+      "key": "zimage_depth_expansion_target_layers",
+      "title": "Z-Image 扩层目标层数",
+      "category": "Z-Image / 高级",
+      "summary": "扩层后的 主干 layers block（6B 原生 30；noise/context refiner 不参与） 总数，必须大于原生层数。默认 38。",
+      "entry": "entries/zimage_depth_expansion_target_layers.json"
+    },
+    {
+      "key": "zimage_depth_expansion_train_scope",
+      "title": "Z-Image 扩层训练范围",
+      "category": "Z-Image / 高级",
+      "summary": "控制扩层后哪些参数参与训练：new_layers 只训练新增层（标准 DUS 配方）；new_layers_periphery 额外训练外围模块；all 训练全部参数。",
+      "entry": "entries/zimage_depth_expansion_train_scope.json"
     },
     {
       "key": "zimage_timestep_sampling",

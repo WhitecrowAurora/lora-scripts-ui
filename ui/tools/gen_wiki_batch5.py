@@ -238,11 +238,11 @@ write('anima_rematerializable_block_enabled.json', {
 })
 
 write('anima_ema_feat_align_enabled.json', {
-  'key': 'anima_ema_feat_align_enabled',
+    'key': 'lulynx_ema_cosine_self_distill_enabled',
   'title': 'EMA 特征自蒸馏',
   'category': '前沿储备 / Anima',
   'appliesTo': ['anima-lora'],
-  'aliases': ['anima_ema_feat_align_weight'],
+    'aliases': ['anima_ema_feat_align_enabled', 'anima_ema_feat_align_weight'],
   'standard': {
     'summary': '（实验性）使用 EMA 影子模型输出的特征作为教师信号，通过特征对齐 loss 约束主模型训练，类似知识蒸馏机制。',
     'effect': '开启后增加一个辅助 loss：主模型特征与 EMA 影子模型特征之间的 MSE 对齐。有助于稳定训练，防止训练偏离 EMA 太远。',

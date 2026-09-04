@@ -197,7 +197,7 @@ write('sample_sampler.json', {
     'avoidWhen': '预览不需要使用最高质量采样器，避免浪费训练时间（生成预览会暂停训练）。'
   },
   'advanced': {
-    'principle': '预览生成使用与推理相同的采样器逻辑，但步数更少。sample_smoothcache_error_threshold 控制 SmoothCache 的误差容忍度（用于加速预览生成）。sample_seed 固定后每次预览使用相同种子，方便对比不同步数的变化。',
+    'principle': '预览生成使用与推理相同的采样器逻辑，但步数更少。sample_smoothcache_error_threshold 控制本仓 lulynx 误差缓存的复用阈值；它不是 SmoothCache 论文的 calibration schedule。sample_seed 固定后每次预览使用相同种子，方便对比不同步数的变化。',
     'tradeoffs': 'sample_width/height 应与 resolution 匹配，分辨率不匹配时预览效果可能误导（预览清晰但实际生成不同分辨率时效果可能不同）。'
   },
   'relatedConfigs': ['sample_every_n_steps', 'output_dir']
@@ -276,7 +276,7 @@ write('enable_inference_accel.json', {
   'aliases': ['enable_preview', 'enable_base_weight', 'enable_block_weights', 'enable_block_weight_filter',
               'enable_distributed_training', 'enable_sequential_cpu_offload'],
   'standard': {
-    'summary': 'enable_inference_accel 为训练中的采样预览启用推理加速（SmoothCache/SpeculativeDecoding 等）；其他 enable_* 字段是各功能的主开关。',
+    'summary': 'enable_inference_accel 为训练中的采样预览启用 lulynx 推理加速工程路径；缓存后端可能受 SmoothCache 等研究启发，但不承诺论文等价。',
     'effect': 'enable_inference_accel 开启后预览生成速度提升约 1.3~1.6×；enable_base_weight 允许训练带有基础权重偏置的 LoRA；enable_block_weights 开启 block 级 LR 权重；enable_distributed_training 开启多卡训练（需要多 GPU 环境）。',
     'whenToUse': '各字段视需求开启，大多数有对应的细粒度配置参数。enable_sequential_cpu_offload 是最激进的 offload（逐层），仅在极端低 VRAM 时使用。',
     'avoidWhen': 'enable_distributed_training 需要多 GPU 环境且正确配置 DDP；enable_sequential_cpu_offload 极大降低训练速度，只作为 OOM 最后手段。'
@@ -487,16 +487,16 @@ write('krona_enabled.json', {
   'relatedConfigs': ['cdka_enabled', 'network_dim', 'network_alpha']
 })
 
-# ── T-LoRA (Tensor Ring) ──────────────────────────────────────────────────────
+# ── lulynx Tensor-Ring Adapter ────────────────────────────────────────────────
 
 write('tlora_rank_schedule.json', {
   'key': 'tlora_rank_schedule',
-  'title': 'T-LoRA（张量环 LoRA）',
+  'title': 'lulynx Tensor-Ring Adapter',
   'category': 'LoRA 变体 / 张量',
   'appliesTo': ['anima-lora', 'sdxl-lora'],
   'aliases': ['tlora_min_rank', 'tlora_orthogonal_init'],
   'standard': {
-    'summary': '（实验性）T-LoRA（Tensor-Ring LoRA）：使用张量环分解替代标准矩阵分解，在参数量不变的情况下增加 LoRA 的隐式秩。',
+    'summary': '（实验性）lulynx Tensor-Ring Adapter：使用本仓张量环分解与残差路径；不是论文 T-LoRA。',
     'effect': 'tlora_rank_schedule 控制不同训练阶段的有效 rank（如从高 rank 逐渐降低）；tlora_orthogonal_init 使用正交初始化提升训练稳定性。',
     'whenToUse': '实验性功能。追求比标准 LoRA 更高的参数效率（相同参数量 → 更高隐式秩）时尝试。',
     'avoidWhen': '默认关闭。张量环分解的前向计算比标准 LoRA 更复杂，且推理时需要专门支持。'

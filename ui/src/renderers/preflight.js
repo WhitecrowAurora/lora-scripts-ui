@@ -125,7 +125,10 @@ export function createPreflightRenderer({ state, deps }) {
     var status = String(moduleState.status || '');
     var value = '未启用';
     var tone = '';
-    if (requested && status === 'manual_experimental') {
+    if (requested && status === 'requested_unwired') {
+      value = '已请求·未接线';
+      tone = 'warn';
+    } else if (requested && status === 'manual_experimental') {
       value = '已启用';
       tone = 'warn';
     } else if (requested && status === 'partial_experimental') {
@@ -134,6 +137,9 @@ export function createPreflightRenderer({ state, deps }) {
     } else if (requested) {
       value = '研究请求';
       tone = 'warn';
+    } else if (status === 'available_unwired') {
+      value = '未接线';
+      tone = 'warn';
     } else if (status === 'available_manual') {
       value = '可手动启用';
     } else if (status === 'partial_experimental') {
@@ -141,6 +147,17 @@ export function createPreflightRenderer({ state, deps }) {
       tone = 'warn';
     }
     return _pfTag(label, value, tone);
+  }
+
+  function _wan22A14bVramEvidence(vram) {
+    var config = state.config || {};
+    var isA14b = state.activeTrainingType === 'wan22-t2v-a14b-lora'
+      || String(config.wan22_model_variant || '').toLowerCase() === 't2v-a14b';
+    if (!isA14b) return { applies: false, verified: true };
+    var status = String(vram.evidence_status || vram.verification_status || '').trim().toLowerCase();
+    var source = String(vram.evidence_source || '').trim().toLowerCase();
+    var verified = ['verified', 'measured'].includes(status) && source.includes('real_trainer');
+    return { applies: true, verified };
   }
 
   function _renderAdvisorSummary(advisor) {
@@ -157,12 +174,22 @@ export function createPreflightRenderer({ state, deps }) {
     var dataset = advisor.dataset || {};
     var patch = collectAdvisorRecommendedConfigPatch({ training_advisor: advisor });
     var patchKeys = recommendedConfigPatchKeys(patch);
+    var a14bEvidence = _wan22A14bVramEvidence(vram);
+    var summaryStatus = String(summary.status || 'ok');
+    if (a14bEvidence.applies && !a14bEvidence.verified && summaryStatus !== 'error') summaryStatus = 'warning';
     var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;">';
     html += '<summary class="preflight-group-title">' + _ico('activity', 14) + ' 训练 Advisor（S/A/B 级）<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
     html += '<div class="preflight-dataset-grid">';
-    html += _pfTag('状态', summary.status || 'ok', summary.status === 'error' ? 'err' : (summary.status === 'warning' ? 'warn' : 'ok'));
+    html += _pfTag('状态', summaryStatus, summaryStatus === 'error' ? 'err' : (summaryStatus === 'warning' ? 'warn' : 'ok'));
     html += _pfTag('发现项', findings.length || summary.finding_count || 0);
-    if (vram.estimated_gb != null) html += _pfTag('估算显存', vram.estimated_gb + ' GB', vram.safety === 'danger' ? 'err' : (vram.safety === 'tight' ? 'warn' : ''));
+    if (a14bEvidence.applies) {
+      html += _pfTag('A14B显存证据', a14bEvidence.verified ? '已实测' : '未验证', a14bEvidence.verified ? 'ok' : 'warn');
+      html += _pfTag('估算性质', a14bEvidence.verified ? '实测校准' : '启发式', a14bEvidence.verified ? 'ok' : 'warn');
+    }
+    if (vram.estimated_gb != null) {
+      var estimateTone = vram.safety === 'danger' ? 'err' : ((vram.safety === 'tight' || (a14bEvidence.applies && !a14bEvidence.verified)) ? 'warn' : '');
+      html += _pfTag(a14bEvidence.applies && !a14bEvidence.verified ? '公式估算' : '估算显存', vram.estimated_gb + ' GB', estimateTone);
+    }
     if (ditRuntime && ditRuntime.available) {
       var ditMode = String(ditRuntime.mode || 'resident');
       var ditRecommendation = String(ditRuntime.recommendation || ditMode);
@@ -200,6 +227,9 @@ export function createPreflightRenderer({ state, deps }) {
     html += _advisorResearchTag('Ghost Replay', bModules.ghost_replay);
     html += _advisorResearchTag('Geometric Lock', bModules.manifold_constraint);
     html += '</div>';
+    if (a14bEvidence.applies && !a14bEvidence.verified) {
+      html += '<div class="preflight-item preflight-warning">Wan2.2 A14B 的当前显存数字仅为启发式公式，不能据此承诺 16GB/24GB 可训练；需 high/low 单塔真实训练步完成后再升级为实测结论。</div>';
+    }
     if (patchKeys.length) {
       html += '<div class="preflight-item preflight-note">建议修改: ' + escapeHtml(patchKeys.slice(0, 8).join(', ') + (patchKeys.length > 8 ? '...' : '')) + '</div>';
       html += '<button class="btn btn-outline btn-sm" type="button" onclick="applyTrainingAdvisorPatch()" style="margin-top:8px;">' + _ico('check-circle', 14) + ' 手动应用预检/Advisor 建议</button>';

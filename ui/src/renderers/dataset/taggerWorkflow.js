@@ -44,6 +44,14 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
       conflictLabels,
       escapeHtml,
     });
+    const preset = $('#llm-preset');
+    preset?.addEventListener('change', () => {
+      if (preset.value !== 'caption-rewrite') return;
+      const scope = $('#llm-caption-scope');
+      const conflict = $('#llm-conflict');
+      if (scope) scope.value = 'existing';
+      if (conflict?.value === 'ignore') conflict.value = 'copy';
+    });
   }
 
   function setTaggerButtonLoading(btnId, hintId, loading) {
@@ -105,13 +113,20 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
     const skippedExisting = Number(summary.skipped_existing_count || 0);
     const skippedEmpty = Number(summary.skipped_empty_count || 0);
     const empty = Number(summary.empty_output_count || 0);
+    const skippedMissing = Number(summary.skipped_missing_caption_count || 0);
+    const failed = Number(summary.failed_count || 0);
+    const wouldWrite = Number(summary.would_write_count || 0);
+    const dryRun = summary.dry_run === true;
     const parts = [];
     if (total) parts.push(`共 ${total} 张`);
     parts.push(`写入 ${written} 张`);
     if (skippedExisting) parts.push(`跳过已有 ${skippedExisting} 张`);
     if (skippedEmpty) parts.push(`空输出跳过 ${skippedEmpty} 张`);
+    if (skippedMissing) parts.push(`缺少 Caption 跳过 ${skippedMissing} 张`);
+    if (failed) parts.push(`失败 ${failed} 张`);
     if (empty && !skippedEmpty) parts.push(`空输出 ${empty} 张`);
-    return '标注完成：' + parts.join('，') + '。';
+    if (dryRun) parts.push(`预计写入 ${wouldWrite} 张`);
+    return (dryRun ? '预演完成：' : '标注完成：') + parts.join('，') + '。';
   }
 
   function getSelectedFallbackChannels() {
@@ -289,6 +304,9 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
       llm_model: $('#llm-model')?.value?.trim() || '',
       llm_template_preset: $('#llm-preset')?.value || 'anime-tags',
       batch_output_action_on_conflict: $('#llm-conflict')?.value || 'ignore',
+      llm_caption_scope: $('#llm-caption-scope')?.value || 'auto',
+      llm_batch_concurrency: Math.max(1, Math.min(8, parseInt($('#llm-batch-concurrency')?.value, 10) || 1)),
+      dry_run: $('#llm-dry-run')?.checked || false,
       llm_temperature: parseFloat($('#llm-temperature')?.value) || 0.2,
       llm_max_tokens: parseInt($('#llm-max-tokens')?.value, 10) || 300,
       llm_retries: parseInt($('#llm-retries')?.value, 10) || 1,

@@ -92,8 +92,7 @@ write('turbocore_native_update_dispatch_enabled.json', {
   'aliases': ['turbocore_native_update_mode', 'turbocore_prefetch_depth',
               'turbocore_allow_fallback', 'turbocore_disable',
               'turbocore_fused_backward_enabled', 'turbocore_fused_backward_mode',
-              'turbocore_kernel_autotune_enabled', 'turbocore_kernel_autotune_target',
-              'automagic_fused_backward_enabled'],
+              'turbocore_kernel_autotune_enabled', 'turbocore_kernel_autotune_target'],
   'standard': {
     'summary': 'TurboCore 是 Lulynx 训练器的性能优化引擎，集成多种 CUDA kernel 级别的加速：fused backward、native update dispatch、kernel autotune 等。',
     'effect': 'fused_backward：将多个 backward kernel 合并，减少 kernel 发射开销约 15%~20%（来自梯度释放管理器）；kernel_autotune：自动调优 CUDA kernel 参数（实测 1.14× 加速）；native_update_dispatch：优化权重更新路径。',

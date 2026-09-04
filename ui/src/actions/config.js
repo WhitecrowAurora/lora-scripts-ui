@@ -4,6 +4,7 @@
 //   updateConfigValue / resetFieldValue / undoFieldValue /
 //   resetAllParams / applyPreset
 import { OPTIMIZER_ARG_TEMPLATES } from '../features/optimizerParams.js';
+import { normalizeTheoryNameAliases } from '../utils/theoryNameAliases.js';
 //
 // 依赖（工厂注入）：state, getFieldDefinition, normalizeDraftValue,
 //   createDefaultConfig, CONDITIONAL_KEYS,DRAFT_STORAGE_KEY,
@@ -20,7 +21,12 @@ CONDITIONAL_KEYS,
 updateJSONPreview,
   renderView,
   resetTransientState,
+  onConfigChanged,
 }) {
+  function notifyConfigChanged(key = '') {
+    onConfigChanged?.(key);
+  }
+
   function isTruthyConfigFlag(value) {
   if (value === true || value === 1) {
       return true;
@@ -48,6 +54,9 @@ updateJSONPreview,
       return;
     }
 
+    // Migrate legacy theory names before field lookup; unknown legacy keys would
+    // otherwise be dropped before the canonical schema can receive their values.
+    patch = normalizeTheoryNameAliases(patch);
     const incomingType = patch.__training_type__ || patch.model_train_type || state.activeTrainingType || '';
     if (incomingType.startsWith('sdxl-') && patch.resolution === '512,512') {
       patch = { ...patch, resolution: '1024,1024' };
@@ -61,6 +70,7 @@ updateJSONPreview,
       state.config[key] = normalizeDraftValue(field, value);
     }
     enforceLycorisDoraSafety();
+    notifyConfigChanged();
   }
 
   function refreshFieldHighlights() {
@@ -113,6 +123,7 @@ updateJSONPreview,
     }
     state.config[key] = normalizedValue;
     enforceLycorisDoraSafety();
+    notifyConfigChanged(key);
 
     if (key === 'optimizer_type') {
       const prevKey = String(previousValue ?? '').trim().toLowerCase();
@@ -146,6 +157,7 @@ updateJSONPreview,
   function resetAllParams() {
     state.config = createDefaultConfig(state.activeTrainingType);
     state.trainingIntentExplicitFields[state.activeTrainingType] = new Set();
+    notifyConfigChanged();
     localStorage.removeItem(DRAFT_STORAGE_KEY);
     resetTransientState();
     saveDraft();
@@ -173,6 +185,7 @@ updateJSONPreview,
     state.activeFieldMenu = null;
     const field = getFieldDefinition(key);
     state.config[key] = normalizeDraftValue(field, previousValue);
+    notifyConfigChanged(key);
     syncConfigState();
     if (state.activeModule === 'config') renderView('config');
   }

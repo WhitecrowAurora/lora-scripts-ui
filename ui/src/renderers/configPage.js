@@ -18,8 +18,11 @@ export function createConfigPageRenderer({
   setupWaterfallScrollSpy,
   getFieldConditionalParents,
   getFieldDefinition,
+  getDisplayConfig,
+  ensureTrainingVramProfile,
 }) {
   function renderConfig(container) {
+    ensureTrainingVramProfile?.();
     const trainingType = state.activeTrainingType;
     const typeLabel = TRAINING_TYPES.find((type) => type.id === trainingType)?.label || trainingType;
     const waterfall = !!state.configWaterfall;
@@ -49,7 +52,7 @@ export function createConfigPageRenderer({
     // 父子视觉分组：给"已启用的布尔父开关"展开出来的子项染上与父同档的轮转底色，
     // 相邻父组自动错开，便于分辨哪些子项属于同一个父（见 conditionalGroupTint.js）。
     applyConditionalGroupTint(container, {
-      config: state.config || {},
+      config: getDisplayConfig?.() || state.config || {},
       getFieldConditionalParents,
       getFieldDefinition,
     });
