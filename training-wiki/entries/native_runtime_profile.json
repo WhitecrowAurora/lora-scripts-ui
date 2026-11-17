@@ -1,0 +1,55 @@
+{
+  "key": "native_runtime_profile",
+  "title": "原生运行配置",
+  "title_en": "Native Runtime Profile",
+  "category": "速度 / Anima 专用",
+  "category_en": "Speed / Anima-specific",
+  "appliesTo": [
+    "anima-lora",
+    "anima-finetune"
+  ],
+  "standard": {
+    "summary": "一组打包好的运行期优化档位。standard 保持当前行为，其余档位在启动时改写注意力后端、缓存策略、编译范围等一批字段。",
+    "effect": "anima_fast / aggressive：注意力优先 flash2→sageattn→sdpa，cache-first 数据管线，请求 per-block 编译，启用 PyTorch fused AdamW。anima_low_vram：钉 SDPA + 梯度检查点，并清空编译范围。档位只在对应架构上生效，不匹配时打 warn 并退回 standard。",
+    "whenToUse": "首次跑某个新硬件、想快速拿到一套能跑的优化组合时。",
+    "avoidWhen": "已经手工调好注意力 / 缓存 / 编译字段时——档位会覆盖它们（只填「auto 或空」的字段，但 torch_compile 会被直接置真）。显存极紧时别选 anima_fast。",
+    "optionDescriptions": {
+      "standard": "不改任何字段，保持当前行为。",
+      "aggressive": "请求全套加速；SDXL 上只保留路线自带的注意力策略。",
+      "anima_fast": "anima/newbie 的加速档：cache-first + per-block 编译 + fused AdamW。",
+      "anima_low_vram": "anima 的省显存档：SDPA + 梯度检查点，关闭编译。",
+      "anima_experimental": "只打日志，不实际改写字段；留给未验证的进阶方法。"
+    }
+  },
+  "standard_en": {
+    "summary": "A packaged runtime-optimisation profile. standard keeps current behaviour; the other tiers rewrite a batch of fields at startup -- attention backend, cache policy, compile scope and more.",
+    "effect": "anima_fast / aggressive prefers flash2 -> sageattn -> sdpa for attention, turns on the cache-first data pipeline, requests per-block compile and enables PyTorch fused AdamW. anima_low_vram pins SDPA plus gradient checkpointing and clears the compile scope. A tier only applies to its own architecture; a mismatch logs a warning and keeps standard behaviour.",
+    "whenToUse": "First run on unfamiliar hardware, to get a working optimisation set quickly.",
+    "avoidWhen": "When you have already hand-tuned attention / cache / compile fields -- the tier overwrites them (it only fills fields left at auto or empty, but torch_compile is set true outright). Do not pick anima_fast when VRAM is very tight.",
+    "optionDescriptions": {
+      "standard": "Changes no field; keeps current behaviour.",
+      "aggressive": "Requests the full acceleration set; on SDXL it only keeps the route's own attention policy.",
+      "anima_fast": "The anima/newbie speed tier: cache-first, per-block compile, fused AdamW.",
+      "anima_low_vram": "The anima VRAM-saving tier: SDPA plus gradient checkpointing, compile off.",
+      "anima_experimental": "Logs only, rewrites no field; reserved for unvalidated advanced methods."
+    }
+  },
+  "advanced": {
+    "principle": "trainer_model_prep_runtime_profiles 在模型准备阶段按档位调用 _set_if_auto / _set_if_empty 做条件写入：注意力偏好先问精度能力（不支持 flash2 时落 sdpa），anima 侧的固定 text token 数从缓存元数据推断，cache 模式只在仍为 auto 时改写。anima_low_vram 直接覆盖，不看原值。",
+    "intervention": "模型准备阶段的字段改写，训练循环本身不变。",
+    "expectedImpact": "anima_fast 通常降每步耗时并抬显存占用；anima_low_vram 反方向——省显存、掉速度。",
+    "tradeoffs": "档位与 compile contract 是两层：这里请求 per-block 编译，最终是否编译仍由 compile_contract 按固定 token 预算裁决，可能被降级或关掉。日志里两条 [runtime-opt] 与 [compile-contract] 要一起看。"
+  },
+  "advanced_en": {
+    "principle": "trainer_model_prep_runtime_profiles writes conditionally per tier via _set_if_auto / _set_if_empty during model preparation: the attention preference first consults precision capability (falling back to sdpa when flash2 is unsupported), anima's fixed text token count is inferred from cache metadata, and cache modes are rewritten only while still auto. anima_low_vram overrides unconditionally.",
+    "intervention": "Field rewrites during model preparation; the training loop itself is unchanged.",
+    "expectedImpact": "anima_fast usually lowers per-step time and raises VRAM use; anima_low_vram goes the other way -- less VRAM, less speed.",
+    "tradeoffs": "The tier and the compile contract are two layers: this requests per-block compile, but compile_contract still decides, by fixed token budgets, whether compile happens at all and may downgrade or disable it. Read the [runtime-opt] and [compile-contract] log lines together."
+  },
+  "relatedConfigs": [
+    "torch_compile",
+    "torch_compile_scope",
+    "anima_compile_scope",
+    "attention_backend"
+  ]
+}

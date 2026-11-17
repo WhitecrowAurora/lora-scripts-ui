@@ -1,7 +1,9 @@
 {
   "key": "coreset_enabled",
-  "title": "Coreset 采样 (课程学习)",
-  "category": "数据集 / 采样",
+  "title": "Coreset 样本 Loss 分析",
+  "title_en": "Coreset sample loss diagnostics",
+  "category": "训练监测",
+  "category_en": "Training monitoring",
   "appliesTo": [
     "sdxl-lora",
     "sd-lora",
@@ -10,25 +12,40 @@
   ],
   "layers": [
     "数据层",
-    "采样层"
+    "监测层"
+  ],
+  "layers_en": [
+    "Data layer",
+    "Monitoring layer"
   ],
   "standard": {
-    "summary": "Coreset 根据每个样本的历史 loss 将其分类为「简单/困难/有毒」，然后按权重采样。简单样本正常采样，困难样本提升权重，有毒样本降低或排除。",
-    "effect": "减少离群样本对训练的干扰，提升整体收敛质量。coreset_toxic_weight=0 可以完全排除有毒样本。",
-    "whenToUse": "数据集质量不均匀（有些图片标注错误或质量极差）时。长训练（>1000 步）时帮助最大。",
-    "avoidWhen": "小数据集（<30 张）时分类统计不够可靠。训练初期（前 500 步）还没有足够 loss 历史。"
+    "summary": "记录真实训练微批次的逐样本主损失，仅用于分析，不改变采样、权重或数据文件。",
+    "effect": "在输出目录生成 coreset_report_epochN.json / .csv，结束时写 final 报告。JSON 包含覆盖统计和噪声区间；CSV 可直接用表格工具打开。",
+    "whenToUse": "需要检查哪些样本反复出现较高损失、观测是否充分时。优先在相同噪声区间比较。",
+    "avoidWhen": "高 loss 或高波动并不等于坏图。未接入逐样本损失的路线会记录 missing_loss，不能把空报告视为正常覆盖。 coverage 中 microbatches/missing_loss 按微批次计数，其余按样本观测计数。"
+  },
+  "standard_en": {
+    "summary": "Observe per-sample base diffusion loss in completed training microbatches, without changing sampling, weights or dataset files.",
+    "effect": "JSON/CSV reports are written beside training outputs at epoch intervals and completion.",
+    "whenToUse": "Inspect sample coverage and loss within comparable noise bands.",
+    "avoidWhen": "High loss or variance does not establish poor image quality; inspect missing_loss and missing_identity coverage."
   },
   "advanced": {
-    "principle": "每 N 步收集每个样本的 loss 值，计算均值和标准差。easy: loss < mean - threshold；hard: loss > mean + threshold；toxic: loss > mean + std * toxic_std_threshold。采样权重 = coreset_easy_weight / coreset_hard_weight / coreset_toxic_weight。",
-    "intervention": "替换 DataLoader 的 sampler 为 WeightedBatchSampler。",
-    "expectedImpact": "在有 5-10% 噪声样本的数据集上改善显著。干净数据集上效果有限。",
-    "tradeoffs": "coreset_report_enabled 生成 top-k 困难/有毒样本报告，帮助人工审核数据质量。",
-    "codePath": "core/training_components/coreset.py:CoresetManager → per-sample loss tracking → weighted sampling"
+    "principle": "记录模型主损失在空间约简后、最终样本加权前的逐样本值；可能已含该模型的固有权重和空间掩码/权重。只在同一路线、损失设置及噪声区间内比较。标准差是观测离散程度，不是置信区间。",
+    "intervention": "不开启旧 easy/hard/toxic 分类或加权采样。训练调用成功后记账，后续优化器跳步不撤销观测。验证和闭包重算不记账。",
+    "expectedImpact": "不增加模型前向。开启后每微批有一次小向量 CPU 传输，整步 CUDA Graph 回放会使用现有 eager 路径以确保观测有效。",
+    "tradeoffs": "统计随 companion checkpoint 恢复；旧 checkpoint 无历史则从零开始并提示。多卡报告按 rank 分开，不冒充全数据统计。"
+  },
+  "advanced_en": {
+    "principle": "Route-defined per-sample main loss after spatial reduction and before final sample weighting; intrinsic model and spatial weights may already be applied. Compare within the same route, loss settings and noise band. Standard deviation is dispersion, not a confidence interval.",
+    "intervention": "No automatic classification, sample weighting or removal.",
+    "expectedImpact": "No additional forward pass; one small CPU transfer per microbatch. Full-step CUDA Graph replay falls back to the eager route for observations.",
+    "tradeoffs": "History resumes with companion checkpoints; older checkpoints start new history. Distributed reports are rank-local."
   },
   "relatedConfigs": [
-    "coreset_easy_weight",
-    "coreset_hard_weight",
-    "coreset_toxic_weight",
-    "coreset_classify_after"
+    "coreset_max_samples",
+    "coreset_report_enabled",
+    "coreset_report_top_k",
+    "coreset_report_every_n_epochs"
   ]
 }

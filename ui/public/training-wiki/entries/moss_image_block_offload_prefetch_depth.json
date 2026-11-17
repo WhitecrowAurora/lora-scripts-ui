@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_block_offload_prefetch_depth",
+  "title": "预取深度",
+  "category": "速度 / 显存",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "提前多少个块开始把下一批权重搬进显存，默认 1。",
+    "effect": "深度越大越能掩盖搬运延迟，但会同时多占显存和锁页内存；1 表示只预取下一个块。",
+    "whenToUse": "block offload 下步速被搬运拖慢、且显存还有余量时上调。",
+    "avoidWhen": "显存本来就紧张时调大会挤掉计算所需空间，反而更慢或 OOM。"
+  },
+  "relatedConfigs": [
+    "moss_image_block_offload_gpu_slots",
+    "moss_image_block_residency"
+  ]
+}

@@ -7,6 +7,7 @@ export const UI_TABS = [
   { key: 'optimizer', label: '优化器' },
   { key: 'preview', label: '预览/验证' },
   { key: 'speed', label: '加速' },
+  { key: 'settings', label: '优化设置' },
   { key: 'frontier', label: '先锋', expertOnly: true },
   { key: 'advanced', label: '高级', expertOnly: true },
 ];
@@ -17,6 +18,7 @@ export const TRAINING_TYPES = [
   { id: 'newbie-lora', group: 'LoRA', label: 'Newbie' },
   { id: 'krea2-lora', group: 'LoRA', label: 'Krea-2' },
   { id: 'flux2-lora', group: 'LoRA', label: 'FLUX.2 Klein' },
+  { id: 'flux3-lora', group: 'LoRA', label: 'FLUX.3 Image Klein' },
   { id: 'sd3-lora', group: 'LoRA', label: 'SD3' },
   { id: 'universal-dit-lora', group: '实验训练', label: '高级自定义 DiT', experimental: true },
   { id: 'zimage-lora', group: 'LoRA', label: 'Z-Image' },
@@ -42,19 +44,26 @@ export const TRAINING_TYPES = [
   { id: 'newbie-few-step-lora', group: '专项训练', label: 'Newbie Few-step LoRA' },
   { id: 'flux-lora', group: 'LoRA', label: 'FLUX' },
   { id: 'lumina-lora', group: 'LoRA', label: 'Lumina', hidden: true },
-  { id: 'qwen-image-lora', group: 'LoRA', label: 'Qwen Image', hidden: true },
+  { id: 'qwen-image-lora', group: 'LoRA', label: 'Qwen Image' },
   { id: 'hunyuan-dit-lora', group: 'LoRA', label: 'HunyuanDiT', hidden: true },
   { id: 'sd-lora', group: 'LoRA', label: 'SD 1.5' },
   { id: 'sd-ileco', group: 'LoRA 概念编辑', label: 'SD 1.5 iLECO', hidden: true },
   { id: 'sd-addift', group: 'LoRA 概念编辑', label: 'SD 1.5 ADDifT', hidden: true },
   { id: 'sd-multi-addift', group: 'LoRA 概念编辑', label: 'SD 1.5 Multi-ADDifT', hidden: true },
   { id: 'sdxl-finetune', group: 'Finetune', label: 'SDXL' },
+  // 2026-09-05: 这一页的 19 个 section 一直在 SECTIONS_MAP 里,但三分叉都没有入口 ——
+  // 也就是从来没人能点到它。实测这条路是活的:schema_id 解析成 (flux, full_finetune),
+  // 配置层接受,entry_train 派发到主干 trainer,full_finetune 走通用尾巴直训 DiT。
+  // 显存代价写在 FLUX_FT_SECTIONS 第一段的 desc 里,不在这里。
+  { id: 'flux-finetune', group: 'Finetune', label: 'FLUX.1' },
   { id: 'anima-finetune', group: 'Finetune', label: 'Anima' },
   { id: 'krea2-finetune', group: 'Finetune', label: 'Krea-2' },
+  { id: 'qwen-image-finetune', group: 'Finetune', label: 'Qwen Image' },
   { id: 'boogu-finetune', group: 'Finetune', label: 'Boogu-Image' },
   { id: 'ltx23-finetune', group: 'Finetune', label: 'LTX-2.3' },
   { id: 'ltx25-finetune', group: 'Finetune', label: 'LTX-2.5' },
   { id: 'flux2-finetune', group: 'Finetune', label: 'FLUX.2 Klein' },
+  { id: 'flux3-finetune', group: 'Finetune', label: 'FLUX.3 Image Klein' },
   { id: 'zimage-finetune', group: 'Finetune', label: 'Z-Image' },
   { id: 'wan22-finetune', group: 'Finetune', label: 'Wan2.2 TI2V-5B' },
   { id: 'minimax-h3-finetune', group: 'Finetune', label: 'MiniMax H3' },
@@ -66,8 +75,10 @@ export const TRAINING_TYPES = [
   { id: 'anima-controlnet', group: 'ControlNet', label: 'Anima' },
   { id: 'sd-textual-inversion', group: 'Textual Inversion', label: 'SD 1.5 TI' },
   { id: 'sdxl-textual-inversion', group: 'Textual Inversion', label: 'SDXL TI' },
+  { id: 'sd-ip-adapter', group: 'IP-Adapter', label: 'SD 1.5' },
+  { id: 'sdxl-ip-adapter', group: 'IP-Adapter', label: 'SDXL' },
   { id: 'yolo', group: '其他模型训练', label: 'YOLO 模型训练' },
-  { id: 'aesthetic-scorer', group: '其他模型训练', label: '美学评分模型训练', hidden: true, disabled: true, disabledReason: '后端训练 schema 尚未实现。' },
+  { id: 'aesthetic-scorer', group: '其他模型训练', label: '美学评分模型训练' },
 ];
 
 export const VISIBLE_TRAINING_TYPES = TRAINING_TYPES.filter((type) => !type.hidden);

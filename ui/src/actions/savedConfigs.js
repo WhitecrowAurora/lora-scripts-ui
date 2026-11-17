@@ -7,6 +7,7 @@
 
 import { $, escapeHtml } from '../utils/dom.js';
 import { buildTrainingTypeTransition, confirmTrainingTypeTransition } from '../trainingTypeSwitch.js';
+import { isLulynxToml } from '../utils/configImport.js';
 
 export function createSavedConfigsActions({
   state,
@@ -102,6 +103,7 @@ export function createSavedConfigsActions({
   }
 
   function looksLikeForeignKohyaJson(obj) {
+    if (obj && !Array.isArray(obj) && getTrainingTypeEntry(obj.model_train_type || obj.__training_type__)) return false;
     if (looksLikeSimpleTunerJson(obj)) return true;
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
     const wrappers = ['args', 'config', 'parameters', 'params', 'train', 'training', 'settings', 'options'];
@@ -200,6 +202,7 @@ export function createSavedConfigsActions({
         let parsed;
         let externalNotes = [];
         let externalMeta = null;
+        let nativeConfig = false;
 
         if (lower.endsWith('.yaml') || lower.endsWith('.yml')) {
           externalMeta = await importExternalViaApi(file);
@@ -207,7 +210,10 @@ export function createSavedConfigsActions({
           externalNotes = externalMeta.notes;
         } else if (lower.endsWith('.toml')) {
           const text = await file.text();
-          if (looksLikeForeignToml(text)) {
+          if (isLulynxToml(text)) {
+            parsed = parseSimpleToml(text);
+            nativeConfig = true;
+          } else if (looksLikeForeignToml(text)) {
             externalMeta = await importExternalViaApi(new File([text], file.name, { type: file.type || 'application/toml' }));
             parsed = externalMeta.parsed;
             externalNotes = externalMeta.notes;
@@ -320,7 +326,7 @@ export function createSavedConfigsActions({
           }
         }
         state.config = createDefaultConfig(state.activeTrainingType);
-        mergeConfigPatch(parsed);
+        mergeConfigPatch(parsed, { preserveResolution: nativeConfig });
         state.hasLocalDraft = true;
         saveDraft();
         renderView(state.activeModule);

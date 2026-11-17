@@ -48,6 +48,11 @@ export function createToolTemplates({ escapeHtml, prunerGroups }) {
         <div class="section-content tool-fields">
           ${tool.fields.map((field) => {
             const inputId = `tool-${tool.id}-${field.key}`;
+            if (field.type === 'textarea') return `
+            <div class="config-group">
+              <label for="${inputId}">${escapeHtml(field.label)}</label>
+              <textarea class="text-input" rows="4" id="${inputId}" placeholder="${escapeHtml(field.placeholder || '')}"></textarea>
+            </div>`;
             if (isPathField(field)) {
               return `
             <div class="config-group">

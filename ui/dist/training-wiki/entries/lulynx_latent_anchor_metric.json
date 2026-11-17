@@ -1,0 +1,27 @@
+{
+  "key": "lulynx_latent_anchor_metric",
+  "title": "感知锚目标",
+  "category": "感知锚/频域纹理损失",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "感知锚损失比较的对象，默认 structure（结构匹配）。",
+    "effect": "structure=约束空间位置的结构一致性；kernel_distribution=比较每张图通道分布的多尺度核分布（RFF-MMD），适合纹理统计。后者不能替代身份或空间对齐监督。",
+    "whenToUse": "需要保持构图与空间结构时用 structure；只想对齐纹理/风格统计、且不要求逐点对齐时用 kernel_distribution。",
+    "avoidWhen": "别指望 kernel_distribution 保住人物身份或具体位置——它只对齐分布。"
+  },
+  "relatedConfigs": [
+    "lulynx_kernel_widths",
+    "lulynx_kernel_directions",
+    "lulynx_freq_texture_mode"
+  ]
+}

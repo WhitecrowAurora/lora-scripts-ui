@@ -1,0 +1,18 @@
+{
+  "key": "universal_dit_preview_offload_min_mb",
+  "title": "Offload 最小层大小（MB）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "小于该体积的 Linear 留在显存、不参与搬运，默认 50。",
+    "effect": "避免频繁搬运小层反而更慢；调高等于只卸载大层。",
+    "whenToUse": "offload 已经开启、但预览速度被小层搬运拖慢时上调。",
+    "avoidWhen": "设得过大会让大部分层都不卸载，省显存效果消失。"
+  },
+  "relatedConfigs": [
+    "universal_dit_preview_offload",
+    "universal_dit_preview_offload_include"
+  ]
+}

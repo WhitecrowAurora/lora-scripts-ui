@@ -1,0 +1,20 @@
+{
+  "key": "moss_image_timestep_sampling",
+  "title": "Sigma 分布",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "训练时的噪声水平采样分布，默认 uniform。",
+    "effect": "uniform=均匀；sigmoid=向中段集中；shift=按采样 shift 偏移；logit_normal=对数正态（偏向中低噪声）；logsnr=按信噪比加权。改变训练分布会改变收敛行为。",
+    "whenToUse": "保持 uniform 便于和历史结果对照；特效场景（少步、精修）再按需切换。",
+    "avoidWhen": "开低噪声训练（clean_end）时必须关掉其它采样策略，两项不能叠加。"
+  },
+  "relatedConfigs": [
+    "moss_image_clean_end_enabled",
+    "moss_image_sample_shift",
+    "first_timestep_chance"
+  ]
+}

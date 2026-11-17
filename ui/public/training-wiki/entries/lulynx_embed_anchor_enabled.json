@@ -1,0 +1,24 @@
+{
+  "key": "lulynx_embed_anchor_enabled",
+  "title": "视觉嵌入锚",
+  "title_en": "Visual embedding anchor",
+  "category": "训练 / 感知损失",
+  "appliesTo": ["anima-lora", "newbie-lora", "sd3-lora", "sd-lora", "sdxl-lora"],
+  "standard": {
+    "summary": "通过冻结视觉模型比较预测图与目标图的嵌入，默认关闭。",
+    "effect": "现有 VAE 解码后计算 1-cosine；权重大于 0 才加载视觉模型并参与训练，增加内存和计算。SD1.5/SDXL 仅在线性 flow 模式可用。",
+    "whenToUse": "需要这一辅助目标时，在先锋页启用。默认 AdaFace 只适合居中单人肖像；全图缩放不做人脸检测或对齐。",
+    "avoidWhen": "通用视觉塔不代表同人识别。未经匹配输入/输出和预处理的任意权重不保证兼容；当前没有通用质量收益推荐。"
+  },
+  "standard_en": {
+    "summary": "Compare predicted and target image embeddings through a frozen vision model; off by default.",
+    "effect": "Uses VAE decoding and 1-cosine loss. A positive weight loads the vision model and adds compute/memory. SD1.5/SDXL require linear flow mode.",
+    "whenToUse": "Enable in Frontier when this auxiliary objective is needed. The default AdaFace model is suited to centered single portraits; full-frame resizing does not detect or align faces.",
+    "avoidWhen": "Generic vision embeddings do not establish identity. Arbitrary weights need compatible inputs, outputs and preprocessing. General quality gains are not established."
+  },
+  "advanced": {
+    "summary": "本地 CLIP 使用 lulynx-local/clip-vit-vision 模型档案，权重路径填 CLIP 文件或目录；读取相邻 config.json。HF AutoModel 不读取该权重路径。无配置裸权重沿用档案，不猜激活函数。",
+    "details": ["仅本地文件开关限制 HF 下载；自定义模型代码默认关闭。", "输入尺寸 0 使用档案/本地 CLIP 配置；显式覆盖必须兼容模型位置编码。RGB 均值/标准差须匹配模型。", "σ 窗口须满足 0≤下界≤上界≤1；epsilon 在 σ=1 无法恢复 x0。", "关闭或权重为 0 不加载嵌入模型。冻结视觉塔不写入训练 checkpoint，运行报告记录实际配置来源。"]
+  },
+  "relatedConfigs": ["lulynx_embed_anchor_weight", "lulynx_embed_anchor_model_id", "lulynx_embed_anchor_loader", "lulynx_embed_anchor_weights_path", "lulynx_embed_anchor_min_t", "lulynx_embed_anchor_max_t"]
+}

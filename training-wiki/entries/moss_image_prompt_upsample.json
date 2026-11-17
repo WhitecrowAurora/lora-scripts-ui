@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_prompt_upsample",
+  "title": "LLM 上采样 Caption",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "建缓存时用视觉模型逐图生成带 bbox 的布局 JSON，默认关闭。",
+    "effect": "按图生成带位置框的结构化描述；严格失败——任何一张失败都会中止而不是静默跳过。凭据复用 caption_llm_* 配置。",
+    "whenToUse": "caption 质量差、希望自动构造高质量布局条件时开启（需要可用的视觉 LLM）。",
+    "avoidWhen": "没有配置 caption_llm_* 凭据时开启会直接失败；数据集很大时成本与耗时都要先估算。"
+  },
+  "relatedConfigs": [
+    "moss_image_prompt_upsampler_model_id",
+    "moss_image_auto_json"
+  ]
+}

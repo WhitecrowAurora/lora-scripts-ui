@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_block_offload_prefill_enabled",
+  "title": "CPU 权重预填充（自动探测）",
+  "category": "速度 / 显存",
+  "appliesTo": [
+    "moss-image-lora"
+  ],
+  "standard": {
+    "summary": "训练开始时自动探测「搬权重」与「算块」能否重叠，有收益才启用预填充。默认关闭。",
+    "effect": "首次训练在第一个模型块计算前做一次探测：确认存在重叠收益才走 CPU 预填充，没有明确收益时沿用直接上传。适用于单 GPU、未编译或逐块编译（关闭 fullgraph）的 LoRA 块卸载。探测成功不代表整步训练一定提速。",
+    "whenToUse": "依赖 block offload 跑 MOSS-Image、想把搬运停顿压下去时开启，开完看首步之后的实际步速。",
+    "avoidWhen": "开了 fullgraph 整图编译、多卡训练，或 block offload 没开时都没有作用面。"
+  },
+  "relatedConfigs": [
+    "moss_image_block_offload_prefill_budget_mb",
+    "moss_image_block_offload_pin_memory"
+  ]
+}

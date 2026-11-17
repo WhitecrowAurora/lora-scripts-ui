@@ -1,0 +1,20 @@
+{
+  "key": "zimage_block_offload_prefill_budget_mb",
+  "category": "Z-Image Block Offload",
+  "appliesTo": [
+    "zimage-lora"
+  ],
+  "title": "Z-Image：CPU 预填充预算（MiB）",
+  "standard": {
+    "summary": "预填充可用的锁页暂存内存预算，默认 128 MiB。",
+    "effect": "决定锁页暂存池的大小。低于 128 MiB 时直接沿用原来的上传路径；调高预算也不会让暂存池变大（当前实现以 128 MiB 为候选上限）。",
+    "whenToUse": "预填充已开启、并且日志显示暂存池不足时才调；一般保持默认。",
+    "avoidWhen": "预填充没开时改它没有任何效果。"
+  },
+  "relatedConfigs": [
+    "zimage_block_offload_prefill_enabled",
+    "zimage_block_offload_gpu_slots",
+    "zimage_block_offload_min_param_mb",
+    "zimage_block_offload_prefetch_depth"
+  ]
+}

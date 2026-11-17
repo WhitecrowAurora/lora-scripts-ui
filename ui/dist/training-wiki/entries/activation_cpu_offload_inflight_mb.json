@@ -1,0 +1,27 @@
+{
+  "key": "activation_cpu_offload_inflight_mb",
+  "title": "激活在途传输预算",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "krea2-lora",
+    "moss-image-lora"
+  ],
+  "standard": {
+    "summary": "限制共享激活策略中尚未完成的 D2H/H2D 复制字节。",
+    "effect": "默认 256 MiB，只用于 shared/prefetch。单张量超过预算时完成该复制后再继续。",
+    "whenToUse": "现有卸载方式成为内存或传输瓶颈时做单项对照。",
+    "avoidWhen": "尚未确认收益时不要同时打开多个新策略。"
+  },
+  "advanced": {
+    "principle": "该预算控制复制排队。activation_cpu_offload_pool_gb 控制可复用 pinned 缓冲的总容量，超出时使用普通 CPU 内存；它们都不是全部保存激活的 RAM 上限。",
+    "tradeoffs": "预算过小可能增加等待；预取窗口上限为一份激活。"
+  },
+  "relatedConfigs": [
+    "activation_cpu_offload_enabled",
+    "optimizer_state_paging_enabled",
+    "blockwise_fused_optimizers",
+    "module_offload_enabled"
+  ]
+}

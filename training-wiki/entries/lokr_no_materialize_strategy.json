@@ -1,0 +1,50 @@
+{
+  "key": "lokr_no_materialize_strategy",
+  "title": "LoKr 前向策略",
+  "title_en": "LoKr Forward Strategy",
+  "category": "LoRA 变体 / Kronecker",
+  "category_en": "LoRA Variants / Kronecker",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "no-materialize 前向内部用哪种实现。auto 按当前基准启发式选路，legacy 与 matmul 是两条等价的重排。",
+    "effect": "只在 lokr_no_materialize_forward 打开时才有效；未打开时这个值不参与任何计算。auto 的判据是最大特征维 ≥ 2048 且 factor ≥ 16 才走 matmul，否则 legacy。",
+    "whenToUse": "先在 auto 下短测；发现某条支路不稳或明显更慢时手动钉死，方便对照。",
+    "avoidWhen": "no-materialize 没开时不要调它——不会产生任何效果，只会让人误以为改动了什么。",
+    "optionDescriptions": {
+      "auto": "按基准启发式选：大特征维 + 宽 factor 走 matmul，其余走 legacy。",
+      "legacy": "F.linear 两段实现，小维度下更稳。",
+      "matmul": "reshape 后 torch.matmul 两段实现。"
+    }
+  },
+  "standard_en": {
+    "summary": "Which implementation the no-materialize forward uses internally. auto follows the current benchmark heuristic; legacy and matmul are two equivalent rearrangements.",
+    "effect": "Only meaningful while lokr_no_materialize_forward is on; otherwise the value takes no part in any computation. auto picks matmul only when the largest feature dimension is at least 2048 and factor at least 16, otherwise legacy.",
+    "whenToUse": "Short-test under auto first; pin one branch by hand when it proves unstable or clearly slower, so runs stay comparable.",
+    "avoidWhen": "Do not tune it with no-materialize off -- nothing happens, which makes it look like a change was made.",
+    "optionDescriptions": {
+      "auto": "Benchmark heuristic: large feature dims with a wide factor go to matmul, the rest stay on legacy.",
+      "legacy": "Two-stage F.linear, steadier at small dimensions.",
+      "matmul": "Two-stage torch.matmul after reshaping."
+    }
+  },
+  "advanced": {
+    "principle": "值在 config adapter 里被白名单校验（auto / legacy / matmul），非法值回落 legacy 并打一条 warning；auto 分支的判据写在 LyCORIS 的 get_resolved_no_materialize_strategy 里，用的是 in_features / out_features 的较大值与 factor。",
+    "intervention": "只改 no-materialize 分支内部选哪条实现，不改变是否走该分支。",
+    "expectedImpact": "数值等价，差异在速度与瞬时显存；auto 的阈值来自既定基准，换模型不一定最优。",
+    "tradeoffs": "解析后的实际策略只在运行时确定，config 里看到的仍是 auto；要确认走了哪条得看模块的 get_resolved_no_materialize_strategy 结果或实测耗时。"
+  },
+  "advanced_en": {
+    "principle": "The value is whitelisted (auto / legacy / matmul) in the config adapter; anything else falls back to legacy with a warning. The auto rule lives in LyCORIS' get_resolved_no_materialize_strategy and uses the larger of in_features / out_features together with factor.",
+    "intervention": "Chooses the implementation inside the no-materialize branch; it does not change whether that branch is taken.",
+    "expectedImpact": "Numerically equivalent; the difference is speed and transient VRAM. auto's thresholds come from one benchmark and need not be optimal for another model.",
+    "tradeoffs": "The resolved strategy is only known at runtime and the config still reads auto, so confirming the path means reading get_resolved_no_materialize_strategy or timing it."
+  },
+  "relatedConfigs": [
+    "lokr_no_materialize_forward",
+    "lycoris_factor"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_2_reference_max_pixels",
+  "title": "参考图最大像素",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-2-lora",
+    "qwen-image-2-finetune"
+  ],
+  "standard": {
+    "summary": "参考图预处理的分辨率上限，默认 1048576（1024×1024）。",
+    "effect": "超过上限的参考图会被等比缩小到该像素量以内，控制显存与序列长度。",
+    "whenToUse": "显存紧张时下调；需要保留参考图细节时上调。",
+    "avoidWhen": "上调会同时拉长联合序列，容易 OOM，先确认显存余量。"
+  },
+  "relatedConfigs": [
+    "qwen_image_2_match_target_res"
+  ]
+}

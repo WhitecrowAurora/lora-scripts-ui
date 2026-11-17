@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_2_match_target_res",
+  "title": "参考图匹配目标分辨率",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-2-lora",
+    "qwen-image-2-finetune"
+  ],
+  "standard": {
+    "summary": "把 reference latent 对齐到目标 latent 的网格，避免联合序列错位，默认开启。",
+    "effect": "开启时参考图与目标图在 token 网格上对齐；关闭后两者各自保留原始网格，容易出现位置错配。",
+    "whenToUse": "参考图与目标图分辨率不一致时保持开启。",
+    "avoidWhen": "两侧分辨率完全一致时关掉也不会有额外问题，但没必要。"
+  },
+  "relatedConfigs": [
+    "qwen_image_2_reference_max_pixels"
+  ]
+}

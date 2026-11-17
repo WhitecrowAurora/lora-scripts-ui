@@ -1,0 +1,35 @@
+{
+  "key": "lr_rollback_keep_ratio",
+  "title": "回滚时保留稳定副本的比例",
+  "title_en": "Stable Copy Shared on Rollback",
+  "category": "训练 / 稳定性",
+  "category_en": "Training / Stability",
+  "appliesTo": [],
+  "standard": {
+    "summary": "回滚后的权重 = 稳定副本 × 该比例 + 当前权重 × (1 − 该比例)。0.70 表示 70% 稳定 + 30% 当前。默认 0.70。",
+    "effect": "调低 = 回滚更轻，保留更多本轮学到的内容；调到 1.0 相当于整轮回退到上一份副本。取值被夹在 0~1。",
+    "whenToUse": "回滚后掉点太狠、loss 反复重走老路时调低。",
+    "avoidWhen": "把 1.0 当默认——整轮丢弃通常比插值更伤，除非确认本轮完全跑飞。"
+  },
+  "standard_en": {
+    "summary": "Weights after a rollback = stable copy x this ratio + current weights x (1 - this ratio). 0.70 means 70% stable plus 30% current. Default 0.70.",
+    "effect": "Lower means a gentler rollback that keeps more of what this epoch learned; 1.0 is a full revert to the previous copy. The value is clamped into 0-1.",
+    "whenToUse": "Lower it when a rollback drops quality too hard and loss keeps re-walking the same ground.",
+    "avoidWhen": "Do not treat 1.0 as the default -- discarding a whole epoch usually hurts more than interpolating, unless the epoch clearly diverged."
+  },
+  "advanced": {
+    "principle": "构造 guard 时把 keep_ratio 夹进 [0.0, 1.0]；回滚时对每个可训练张量做 stable * keep + current * (1 - keep) 的原地插值，因此这是「部分回滚」，不是加载旧 state_dict。",
+    "intervention": "回滚发生的那一次 epoch 边界，逐张量插值。",
+    "expectedImpact": "只影响回滚当轮的权重，后续训练的起点随之变化。",
+    "tradeoffs": "插值按张量逐元素做，不做范数归一化；对已经爆炸的权重，混合后仍可能偏大，必要时配合更低的 lr 或更低的 clip 阈值。"
+  },
+  "advanced_en": {
+    "principle": "keep_ratio is clamped into [0.0, 1.0] when the guard is built; on a rollback every trainable tensor is interpolated in place as stable * keep + current * (1 - keep), so this is a partial rollback rather than loading an old state_dict.",
+    "intervention": "At the single epoch boundary where the rollback fires, tensor by tensor.",
+    "expectedImpact": "Only the rollback epoch's weights change; the starting point of later training moves with it.",
+    "tradeoffs": "The interpolation is element-wise with no norm renormalisation, so already-exploded weights can stay large after blending; pair it with a lower lr or clip threshold when needed."
+  },
+  "relatedConfigs": [
+    "lr_rollback_enabled"
+  ]
+}

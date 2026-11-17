@@ -1,30 +1,37 @@
 {
   "key": "modulation_guidance",
   "title": "Modulation Guidance",
-  "category": "训练 / Guidance",
-  "appliesTo": [
-    "anima-lora",
-    "newbie-lora"
-  ],
-  "layers": [
-    "AdaLN",
-    "Text Projection"
-  ],
+  "title_en": "Modulation Guidance",
+  "category": "前沿储备 / Anima",
+  "category_en": "Frontier Reserve / Anima",
+  "appliesTo": [],
   "standard": {
-    "summary": "Modulation Guidance 用 pooled text 调制 AdaLN guidance。完整 pooled-text 路由现已接成默认关的 opt-in 技术储备(modulation_guidance_reserve_seam.py):一个零初始化的 PooledTextModulationProjector 把 prompt 池化向量投影成每个 AdaLN 站点的 shift/scale delta(gate 不动),并配套专用 distill loss + 推理投影 context + replay/metadata 契约。原有常量-bias 的 adaln_guidance 仍作为独立的 partial 路由共存。",
-    "effect": "开启后,guidance 随 prompt 变化(不再只是常量 bias);默认关(method=none 或未发布 pooled text)时逐位 parity,不改变训练性能或默认输出。",
-    "whenToUse": "做 Anima/Newbie 的 pooled-text modulation distillation 研究时(默认关,需显式开启 + 操作员签字)。",
-    "avoidWhen": "只想要零风险默认训练时;该路线默认关、不改默认行为,也不替换 partial 的 adaln_guidance。"
+    "summary": "把池化后的文本条件送进 AdaLN 调制信号的储备路线：一个零初始化的投影器给 shift / scale 加条件相关的增量。当前只做到 seam 接线。",
+    "effect": "method=none 或没有已发布的池化文本时是默认路径；开启且拿到池化文本才真的加增量。零初始化保证起点等价，门控本身不动；配套的蒸馏 loss 在关闭时等于基线、开启时加一项真实反传项。",
+    "whenToUse": "验证「调制信号能否被 prompt 直接调制」这一假设时，用本地探针观察增量与蒸馏项是否真的在学。",
+    "avoidWhen": "常规训练里不要开——运行时激活仍被闸住，底模的 llm_adapter / timestep_embed / adaln_modulation 也不会被改写，别指望它改变输出。"
+  },
+  "standard_en": {
+    "summary": "A reserve route that feeds pooled text conditioning into the AdaLN modulation signal: a zero-initialised projector adds prompt-conditioned deltas to shift / scale. Only the seam is wired today.",
+    "effect": "With method=none, or without published pooled text, it is the default path; the deltas are only added when enabled and pooled text is available. Zero initialisation keeps the starting point equivalent, the gate is untouched, and the paired distill loss equals the baseline when off while adding one real backprop term when on.",
+    "whenToUse": "To test the hypothesis that the modulation signal can be driven directly by the prompt, watching through a local probe whether the delta and the distill term actually learn.",
+    "avoidWhen": "Do not turn it on in ordinary training -- runtime activation is still gated and the base model's llm_adapter / timestep_embed / adaln_modulation are never rewritten, so do not expect the output to change."
   },
   "advanced": {
-    "principle": "用文本池化向量预测 AdaLN 调制 delta,让 guidance 依赖 prompt 而非简单常量 bias;投影器零初始化 → 装上即恒等。",
-    "intervention": "pooled text → PooledTextModulationProjector → 每站点 (shift_δ, scale_δ) 加到 AdaLN 输出(gate 原样) → 专用 distill loss(off=base / on 加 MSE+反传)蒸馏投影器 → 推理经 pooled-text context 复用同一发布路径。base 权重(llm_adapter/timestep_embed/adaln_modulation)零改动。",
-    "expectedImpact": "默认关时不改变训练性能(bitwise parity);开启后增加少量投影计算并让 AdaLN 受 prompt 条件化。真机机制门已验证:85 个站点、投影器从 0 训起、distill 收敛、parity/remove 逐位、faithful 不降级。配色/身份美学质量仍是用户的活。",
-    "tradeoffs": "constant-bias 的 adaln_guidance 仍是独立 partial fallback,full 路由不静默替换它。蒸馏/引导质量需 curated 数据 + 真长训(操作员/用户判断)。",
-    "codePath": "backend/core/lulynx_trainer/modulation_guidance_reserve_seam.py + modulation_guidance_reconciliation.py"
+    "principle": "modulation_guidance_reserve_seam 里的 PooledTextModulationProjector 零初始化，输出作为 shift / scale 的增量叠加到 AdaLN 上；底模参数只读不改。价值验证记录为 8/8 + 15 个单测 + 真权重探针（85 个注入点，投影器从 0 训到 0.107，蒸馏项 0.062→0.0013，默认路径与 remove 后逐位一致）。",
+    "intervention": "AdaLN 调制信号的加法分支，与常量偏置的 adaln_guidance 是两条不同的路线。",
+    "expectedImpact": "目前无可宣称的训练收益，探针只证明它有学习能力且不破坏默认路径。",
+    "tradeoffs": "与 adaln_guidance 容易混淆：那条改的是常量偏置，这条改的是条件相关的增量；两者同时开启时效果不叠加也不抵消，需分别验证。"
+  },
+  "advanced_en": {
+    "principle": "The PooledTextModulationProjector in modulation_guidance_reserve_seam is zero-initialised and its output is added to the AdaLN shift / scale as a delta; base-model parameters are read-only. Evidence is 8/8 plus 15 unit tests plus a real-weights probe (85 injection sites, projector trained 0 to 0.107, distill term 0.062 to 0.0013, default path and post-remove bitwise identical).",
+    "intervention": "An additive branch on the AdaLN modulation signal; a different route from the constant-bias adaln_guidance.",
+    "expectedImpact": "No claimable training benefit today; the probe only shows it can learn and leaves the default path intact.",
+    "tradeoffs": "Easy to confuse with adaln_guidance: that one changes a constant bias, this one a conditioning-dependent delta. With both on the effects neither stack nor cancel, so each needs separate validation."
   },
   "relatedConfigs": [
     "adaln_guidance",
-    "modulation_guidance_enabled"
-  ]
+    "distillation_guidance_scale"
+  ],
+  "reserved": true
 }

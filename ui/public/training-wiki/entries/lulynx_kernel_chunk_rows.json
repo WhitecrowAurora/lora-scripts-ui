@@ -1,0 +1,26 @@
+{
+  "key": "lulynx_kernel_chunk_rows",
+  "title": "核分布空间分块",
+  "category": "感知锚/频域纹理损失",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "每次处理的空间位置数量，默认 1024。",
+    "effect": "值越小中间投影张量越省显存，但循环次数增加、耗时上升；不改变数学结果。",
+    "whenToUse": "kernel_distribution 模式 OOM 时下调。",
+    "avoidWhen": "显存够用时不要调小，只会变慢。"
+  },
+  "relatedConfigs": [
+    "lulynx_kernel_directions",
+    "lulynx_kernel_widths"
+  ]
+}

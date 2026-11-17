@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_block_offload_gpu_slots",
+  "title": "GPU 块槽位",
+  "category": "速度 / 显存",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "允许同时驻留显存的层块数量，默认 2。",
+    "effect": "槽位越多，能并行留在 GPU 上的块越多、换入换出越少，但占用显存也越多；槽位为 1 时退化成严格的串行换块。",
+    "whenToUse": "显存有余量、想把步速再提一档时小幅上调（每次 +1 试）。",
+    "avoidWhen": "把槽位加到显存装不下会直接 OOM；不确定时保持默认 2。"
+  },
+  "relatedConfigs": [
+    "moss_image_block_residency",
+    "moss_image_block_offload_prefetch_depth"
+  ]
+}

@@ -1,21 +1,38 @@
 {
   "key": "multi_aspect_guidance_enabled",
   "title": "多维审美引导",
+  "title_en": "Multi Aspect Guidance Enabled",
   "category": "训练参数",
-  "appliesTo": [],
+  "category_en": "Training Parameters",
+  "appliesTo": [
+    "anima-lora",
+    "anima-edit-model",
+    "newbie-lora",
+    "sd3-lora"
+  ],
   "layers": [],
   "standard": {
-    "summary": "按 style/character 等多维 scorer 引导",
+    "summary": "按实际 caption 分类分别计算辅助损失；Anima 保留既有 scorer，Newbie/SD3 仅支持 Latent 统计对照。默认关闭。",
     "effect": "",
     "whenToUse": "不确定时先保持默认，小步数短测后再调。",
     "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。"
   },
+  "standard_en": {
+    "summary": "Compute auxiliary losses for actual caption categories. Newbie/SD3 support latent statistics only; Anima keeps its existing scorers. Off by default.",
+    "whenToUse": "When unsure keep the default; run a short low-step test before changing it.",
+    "avoidWhen": "When it conflicts with preflight, or when a mutually exclusive option is enabled at the same time."
+  },
   "advanced": {
-    "principle": "按 style/character 等多维 scorer 引导 loss。默认关闭。",
+    "principle": "类别来自最终选中的 JSON caption；新缓存保存类别，旧缓存无类别时跳过，可显式重建补齐。sigma 筛选后按类别选择样本。Latent scorer 比较统计特征，不产生自动身份/风格语义标签。",
     "intervention": "",
     "expectedImpact": "",
-    "tradeoffs": "",
-    "codePath": ""
+    "tradeoffs": ""
+  },
+  "advanced_en": {
+    "principle": "Categories follow the selected JSON caption and cache variant. Legacy caches without metadata are skipped until explicitly rebuilt. Each category uses its own samples within the sigma window; latent statistics are not semantic labels.",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": ""
   },
   "relatedConfigs": []
 }

@@ -1,7 +1,9 @@
 {
   "key": "rs_lora_enabled",
   "title": "RS-LoRA (Rank-Stabilized)",
+  "title_en": "RS-LoRA scaling",
   "category": "LoRA / 变体",
+  "category_en": "LoRA / Variants",
   "appliesTo": [
     "sdxl-lora",
     "sd-lora",
@@ -11,18 +13,32 @@
   "layers": [
     "适配器层"
   ],
+  "layers_en": [
+    "Adapter layer"
+  ],
   "standard": {
-    "summary": "RS-LoRA 将 LoRA 的缩放因子从 α/r 改为 α/√r，使得不同 rank 下 LoRA 的有效学习率保持一致。解决高 rank 训练不稳定的问题。",
-    "effect": "高 rank（>64）训练更稳定，不需要手动降低学习率。低 rank（<32）时效果与标准 LoRA 接近。",
-    "whenToUse": "使用高 rank（64-256）训练时推荐。想在不同 rank 之间做公平对比实验时。",
-    "avoidWhen": "低 rank（8-32）训练时不需要——标准缩放已经够好。"
+    "summary": "RS-LoRA 将输出缩放从 alpha/rank 改为 alpha/√rank，减缓缩放随 rank 增大而下降的速度；不保证跨 rank 的学习率或画质相同。",
+    "effect": "相同 alpha、rank 和 A/B 权重下，RS-LoRA 的输出缩放是标准 LoRA 的 √rank 倍。切换后仍可能需要调整 alpha 或学习率。",
+    "whenToUse": "需要比较不同 rank 的缩放策略时可考虑，尤其是高 rank；对照时同时记录 alpha、初始化和学习率。",
+    "avoidWhen": "不要在沿用标准 LoRA 配方时直接开启并假设输出幅度、收敛速度和画质不变。"
+  },
+  "standard_en": {
+    "summary": "RS-LoRA changes output scaling from alpha/rank to alpha/sqrt(rank), slowing its decrease as rank grows. It does not guarantee equal learning rates or image quality across ranks.",
+    "effect": "For identical alpha, rank and A/B weights, RS-LoRA output scaling is sqrt(rank) times standard LoRA scaling. Switching may still require adjusting alpha or learning rate.",
+    "whenToUse": "Consider it when comparing scaling strategies across ranks, especially at high rank. Record alpha, initialization and learning rate alongside rank.",
+    "avoidWhen": "Do not enable it on a standard LoRA recipe while assuming unchanged output magnitude, convergence speed or image quality."
   },
   "advanced": {
-    "principle": "标准 LoRA scaling = α/r。当 rank 增大时 scaling 减小，等效学习率降低。RS-LoRA scaling = α/√r，rank 增大时 scaling 降低更慢，保持更大的有效学习率。这使得 rank=128 和 rank=32 在相同 lr 下有相似的更新幅度。",
+    "principle": "固定 alpha 时，标准 LoRA 的 scaling 按 1/rank 下降，RS-LoRA 按 1/√rank 下降。输出缩放不等于优化器的有效步长；A/B 初始化、优化器和学习率分组也影响更新。",
     "intervention": "修改 LoRA forward 中的 scaling 因子：scaling = alpha / sqrt(rank) 替代 alpha / rank。",
-    "expectedImpact": "高 rank 训练的收敛速度提升，最终质量改善约 2-5%。",
-    "tradeoffs": "与 LoRA+ 策略兼容——两者作用在不同层面。",
-    "codePath": "networks/lora.py: scaling = alpha / math.sqrt(rank) when rs_lora_enabled"
+    "expectedImpact": "提供另一种随 rank 变化的缩放方式。是否改善收敛或画质取决于模型、数据和配方，本项目没有通用的质量提升百分比。",
+    "tradeoffs": "LoRA+ 调整 A/B 学习率分组，RS-LoRA 调整输出缩放；两者作用不同，组合后仍需检查配方，不能把标准同学习率的 rank 迁移规则直接套用。"
+  },
+  "advanced_en": {
+    "principle": "With fixed alpha, standard LoRA scaling decreases as 1/rank and RS-LoRA as 1/sqrt(rank). Output scaling is not the optimizer's effective step size; A/B initialization, optimizer and learning-rate groups also affect updates.",
+    "intervention": "Modifies the scaling factor in the LoRA forward: scaling = alpha / sqrt(rank) instead of alpha / rank.",
+    "expectedImpact": "Provides a different scaling rule across ranks. Convergence and image-quality effects depend on the model, data and recipe; this project has no universal quality-gain percentage.",
+    "tradeoffs": "LoRA+ changes A/B learning-rate groups while RS-LoRA changes output scaling. Their combination still needs recipe validation; rank-transfer rules derived for equal A/B learning rates do not directly establish its behavior."
   },
   "relatedConfigs": [
     "network_dim",

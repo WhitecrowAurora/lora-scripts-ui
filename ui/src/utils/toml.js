@@ -9,13 +9,10 @@ function _tomlValue(v) {
       return _tomlValue(JSON.stringify(v));
     }
     // TOML 内联数组：[ "a", "b" ]
-    return '[ ' + v.map(item => {
-      if (typeof item === 'string') return '"' + item.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-      return String(item);
-    }).join(', ') + ' ]';
+    return '[ ' + v.map(_tomlValue).join(', ') + ' ]';
   }
   if (typeof v === 'string') {
-    return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
+    return JSON.stringify(v);
   }
   return String(v);
 }
@@ -56,9 +53,14 @@ export function parseSimpleToml(text) {
   }
   for (const raw of mergedLines) {
     // 剔除注释，但仅在字符串外的 # 才算
-    const commentIdx = raw.indexOf('#');
-    const quoteBeforeComment = commentIdx >= 0 ? (raw.slice(0, commentIdx).split('"').length - 1) % 2 : 0;
-    const line = (quoteBeforeComment ? raw : (commentIdx >= 0 ? raw.slice(0, commentIdx) : raw)).trim();
+    let quote = '', commentIdx = -1;
+    for (let i = 0; i < raw.length; i++) {
+      if (quote === '"' && raw[i] === '\\') { i++; continue; }
+      if (quote && raw[i] === quote) quote = '';
+      else if (!quote && (raw[i] === '"' || raw[i] === "'")) quote = raw[i];
+      else if (!quote && raw[i] === '#') { commentIdx = i; break; }
+    }
+    const line = (commentIdx >= 0 ? raw.slice(0, commentIdx) : raw).trim();
     if (!line || line.startsWith('[')) continue; // 跳过空行、注释、section 头
     const eqIdx = line.indexOf('=');
     if (eqIdx < 1) continue;
@@ -77,8 +79,9 @@ export function parseSimpleToml(text) {
       const re = /"((?:[^"\\]|\\.)*)"|([^,"\s]+)/g;
       let m;
       while ((m = re.exec(inner)) !== null) {
-        if (m[1] !== undefined) items.push(m[1].replace(/\\\\/g, '\\').replace(/\\"/g, '"'));
+        if (m[1] !== undefined) items.push(decodeBasicString(m[1]));
         else if (m[2] !== undefined) {
+          if (m[2] === 'true' || m[2] === 'false') { items.push(m[2] === 'true'); continue; }
           const n = Number(m[2]);
           items.push(Number.isNaN(n) ? m[2] : n);
         }
@@ -87,7 +90,7 @@ export function parseSimpleToml(text) {
     }
     // 引号字符串
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      result[key] = val.slice(1, -1).replace(/\\\\/g, '\\').replace(/\\"/g, '"').replace(/\\n/g, '\n');
+      result[key] = val.startsWith("'") ? val.slice(1, -1) : decodeBasicString(val.slice(1, -1));
       continue;
     }
     // 数字
@@ -97,4 +100,11 @@ export function parseSimpleToml(text) {
     result[key] = val;
   }
   return result;
+}
+
+function decodeBasicString(value) {
+  // Decode once: a Windows path's escaped backslash must not become a second
+  // escape such as newline (\\newbie) or tab (\\train).
+  const escapes = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', '"': '"', '\\': '\\' };
+  return value.replace(/\\([btnfr"\\])/g, (_match, key) => escapes[key]);
 }

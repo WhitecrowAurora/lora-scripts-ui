@@ -1,4 +1,5 @@
 import { resolveFieldDesc } from '../schemaFieldI18n.js';
+import { nmSequentialOffloadDisabled } from '../features/nmQuantization.js';
 import { escapeHtml } from '../utils/dom.js';
 import { getAdapterEntityConflict, streamingResidencyFamilies } from '../schemaCommon.js';
 import { renderSemanticRegionCurveEditor } from './semanticRegionCurveEditor.js';
@@ -320,6 +321,9 @@ export function getFieldConflict(field, config = {}) {
   })();
   const torchCompile = compileBackend === 'torch_compile';
   const thunderActive = compileBackend === 'thunder';
+  if (key === 'enable_sequential_cpu_offload' && nmSequentialOffloadDisabled(config)) {
+    return 'N:M Compile';
+  }
   const compileBackendLabel = torchCompile ? 'torch.compile' : thunderActive ? 'Thunder 执行后端' : '';
   const distributed = toBool(config.enable_distributed_training) || toBool(config.enable_distributed) || toNum(config.num_processes) > 1 || toNum(config.num_machines) > 1;
   const deepspeed = toBool(config.deepspeed);
@@ -516,5 +520,4 @@ export function renderRegularizationFieldGroup({ regField, priorField, config = 
     </details>
   `;
 }
-
 

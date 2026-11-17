@@ -1,34 +1,50 @@
 {
   "key": "pid_decoder_backend",
   "title": "PiD Native Decoder",
+  "title_en": "PiD Native Decoder",
   "category": "推理 / 解码与放大",
+  "category_en": "Inference / Decode and Upscale",
   "appliesTo": [
-    "anima-lora",
-    "newbie-lora",
-    "qwen-image-lora"
+    "sdxl-lora",
+    "sdxl-finetune"
   ],
   "layers": [
     "VAE Decode Replacement"
   ],
+  "layers_en": [
+    "VAE decode replacement"
+  ],
   "standard": {
-    "summary": "PiD 是 pixel diffusion decoder，可在 VAE decode 位置把 latent 解码/放大成像素。Lulynx 只支持用户本地提供权重的原生后端契约。",
-    "effect": "未来 decode_backend=pid 会替换普通 VAE decode；当前 preview/generation/postprocess 路由尚未注册。",
-    "whenToUse": "用户已有合规 PiD 权重，并希望后续用于高质量解码或放大时。",
-    "avoidWhen": "需要商用再分发、自动下载或捆绑官方权重；官方权重按 Anima 包装说明属于 NVIDIA NSCLv1 non-commercial。"
+    "summary": "PiD 是 pixel diffusion decoder：在 VAE decode 的位置把 latent 解码或放大成像素。Lulynx 只支持用户本地提供权重的原生后端契约（pid_preview）。",
+    "effect": "配置 pid_preview 后，训练预览的采样器会用 PiD 替换普通 VAE decode。仅 SDXL 族支持，且与 micro_vae_preview 互斥——两者只能选一个预览解码器。",
+    "whenToUse": "已持有合规 PiD 权重，且想用更高质量的解码或放大出预览图时。",
+    "avoidWhen": "需要商用再分发、自动下载或捆绑官方权重（官方权重按 Anima 包装说明为 NVIDIA NSCLv1 non-commercial）；或用 micro_vae_preview 时。"
+  },
+  "standard_en": {
+    "summary": "PiD is a pixel diffusion decoder that decodes or upscales the latent into pixels where VAE decode sits. Lulynx supports only the native backend contract with locally supplied weights (pid_preview).",
+    "effect": "With pid_preview configured, the training-preview sampler uses PiD instead of ordinary VAE decode. SDXL families only, and mutually exclusive with micro_vae_preview -- pick one preview decoder.",
+    "whenToUse": "When you already hold compliant PiD weights and want higher-quality decoding or upscaled previews.",
+    "avoidWhen": "When you need commercial redistribution, automatic download or bundled official weights (per the Anima packaging notes these are NVIDIA NSCLv1 non-commercial), or when you use micro_vae_preview."
   },
   "advanced": {
-    "principle": "按 backbone 做 latent normalization，再用 PiD decoder 逐步输出像素结果。",
+    "principle": "pid_preview 是一个字典配置，交给 contracts/pid_preview.py 的 PidPreviewConfig 校验后挂到 sampler 上；只在预览/采样路径生效，不进训练 loss。",
     "intervention": "Future decode backend selector → local checkpoint preflight → preview/generation/postprocess route。",
     "expectedImpact": "可能改善解码质量和放大结果；训练时间无直接影响。",
-    "tradeoffs": "源码许可证和权重许可证分开处理；未确认权重授权前不能自动启用。",
-    "codePath": "backend/core/lulynx_trainer/pid_decoder_backend.py"
+    "tradeoffs": "额外的解码模型会占显存与加载时间；权重需用户自备，无法随包分发。 该能力当前不在 WebUI 训练 schema 内：后端字段 pid_preview 只能由 TOML 或手写请求设置。"
+  },
+  "advanced_en": {
+    "principle": "pid_preview is a dict validated through contracts/pid_preview.py (PidPreviewConfig) and then attached to the sampler; it only affects the preview / sampling path, never the training loss.",
+    "intervention": "Future decode backend selector → local checkpoint preflight → preview/generation/postprocess route.",
+    "expectedImpact": "May improve decode quality and upscale results; no direct effect on training time.",
+    "tradeoffs": "The extra decoder costs VRAM and load time, and the weights must be supplied by the user -- they cannot be redistributed with the package. This capability is not part of the WebUI training schema right now: the backend fields pid_preview are settable from TOML or a hand-written request only."
   },
   "relatedConfigs": [
-    "decode_backend",
-    "pid_backbone",
-    "pid_ckpt_type",
-    "pid_checkpoint",
-    "pid_tile_latent",
-    "pid_compile"
-  ]
+    "pid_preview",
+    "image_decode_backend",
+    "micro_vae_preview"
+  ],
+  "aliases": [
+    "pid_decoder_backend"
+  ],
+  "reserved": true
 }

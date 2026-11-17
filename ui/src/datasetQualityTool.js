@@ -9,7 +9,7 @@ import { escapeHtml } from './utils/dom.js';
 const MODAL_CLASS = 'training-option-help-modal dataset-quality-modal';
 const POLL_INTERVAL = 500; // 轮询间隔 500ms
 
-export function createDatasetQualityTool({ api, showToast }) {
+export function createDatasetQualityTool({ state, api, showToast }) {
 
   function closeDatasetQualityScan() {
     document.querySelector('.dataset-quality-modal')?.remove();
@@ -23,8 +23,11 @@ export function createDatasetQualityTool({ api, showToast }) {
 
     closeDatasetQualityScan();
 
-    // 启动扫描任务
-    api.startDatasetQualityScan(datasetDir.trim())
+    // 启动扫描任务；与训练器读取同一组 caption 权威设置。
+    api.startDatasetQualityScan(datasetDir.trim(), {
+      caption_extension: state?.config?.caption_extension || '.txt',
+      prefer_json_caption: Boolean(state?.config?.prefer_json_caption),
+    })
       .then((response) => {
         if (response.error) {
           showToast(`扫描失败：${response.error}`, 'error');

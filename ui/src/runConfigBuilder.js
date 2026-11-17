@@ -1,10 +1,12 @@
+import { applyOptimizationSelection } from './features/optimizationSettings.js';
 import { SCHEDULER_VALUE_TO_TYPE } from './features/settingsOptions.js';
 import { OPT_FIELD_ARG_KEYS } from './features/optimizerParams.js';
 import {
   normalizeAdapterEntityMutex,
+  LYCORIS_METHOD_TYPES,
   SUPPORTED_LYCORIS_ALGOS as UI_LYCORIS_ALGOS
 } from './schemaCommon.js';
-import { getPerfMode } from './actions/perfModeToggle.js';
+import { performanceModeConfig } from './utils/performanceMode.js';
 import { normalizeTheoryNameAliases } from './utils/theoryNameAliases.js';
 
 const STANDARD_SCHEDULERS = [
@@ -207,6 +209,24 @@ function normalizeLycorisNetworkArgs(payload, typeId) {
   }
 
   if (!isLycoris || typeId.startsWith('anima')) {
+    // anima/concept-edit never set network_module (the backend derives it from
+    // lora_type), so the LyCORIS arg packing below is the wrong shape for them.
+    // The adapter-scoped translation still has to happen here: the trainer only
+    // reads lycoris_train_norm, so leaving the bare toggle in the payload makes
+    // the checkbox a no-op. The trainer reads nothing for a non-LyCORIS adapter,
+    // so the bare key is dropped either way instead of riding along as an
+    // undeclared field.
+    if (typeId.startsWith('anima') || typeId === 'concept-edit') {
+      const adapterAlgo = String(payload.lora_type || '').trim().toLowerCase();
+      // IA3 is excluded for the same reason the shared LyCORIS field excludes
+      // it: its scaling lives on the activation, so a norm adapter on the same
+      // module has no defined interaction.
+      const adapterTrainsNorm = LYCORIS_METHOD_TYPES.includes(adapterAlgo) && adapterAlgo !== 'ia3';
+      if (adapterTrainsNorm && payload.train_norm != null) {
+        payload.lycoris_train_norm = Boolean(payload.train_norm);
+      }
+      delete payload.train_norm;
+    }
     const customLines = String(payload.network_args_custom || '')
       .trim()
       .split(/[\n\r]+/)
@@ -665,6 +685,6 @@ export function buildRunConfigFromSections(config, typeId, { getSectionsForType,
   normalizeAnimaVramOptimizer(payload);
   normalizeLayeredAlpha(payload);
   normalizeSemanticRegionWeights(payload);
-  payload.lulynx_optimization_enabled = getPerfMode() === 'lulynx';
-  return payload;
+  Object.assign(payload, performanceModeConfig(normalizedConfig));
+  return applyOptimizationSelection(payload, config);
 }

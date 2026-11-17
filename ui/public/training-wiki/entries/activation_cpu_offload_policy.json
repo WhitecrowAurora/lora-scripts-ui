@@ -1,0 +1,29 @@
+{
+  "key": "activation_cpu_offload_policy",
+  "title": "激活传输策略",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "krea2-lora",
+    "moss-image-lora",
+    "boogu-lora",
+    "flux2-lora"
+  ],
+  "standard": {
+    "summary": "选择原按需策略、共享保存或共享保存并提前回传。",
+    "effect": "默认 on_demand 保持原行为；shared 对同一活跃张量的相同视图和版本去重，并按保存对象生命周期复用缓冲；prefetch 最多提前保留一份激活。",
+    "whenToUse": "现有卸载方式成为内存或传输瓶颈时做单项对照。",
+    "avoidWhen": "尚未确认收益时不要同时打开多个新策略。"
+  },
+  "advanced": {
+    "principle": "可用选项为 on_demand、shared、prefetch。共享策略保留稠密转置布局；切片和重叠视图复制其值。预取根据保存顺序向前看一项，不能保证符合所有反向遍历顺序。",
+    "tradeoffs": "CUDA 机制、MOSS 及 Boogu Base/FLUX.2 Klein 短程训练正确性已验证。Boogu/FLUX.2 的 BF16、1024/BS1、LoRA、冻结权重反向按需读取与完整块重算组合中，shared 相比无激活搬运约降低 11.5%/32% 活跃显存，步时约增加 1%；时间比较使用上一批同配置基线，仅作短程指示。共享可减少重复传输，但收益依负载而异；三家族的预取均未确认稳定提速，Boogu 预取还显著增加回传量。与激活压缩同时开启时，沿用卸载优先的规则。"
+  },
+  "relatedConfigs": [
+    "activation_cpu_offload_enabled",
+    "optimizer_state_paging_enabled",
+    "blockwise_fused_optimizers",
+    "module_offload_enabled"
+  ]
+}

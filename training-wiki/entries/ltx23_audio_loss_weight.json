@@ -1,0 +1,21 @@
+{
+  "key": "ltx23_audio_loss_weight",
+  "title": "音频损失权重",
+  "category": "训练用模型",
+  "appliesTo": [
+    "ltx23-lora",
+    "ltx25-lora",
+    "ltx23-finetune",
+    "ltx25-finetune"
+  ],
+  "standard": {
+    "summary": "音频损失相对视频损失的权重，默认 1，必须大于 0。",
+    "effect": "联合训练音频时决定两个模态的梯度配比；调低偏向画面、调高偏向声音。",
+    "whenToUse": "开启「联合训练音频」后，画面质量被音频损失拖累时下调。",
+    "avoidWhen": "没开音频训练时此项不生效。"
+  },
+  "relatedConfigs": [
+    "ltx23_train_audio",
+    "ltx23_audio_vae_path"
+  ]
+}

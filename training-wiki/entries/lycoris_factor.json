@@ -1,0 +1,41 @@
+{
+  "key": "lycoris_factor",
+  "title": "LyCORIS Factor",
+  "title_en": "LyCORIS Factor",
+  "category": "LoRA 变体 / Kronecker",
+  "category_en": "LoRA Variants / Kronecker",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "LoKr 的 Kronecker 分解因子。-1 表示自动挑一个与权重形状匹配的因子。",
+    "effect": "因子决定 Kronecker 两个因子的形状；取值必须能整除对应维度，否则注入阶段报错。名字里的 lycoris 是历史遗留，实际只作用在 LoKr 上。",
+    "whenToUse": "默认 -1 即可。需要复现别人指定了 factor 的 LoKr 或调参对照时再手动指定。",
+    "avoidWhen": "用 LoCon / LoHa / GLoRA 等非 Kronecker 算法时不用管它；值填了也不会生效。GLoKr 用的是另一个字段 glokr_factor。"
+  },
+  "standard_en": {
+    "summary": "The Kronecker decomposition factor for LoKr. -1 picks a factor that matches the weight shape automatically.",
+    "effect": "The factor fixes the shapes of the two Kronecker factors and must divide the corresponding dimension, or injection raises. The lycoris in the name is historical: it only affects LoKr.",
+    "whenToUse": "Leave it at -1. Set it by hand to reproduce someone's LoKr that specified a factor, or for a tuning comparison.",
+    "avoidWhen": "Irrelevant for LoCon / LoHa / GLoRA and other non-Kronecker algorithms -- a value there does nothing. GLoKr uses a separate field, glokr_factor."
+  },
+  "advanced": {
+    "principle": "config adapter 把 lycoris_factor 折叠到 lycoris_lokr_factor，注入期再作为 lokr_factor 传给 LyCORIS 的 LoKr 模块；分解失败或形状不整除时在注入期抛错，而不是静默退回满秩。",
+    "intervention": "LoKr 注入时的权重分解，前向路径不变。",
+    "expectedImpact": "影响 LoKr 的参数量与表达形式；同一 rank 下不同 factor 的结果不可互换。",
+    "tradeoffs": "factor 与 no-materialize 前向互相牵连：factor > 1 是启用 no-materialize 的前置条件之一，而 factor ≤ 1 会直接让 no-materialize 分支失效。"
+  },
+  "advanced_en": {
+    "principle": "The config adapter folds lycoris_factor into lycoris_lokr_factor, which injection then passes as lokr_factor to LyCORIS' LoKr module. A shape that does not divide, or a failed decomposition, raises at injection rather than silently falling back to full rank.",
+    "intervention": "Weight decomposition at LoKr injection; the forward path is unchanged.",
+    "expectedImpact": "Changes LoKr's parameter count and expressiveness; different factors at the same rank are not interchangeable results.",
+    "tradeoffs": "The factor interacts with the no-materialize forward: factor > 1 is one precondition for it, and factor <= 1 disables that branch outright."
+  },
+  "relatedConfigs": [
+    "lokr_no_materialize_strategy",
+    "lokr_no_materialize_forward",
+    "adapter_init_strategy"
+  ]
+}

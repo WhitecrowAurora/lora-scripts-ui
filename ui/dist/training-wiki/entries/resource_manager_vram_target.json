@@ -1,0 +1,43 @@
+{
+  "key": "resource_manager_vram_target",
+  "title": "VRAM 目标使用率",
+  "title_en": "VRAM Target Usage",
+  "category": "显存 / 自动策略",
+  "category_en": "VRAM / Automatic Policy",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "sd-lora",
+    "sdxl-finetune",
+    "anima-finetune"
+  ],
+  "standard": {
+    "summary": "ResourceManager 的显存告警线。超过它记 warning，再往上才轮到 critical 与 emergency。默认 0.85。",
+    "effect": "实际写入 rm_vram_warning_threshold。把这条线从默认值改掉，本身就会把 ResourceManager 武装起来（其余阈值仍是 0.85 / 0.92 / 0.97 的临界点）——原本不启用它的运行，改这一下就开始每步采样显存。",
+    "whenToUse": "跑得贴着显存上限、想让告警提前一点出现时。",
+    "avoidWhen": "不需要任何自动显存干预时别动它——改了就等于把 ResourceManager 拉起来，多一份每步监视开销。"
+  },
+  "standard_en": {
+    "summary": "The ResourceManager's VRAM warning line. Above it the status is warning; critical and emergency sit further up. Default 0.85.",
+    "effect": "Writes rm_vram_warning_threshold. Moving this line off its default is itself enough to arm ResourceManager (the other thresholds stay at the 0.85 / 0.92 / 0.97 critical points), so a run that never used it starts sampling VRAM every step.",
+    "whenToUse": "When the run sits right at the VRAM ceiling and you want the warning earlier.",
+    "avoidWhen": "Leave it alone when you want no automatic VRAM intervention -- changing it brings ResourceManager up and adds per-step monitoring cost."
+  },
+  "advanced": {
+    "principle": "FIELD_ALIAS_MAP 把 resource_manager_vram_target 折到 rm_vram_warning_threshold；trainer_ema_resource_runtime._initialize_resource_manager 只在「有自适应开关打开」或「三个阈值不等于出厂值」时才构造 DynamicResourceManager，因此这个字段是让后者成立的最短路径。check_vram 按 emergency → critical → warning 的顺序判档。",
+    "intervention": "训练准备期的一次条件构造；开启后每步做一次显存采样与缓存清理周期。",
+    "expectedImpact": "不改变显存占用本身，只改变何时把告警 / 临界状态记进日志与事件。",
+    "tradeoffs": "自适应 batch / 累积目前被显式推迟（native trainer 还不能安全重建 DataLoader），所以这个阈值多数情况只影响上报，不真的调 batch。"
+  },
+  "advanced_en": {
+    "principle": "FIELD_ALIAS_MAP folds resource_manager_vram_target into rm_vram_warning_threshold; trainer_ema_resource_runtime._initialize_resource_manager builds a DynamicResourceManager only when an adaptive switch is on OR the three thresholds differ from their factory values, which makes this field the shortest path to the latter. check_vram tests emergency -> critical -> warning in that order.",
+    "intervention": "One conditional construction during training preparation, then a per-step VRAM sample and periodic cache clear once armed.",
+    "expectedImpact": "It does not change VRAM use, only when a warning or critical state reaches the log and event stream.",
+    "tradeoffs": "Adaptive batch / accumulation is explicitly deferred (the native trainer cannot safely rebuild its DataLoader yet), so in most runs this threshold only affects reporting rather than actually adjusting the batch."
+  },
+  "relatedConfigs": [
+    "rm_vram_critical_threshold",
+    "rm_vram_emergency_threshold",
+    "vram_swap"
+  ]
+}

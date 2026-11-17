@@ -1,3 +1,5 @@
+import { describeJobStatus } from '../../utils/jobStatus.js';
+
 export function createCaptionCleanupPanel({ api, $, escapeHtml, showToast }) {
   // ========== Caption 清洗 ==========
   function renderCaptionCleanup() {
@@ -176,7 +178,7 @@ export function createCaptionCleanupPanel({ api, $, escapeHtml, showToast }) {
         try {
           const data = await api.getJob(jobId);
           if (jobEl) {
-            jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(data.status || 'pending')} ${(Math.round((data.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelCleanupJob('${escapeHtml(jobId)}')">取消</button>`;
+            jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(describeJobStatus(data.status))} ${(Math.round((data.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelCleanupJob('${escapeHtml(jobId)}')">取消</button>`;
           }
           if (data.status === 'completed') {
             clearInterval(timer);

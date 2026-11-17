@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_reference_manifest",
+  "title": "参考图清单 JSON",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "参考图与目标的配对清单文件的路径。",
+    "effect": "训练与预览都按清单取参考图；清单缺失或格式不符会在加载阶段报错。",
+    "whenToUse": "做参考图条件训练（含编辑模式）时必填。",
+    "avoidWhen": "只做纯文本条件的 MOSS-Image 训练时留空。"
+  },
+  "relatedConfigs": [
+    "moss_image_edit_mode",
+    "moss_image_preview_target"
+  ]
+}

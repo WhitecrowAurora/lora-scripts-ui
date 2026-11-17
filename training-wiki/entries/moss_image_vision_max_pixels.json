@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_vision_max_pixels",
+  "title": "视觉条件最大像素数",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "送入视觉编码器的图像最大像素数，默认 147456（约 384×384）。",
+    "effect": "视觉塔看到的图会被缩到该像素量以内，与参考图分辨率上限相互独立。",
+    "whenToUse": "视觉条件细节丢失明显时适度上调。",
+    "avoidWhen": "视觉塔输入越大越吃显存，别为了细节把显存榨干。"
+  },
+  "relatedConfigs": [
+    "moss_image_reference_max_pixels"
+  ]
+}

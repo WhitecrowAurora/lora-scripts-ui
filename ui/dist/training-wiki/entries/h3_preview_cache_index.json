@@ -1,0 +1,18 @@
+{
+  "key": "h3_preview_cache_index",
+  "title": "预览样本序号（从 0 开始）",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "预览用哪条缓存样本的参考图与提示条件，默认 0。",
+    "effect": "预览直接复用该缓存样本的参考图与提示词，输出尺寸也跟随缓存，不需要另配提示。",
+    "whenToUse": "想固定看某条样本在不同步数的变化时指定它的序号。",
+    "avoidWhen": "数据集改动后序号可能失效，先重建缓存再指定。"
+  },
+  "relatedConfigs": [
+    "h3_preview_cfg"
+  ]
+}

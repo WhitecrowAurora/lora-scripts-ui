@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_preview_target",
+  "title": "预览参考组（目标图片相对路径）",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "预览使用清单里的哪一组参考；留空则用第一组。",
+    "effect": "按目标图片的相对路径在清单里定位那一组参考图与提示，输出尺寸跟随该组。",
+    "whenToUse": "想固定观察某一特定样本的训练进展时填写。",
+    "avoidWhen": "清单改过之后旧路径可能失效，先确认路径仍在清单里。"
+  },
+  "relatedConfigs": [
+    "moss_image_reference_manifest"
+  ]
+}

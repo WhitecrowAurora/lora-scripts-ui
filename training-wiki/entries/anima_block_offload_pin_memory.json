@@ -1,0 +1,39 @@
+{
+  "key": "anima_block_offload_pin_memory",
+  "title": "Anima 锁页内存",
+  "title_en": "Anima Pin Host Memory",
+  "category": "DiT / 显存驻留",
+  "category_en": "DiT / VRAM Residency",
+  "appliesTo": [],
+  "layers": [],
+  "standard": {
+    "summary": "卸载到内存的冻结权重是否锁页，默认开启。同时作用于 Block CPU pinned、流式 Offload 和 LRU Offload。",
+    "effect": "",
+    "whenToUse": "一般保持开启：搬运能和计算同时进行，速度最快。",
+    "avoidWhen": "不想让训练锁住内存（比如训练时还要跑很吃内存的程序，或内存本来就紧张）时关闭；关闭后能正常训练，但会变慢。"
+  },
+  "standard_en": {
+    "summary": "Whether the frozen weights offloaded to system RAM are page-locked; on by default. Applies to Block CPU pinned, Streaming Offload and LRU Offload.",
+    "whenToUse": "Usually leave it on: transfers overlap compute, which is fastest.",
+    "avoidWhen": "Turn it off when training must not lock RAM (other memory-heavy programs running, or RAM already tight); training still works, just slower."
+  },
+  "advanced": {
+    "principle": "锁页内存不能被系统换出，GPU 可以直接异步读取，所以预取能和计算并行。普通内存的拷贝要先经过驱动的暂存区，CPU 会等它完成，预取就失去了并行效果。",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "关闭后这部分内存可以被换出、让给其他程序，代价是每次搬运都阻塞，步时变长。权重本来就要放在内存里，开关不改变内存总量。这条路径的锁页没有总量上限，内存紧张时更值得关闭。",
+    "codePath": ""
+  },
+  "advanced_en": {
+    "principle": "Pinned memory cannot be paged out and the GPU can read it asynchronously, so prefetch overlaps compute. Pageable copies go through a driver staging buffer and the CPU waits for them, so prefetch no longer overlaps.",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "With it off that memory can be paged out or given to other programs, at the cost of every transfer blocking and longer steps. The weights live in RAM either way, so the total does not change. Pinning on this path has no total cap, so turning it off matters more when RAM is tight.",
+    "codePath": ""
+  },
+  "relatedConfigs": [
+    "anima_block_residency",
+    "anima_block_prefetch",
+    "anima_block_offload_enabled"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_clean_end_cutoff",
+  "title": "低噪声 Sigma 阈值",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "判定「低噪声」的 sigma 阈值，默认 0.5。",
+    "effect": "sigma 低于该值的样本算低噪声段；阈值越高，被划入低噪声区的范围越宽。",
+    "whenToUse": "想让「低噪声」覆盖更靠中段的噪声水平时上调。",
+    "avoidWhen": "和 clean_end_enabled 一起才生效，单独调没有意义。"
+  },
+  "relatedConfigs": [
+    "moss_image_clean_end_enabled",
+    "moss_image_clean_end_share"
+  ]
+}

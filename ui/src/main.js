@@ -61,6 +61,7 @@ import { renderLogLines as _renderLogLines } from './utils/logRender.js';
 import {
   buildSchemaFallbackEntry,
   loadTrainingWikiEntry,
+  pickLocalizedEntry,
 } from './utils/trainingWiki.js';
 import {
   getActiveTasks,
@@ -91,10 +92,10 @@ import {
 import { createAboutRenderer, renderGuide, renderLogs, refreshTensorBoardStatus, refreshWebuiErrorLogs, startTensorBoardFromLogs, stopTensorBoardFromLogs, createBuiltinPickerRenderer, createStatusDeckRenderer, createNavigatorRenderer, createSettingsRenderer, createConfigFormRenderer, createConfigPageRenderer, createPreflightRenderer, createSamplesRenderer, createWizardRenderer, createPluginsRenderer, createToolsRenderer, createDatasetRenderer, createSysMonitorRenderer, createTrainingRenderer, createExperimentalTrainingRenderer, createConfigShellRenderer, createAppViewRenderer, renderTurboCore, turboCoreProbeStatus, turboCoreCopyFlags } from './renderers/index.js';
 import { createThemeActions, createTrainTabsActions, createJsonPanelActions, createFieldMenuActions, createTaskHistoryActions, createSearchActions, createPickerActions, createLayoutActions, createConfigActions, createSampleActions, createWizardActions, createPluginsActions, createToolsActions, createNavActions, createRuntimeActions, createTerminateActions, createSavedConfigsActions, createTrainingActions, createTrainingMetadataActions, createTrainingChromeActions, createPreviewGroupsActions, createExperimentalTrainingActions, createDeveloperModeChromeActions } from './actions/index.js';
 import './actions/trainingAssistantChat.js';
+import { createConceptDirectionActions } from './actions/conceptDirectionActions.js';
 import './actions/trainingAssistantConfig.js';
-import { setupTurbocoreToggle } from './actions/turbocoreToggle.js';
-import { setupPerfModeToggle } from './actions/perfModeToggle.js';
-import { setupOptimizerToggle } from './actions/optimizerToggle.js';
+import { setupPerfModeToggle, syncPerfModeToggle } from './actions/perfModeToggle.js';
+import { setupOptimizerToggle, syncOptimizerToggle } from './actions/optimizerToggle.js';
 import { createResourceCenterRenderer } from './renderers/resourceCenter.js';
 import { createSemanticRegionWeightsActions } from './actions/semanticRegionWeightsActions.js';
 import { createProgressivePhaseEditorActions } from './actions/progressivePhaseEditorActions.js';
@@ -162,6 +163,7 @@ const {
   startSampleDifficultyScoring,
   previewTrainingIntentProfile,
   applyTrainingIntentSuggestions,
+  toggleModelCodeTrust,
 } = createConfigFormRenderer({
   state,
   canUseBuiltinPicker,
@@ -170,7 +172,7 @@ const {
   getDisplayConfig: () => getTrainingVramDisplayConfig(),
   isManagedField: isTrainingVramFieldManaged,
 });
-bindWindowActions({ startSampleDifficultyScoring, previewTrainingIntentProfile, applyTrainingIntentSuggestions });
+bindWindowActions({ startSampleDifficultyScoring, previewTrainingIntentProfile, applyTrainingIntentSuggestions, toggleModelCodeTrust });
 const { renderSections: renderConfigSections } = createConfigShellRenderer({
   state,
   UI_TABS,
@@ -514,9 +516,18 @@ function init() {
   setupFieldMenus();
   setupImportConfig();
   setupJsonPanel();
-  setupPerfModeToggle(api, showToast);
-  setupOptimizerToggle(api, showToast);
-  setupTurbocoreToggle(api, showToast);
+  const optimizationToggleDeps = {
+    getConfig: () => state.config,
+    applyPatch: (patch) => {
+      Object.assign(state.config, patch);
+      configTransaction.markDirty(state.activeTrainingType, state.config);
+      saveDraft();
+      updateJSONPreview();
+      renderView(state.activeModule);
+    },
+  };
+  setupPerfModeToggle(api, showToast, optimizationToggleDeps);
+  setupOptimizerToggle(api, showToast, optimizationToggleDeps);
 
   // Feature 3: 路径存在性验证
   initPathValidation({ api });
@@ -534,13 +545,23 @@ function init() {
   setupTopbarSearch();
   refreshDeveloperModeChrome();
   setupTaskHistoryBeforeUnload();
-  fetch('/api/app_version').then(r => r.ok ? r.json() : null).then(d => {
+  fetch('/api/app_version').then(r => r.ok ? r.json() : null).then(body => {
+    // 后端统一信封 {status, data}；这里兼容直接返回扁平对象的情况。
+    const data = body && body.data && typeof body.data === 'object' ? body.data : body;
     const el = document.getElementById('app-version-display');
-    if (el && d) el.textContent = d.backend_version || d.version || '';
+    if (el && data) el.textContent = data.backend_version || data.version || '';
   }).catch(() => {});
 
   // Listen for theme sync messages from launcher (when embedded in iframe)
+  const trustedThemeOrigin = (() => {
+    try {
+      return document.referrer ? new URL(document.referrer).origin : window.location.origin;
+    } catch {
+      return window.location.origin;
+    }
+  })();
   window.addEventListener('message', (event) => {
+    if (window.parent === window || event.source !== window.parent || event.origin !== trustedThemeOrigin) return;
     if (event.data && (event.data.type === 'LAUNCHER_THEME_SYNC' || event.data.type === 'launcher:theme-change')) {
       const launcherTheme = event.data.theme;
       console.log('[DEBUG webui] Received theme sync from launcher:', launcherTheme);
@@ -647,6 +668,8 @@ let _renderViewImpl = null;
 function renderView(module) {
   if (module) state.activeModule = module;
   _renderViewImpl?.(module);
+  syncPerfModeToggle();
+  syncOptimizerToggle();
   writeUiUrlState(state);
 }
 
@@ -731,6 +754,7 @@ const {
   renderView,
 });
 bindWindowActions({ validateTurboLoraOutputFromConfig, reportTurboLoraSamplesFromConfig });
+bindWindowActions(createConceptDirectionActions({ state, updateConfigValue, renderView }));
 const {
   addPreviewGroup,
   removePreviewGroup,
@@ -910,6 +934,7 @@ bindWindowActions({ openPresetDiff, closePresetDiff });
 
 // 数据集质量检测弹窗
 const { openDatasetQualityScan, closeDatasetQualityScan } = createDatasetQualityTool({
+  state,
   api,
   showToast,
 });
@@ -1042,6 +1067,8 @@ _trainingChromeActions = createTrainingChromeActions({
   getFieldDefinition,
   loadTrainingWikiEntry,
   buildSchemaFallbackEntry,
+  pickLocalizedEntry,
+  t,
   escapeHtml,
   renderNavigator,
   renderView,

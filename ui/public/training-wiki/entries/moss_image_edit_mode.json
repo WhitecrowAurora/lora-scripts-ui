@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_edit_mode",
+  "title": "参考图编辑训练",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "按「源图 → 编辑后目标」的配对方式组织训练数据，默认关闭。",
+    "effect": "开启后参考图作为源条件、目标是编辑结果；数据组织与条件通道都会切到编辑语义。",
+    "whenToUse": "训练指令式编辑（改外观、换背景等）任务时开启。",
+    "avoidWhen": "普通文生图训练不要开，配对语义会对不上。"
+  },
+  "relatedConfigs": [
+    "moss_image_reference_manifest",
+    "moss_image_isolate_references"
+  ]
+}

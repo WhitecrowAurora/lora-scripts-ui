@@ -1,0 +1,18 @@
+{
+  "key": "h3_preview_condition_clean_t",
+  "title": "参考条件保留强度",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "预览时参考条件保留到哪个噪声水平，默认 0.999（几乎全程保留）。",
+    "effect": "值越小，参考条件越早在去噪过程中被撤掉；接近 1 表示参考图影响贯穿整个采样。",
+    "whenToUse": "参考图约束过强、预览过于像原图时调低。",
+    "avoidWhen": "调得过低会看不到参考条件的效果。"
+  },
+  "relatedConfigs": [
+    "h3_preview_cache_index"
+  ]
+}

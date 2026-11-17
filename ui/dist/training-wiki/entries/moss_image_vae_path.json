@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_vae_path",
+  "title": "FLUX.2 VAE 目录（可选）",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "单独指定 MOSS-Image 使用的 VAE 目录，留空则从模型/默认布局加载。",
+    "effect": "拆分存储的权重布局下需要显式指定；路径错误会在加载阶段直接失败。",
+    "whenToUse": "VAE 与主模型分开存放时填写。",
+    "avoidWhen": "模型自带匹配 VAE 时留空即可。"
+  },
+  "relatedConfigs": [
+    "moss_image_text_encoder_path",
+    "moss_image_tokenizer_path"
+  ]
+}

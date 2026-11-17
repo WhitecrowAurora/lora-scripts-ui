@@ -1,0 +1,20 @@
+{
+  "key": "first_timestep_chance",
+  "title": "纯噪声时间步注入概率",
+  "category": "训练 / 噪声控制",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "按此概率把 batch 里采样到的时间步替换成纯噪声步（sigma=1），默认 0（不注入）。",
+    "effect": "实现于 sigma 采样之后、前向之前；0.05 表示每个样本约 5% 概率被替换成纯噪声。与 MOSS clean-end 采样互斥（clean-end 要求本值为 0）。",
+    "whenToUse": "想强化模型在纯噪声起点附近的去噪能力（少步/蒸馏场景常用）时给一个小概率。",
+    "avoidWhen": "开 clean-end 采样时必须保持 0，否则预检直接报错。"
+  },
+  "relatedConfigs": [
+    "moss_image_timestep_sampling",
+    "moss_image_clean_end_enabled",
+    "mixflow_enabled"
+  ]
+}

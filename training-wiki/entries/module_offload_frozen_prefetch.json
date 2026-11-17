@@ -1,0 +1,28 @@
+{
+  "key": "module_offload_frozen_prefetch",
+  "title": "冻结 Linear 提前搬运",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "krea2-lora",
+    "moss-image-lora",
+    "boogu-lora",
+    "flux2-lora"
+  ],
+  "standard": {
+    "summary": "按已观察到的层顺序提前搬入下一份冻结权重。",
+    "effect": "默认关闭，要求冻结 Linear 反向按需读取。前向、重算和反向分别学习顺序；最多提前持有一份不超过 128 MiB 的权重，使用固定 128 MiB 锁页中转缓冲。",
+    "whenToUse": "普通 RAM 权重传输存在等待时，可单独对照该选项。",
+    "avoidWhen": "MOSS、Boogu Base 和 FLUX.2 短测未确认稳定提速，建议保持关闭。spill、极限卸载、量化或不连续权重不进入预测搬运。"
+  },
+  "advanced": {
+    "principle": "消费预测权重时验证参数来源、版本、dtype 和设备，再通过 CUDA 事件等待复制完成；未命中继续按需读取。微批结束与管理器关闭时完成在途搬运并释放引用。",
+    "tradeoffs": "预测错误会增加传输量。MOSS 五步以及 Boogu Base/FLUX.2 各三步逐位通过；后两家族相对仅冻结按需分别约慢7%/4%，没有提速证据。运行时报告 launches、hits、misses、uploaded_bytes、pending_bytes 和 staging_bytes；上传计数不能当作净传输节省。"
+  },
+  "relatedConfigs": [
+    "module_offload_frozen_backward",
+    "moss_image_checkpoint_granularity",
+    "block_offload_ring_enabled"
+  ]
+}

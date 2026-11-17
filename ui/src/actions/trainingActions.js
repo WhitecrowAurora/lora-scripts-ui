@@ -4,7 +4,10 @@
 // 依赖较多，均通过工厂注入。保持零行为变更。
 
 import { getTaskId, isTaskActive, isTaskQueued } from '../utils/taskStatus.js';
+import { isNmCompileOffloadConflict } from '../features/nmQuantization.js';
 import { getMiniMaxH3ConfigErrors } from '../features/minimaxH3Config.js';
+import { getModelCodeTrust, withoutModelCodeTrust } from '../features/modelCodeTrust.js';
+import { collectMissingRequiredFields, markAndJumpMissingRequiredFields } from '../requiredFields.js';
 
 export function createTrainingActions({
   state,
@@ -98,6 +101,10 @@ export function createTrainingActions({
       'networks.tlora_anima',
     ]);
     const unsupportedVramSwapOptimizerKeywords = ['bitsandbytes', '8bit', 'paged', 'ademamix'];
+
+    if (isNmCompileOffloadConflict(c)) {
+      errors.push('N:M W4A16 + 2:4 下，Compile 与顺序 CPU Offload 不能同时开启，请关闭其中一项。');
+    }
 
     // 1. 缓存文本编码器输出 与 标签打乱/丢弃 冲突
     if (toBool(c.cache_text_encoder_outputs)) {
@@ -306,6 +313,39 @@ export function createTrainingActions({
       errors.push('RF 固定偏移比率不能小于 0。');
     }
 
+    // 19. 外观一致性检查：权重由用户自备，开了开关却留空会被后端拒绝提交。
+    // 这里先拦一次，省掉一轮往返；文案必须说清「不附带权重」，否则用户会以为
+    // 程序会自动下载而一直找不到原因。
+    if (toBool(c.look_filter_enabled)) {
+      if (!String(c.likeness_arcface_model_path || '').trim()) {
+        errors.push('已开启「外观一致性检查」，但没有填 Embedding 权重路径。本程序不附带任何 ArcFace / embedding 权重，也不会自动下载；请先准备好自己的 .onnx 文件并把绝对路径填进「Embedding 权重 (ONNX)」，或者关掉这个开关。');
+      }
+      const lookThreshold = toNum(c.look_filter_outlier_threshold);
+      if (c.look_filter_outlier_threshold !== '' && c.look_filter_outlier_threshold != null && (lookThreshold < 0 || lookThreshold > 1)) {
+        errors.push('外观一致性检查的「离群阈值」必须在 0 到 1 之间。');
+      }
+    }
+
+    // 20. 后段密集预览：两个值必须成对出现，只填一个等于没开。
+    const tailFrom = toNum(c.sample_tail_from_epoch);
+    const tailEvery = toNum(c.sample_tail_every_n_epochs);
+    if (tailFrom > 0 && tailEvery <= 0) {
+      errors.push('「后段密集预览起始轮」已填，但「后段预览间隔」为空或 0。请把间隔填上（例如 5），或把起始轮清空。');
+    }
+    if (tailEvery > 0 && tailFrom <= 0) {
+      errors.push('「后段预览间隔」已填，但「后段密集预览起始轮」为空或 0。请把起始轮填上（例如 50），或把间隔清空。');
+    }
+
+    // 21. 逐图 Loss 看门狗：会把判「丢失」的图权重降到 0，属于会改训练结果的开关。
+    if (toBool(c.loss_state_enabled)) {
+      warnings.push('已开启「逐图 Loss 看门狗」：它会按每张图的 loss 残差调整训练权重，被判「丢失」的图权重会降到 0（该图不再产生梯度），其余图的有效权重相应升高。这只写建议报告，不动标注、不删文件，但它确实会改变训练结果。');
+    }
+
+    // 22. LR 不稳定回滚：只在内存留副本，恢复训练的当口无法回滚。
+    if (toBool(c.lr_rollback_enabled)) {
+      warnings.push('已开启「不稳定时回滚权重」：每个 epoch 边界会在内存留一份可训练权重副本（默认上限 2GB）。显存吃紧时请留意；另外从 checkpoint 恢复后的第一个 epoch 没有可回滚的稳定副本。');
+    }
+
 
     return { errors,warnings };
   }
@@ -334,7 +374,17 @@ export function createTrainingActions({
       return;
     }
     state._lastLaunchConfigSnapshot = launchSnapshot;
-    const runConfig = buildRunConfig(launchSnapshot.config, launchSnapshot.typeId);
+    // 必填项缺失：后端到 worker 冷启动才炸（#58/#52 的「提交成功→启动即失败」形状），
+    // 这里提前拦：toast + 红框 + 跳到第一个缺失字段。判据镜像 config_auto_fix.py。
+    const missingRequired = collectMissingRequiredFields(launchSnapshot.config, launchSnapshot.typeId);
+    if (missingRequired.length > 0) {
+      showToast('必填项还没填：' + missingRequired.map((m) => m.label).join('、'));
+      markAndJumpMissingRequiredFields(missingRequired, { state, renderView });
+      state.loading.run = false;
+      syncFooterAction();
+      return;
+    }
+    const runConfig = withoutModelCodeTrust(buildRunConfig(launchSnapshot.config, launchSnapshot.typeId));
     runConfig.ui_config_revision = launchSnapshot.savedRevision;
     runConfig.idempotency_key = launchSnapshot.idempotencyKey;
     const launchMetadata = buildTaskMetadataFromConfig(runConfig, launchSnapshot.typeId);
@@ -480,6 +530,9 @@ export function createTrainingActions({
 
       state._pendingTrainingMetadata = launchMetadata;
       state.activeTrainingTaskId = '';
+      if (launchSnapshot.typeId === 'aesthetic-scorer') {
+        Object.assign(runConfig, getModelCodeTrust(state).consume(launchSnapshot.config, launchSnapshot.typeId, runConfig));
+      }
       const response = labLaunchApi ? await labLaunchApi(runConfig) : await api.runTraining(runConfig);
       if (response.status !== 'success') {
         state._pendingTrainingMetadata = null;
@@ -573,6 +626,5 @@ export function createTrainingActions({
 
   return { validateConfigConflicts, executeTraining };
 }
-
 
 

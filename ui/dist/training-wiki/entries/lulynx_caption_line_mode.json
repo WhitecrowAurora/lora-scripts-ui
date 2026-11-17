@@ -1,0 +1,42 @@
+{
+  "key": "lulynx_caption_line_mode",
+  "title": "TXT Caption 读取方式",
+  "category": "数据集 / 图说",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "anima-edit-model",
+    "flux-lora",
+    "lumina-lora",
+    "qwen-image-lora",
+    "qwen-image-2-lora",
+    "hunyuan-dit-lora",
+    "sd-lora",
+    "sdxl-finetune",
+    "flux-finetune",
+    "anima-finetune",
+    "qwen-image-finetune",
+    "qwen-image-2-finetune",
+    "lumina-finetune",
+    "sd-dreambooth",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "anima-controlnet",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "决定 .txt caption 是整篇读入还是每次随机取一行，默认 full。",
+    "effect": "full=保持原有全文行为；random_line=每次读取一条非空行，重复行保留采样权重（可用于变体轮换）。JSON caption 与子集角色覆盖保持原语义不受影响。",
+    "whenToUse": "一个 txt 里堆了多条候选描述、想让每张图每次换一条时选 random_line。",
+    "avoidWhen": "caption 是逗号分隔的标签串时不要用 random_line——会被随机拆成不完整的标签。"
+  },
+  "relatedConfigs": [
+    "lulynx_caption_lead",
+    "lulynx_caption_tail",
+    "caption_extension"
+  ]
+}

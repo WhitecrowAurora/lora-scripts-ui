@@ -1,26 +1,51 @@
 {
   "key": "anima_compile_scope",
-  "title": "Anima Compile 范围",
-  "category": "速度 / Anima 专用",
+  "title": "编译范围",
+  "title_en": "Compile Scope",
+  "category": "速度 / 编译",
+  "category_en": "Speed / Compilation",
   "appliesTo": [
-    "anima-lora"
-  ],
-  "aliases": [
-    "compile_cache_prewarm"
+    "anima-lora",
+    "anima-finetune"
   ],
   "standard": {
-    "summary": "控制 torch.compile 应用于 Anima 模型的哪些部分：block（逐 block 编译）/ full_core（编译整个 DiT 核心）/ off（不编译）。",
-    "effect": "block = 更细粒度，兼容性好；full_core = 更大编译单元，理论更快但对动态分支敏感；off = 不编译，最安全。",
-    "whenToUse": "长训练（>200步）推荐尝试 block 模式。full_core 在确认无 graph break 后可获得更大加速。",
-    "avoidWhen": "短训练或调试时保持 off。full_core 遇到动态分支（如 LoRA hook）可能频繁 graph break，实际比 block 更慢。"
+    "summary": "anima 原生 DiT 的 torch.compile 粒度。空 = 不编译；per_block 是当前支持目标；full_cudagraph 仍是实验边界。",
+    "effect": "per_block 逐 block 编译，形状变化只让受影响的 block 重新编译；full_cudagraph 追求整核静态图，编译时间长、形状必须固定。最终生效档位由 compile contract 裁决，不一定是这里选的那档。",
+    "whenToUse": "训练稳定、显存有余量、想压低每步开销时用 per_block。",
+    "avoidWhen": "仍在大幅度改分辨率 / batch / token 上限时——形状一变就要重编译。full_cudagraph 还需要固定 text/visual token 预算，否则被降级。",
+    "optionDescriptions": {
+      "": "不请求编译，保持 eager。",
+      "per_block": "逐 block 编译，是当前唯一被验证的支持目标。",
+      "full_cudagraph": "整核静态图，实验边界；需要固定 token 预算，否则 compile contract 降级到 per_block。"
+    }
+  },
+  "standard_en": {
+    "summary": "The torch.compile granularity for the anima native DiT. Empty = no compile; per_block is the supported target; full_cudagraph is still an experimental boundary.",
+    "effect": "per_block compiles one block at a time, so a shape change only recompiles the affected blocks; full_cudagraph chases one static graph for the whole core, which compiles slowly and requires fixed shapes. The effective mode is decided by the compile contract and may differ from the value selected here.",
+    "whenToUse": "Use per_block when training is stable, VRAM has headroom and you want to cut per-step overhead.",
+    "avoidWhen": "While resolution / batch / token limits are still changing -- every shape change forces a recompile. full_cudagraph additionally needs fixed text/visual token budgets or it gets downgraded.",
+    "optionDescriptions": {
+      "": "No compile request; stays eager.",
+      "per_block": "Per-block compile, the only target currently validated.",
+      "full_cudagraph": "Whole-core static graph, an experimental boundary; needs fixed token budgets or the compile contract downgrades it to per_block."
+    }
   },
   "advanced": {
-    "principle": "compile_cache 将编译结果缓存到磁盘（通常 ~/.cache/torch_compile），下次相同代码和参数时直接加载编译结果，跳过编译时间。compile_cache_prewarm 在首步训练前主动触发编译并填充缓存。",
-    "tradeoffs": "缓存编译结果依赖代码未改变（代码变更后缓存失效）；prewarm 增加首步等待时间但让第一步训练立即享受编译加速。"
+    "principle": "compile_contract.resolve_compile_contract 把请求档位与路由能力比对：full / full_core / full_cudagraph 统一折算成 full_core，再逐条检查降级条件——anima 只有在 compile_anima_full_core_enabled=true 且 anima_fixed_text_tokens 与（固定 visual token 或 token-bucket 静态形状）都就绪时才允许 full_core，否则记一条 reason 降到 per_block；strict 模式下固定 text token 缺失还会直接关成 off。",
+    "intervention": "训练 plan 解析阶段改写 torch_compile / torch_compile_scope / anima_compile_scope 三个字段，编译缓存键也带上 anima_scope。",
+    "expectedImpact": "per_block 在稳态形状下压低每步 Python 开销；收益随 batch / 分辨率与是否命中编译缓存波动。",
+    "tradeoffs": "编译缓存以形状、精度、GPU、路由为键，跨机不可复用。full_cudagraph 一旦被降级，日志里只有 reason 行，config 里看到的仍是原值——判生效要看 [compile-contract] 日志。"
+  },
+  "advanced_en": {
+    "principle": "compile_contract.resolve_compile_contract compares the requested mode against route capability: full / full_core / full_cudagraph all fold into full_core, then each downgrade rule is checked -- anima only keeps full_core when compile_anima_full_core_enabled=true and both anima_fixed_text_tokens and (fixed visual tokens or token-bucket static shapes) are ready; otherwise it records a reason and drops to per_block. In strict mode a missing fixed text token budget turns compile off outright.",
+    "intervention": "At plan-resolution time it rewrites torch_compile / torch_compile_scope / anima_compile_scope; the compile cache key also carries anima_scope.",
+    "expectedImpact": "per_block cuts per-step Python overhead at steady shapes; the gain varies with batch, resolution and cache hits.",
+    "tradeoffs": "The compile cache is keyed on shape, precision, GPU and route, so it does not travel between machines. A downgraded full_cudagraph shows up only as a reason line in the log while the config still reads the original value -- read the [compile-contract] log to know what actually ran."
   },
   "relatedConfigs": [
     "torch_compile",
-    "compile_runtime",
-    "dynamo_backend"
+    "torch_compile_scope",
+    "compile_anima_full_core_enabled",
+    "anima_fixed_text_tokens"
   ]
 }

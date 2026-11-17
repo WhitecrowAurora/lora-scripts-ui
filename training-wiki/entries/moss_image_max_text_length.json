@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_max_text_length",
+  "title": "最大文本长度",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "文本编码器接受的最大 token 数，默认 4096。",
+    "effect": "决定 caption（含布局 JSON）能被编码多长；超长部分会被截断。MOSS-Image 的布局 JSON caption 通常较长。",
+    "whenToUse": "caption 里有详细布局 JSON、被截断导致条件缺失时上调。",
+    "avoidWhen": "上调会线性增加显存与耗时，先确认确实是截断导致的。"
+  },
+  "relatedConfigs": [
+    "moss_image_text_encoder_path",
+    "moss_image_auto_json"
+  ]
+}

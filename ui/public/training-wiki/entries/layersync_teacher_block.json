@@ -1,0 +1,18 @@
+{
+  "key": "layersync_teacher_block",
+  "title": "Teacher 块索引",
+  "category": "训练 / 表征对齐",
+  "appliesTo": [
+    "anima-edit-model",
+    "anima-lora",
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "从 0 开始的更深层索引，须大于 student。",
+    "effect": "-1 自动选约 2/3 深度。",
+    "whenToUse": "默认 -1，无明确目标时保持默认。",
+    "avoidWhen": "一次只改一项，便于归因效果。"
+  },
+  "advanced": null,
+  "relatedConfigs": []
+}

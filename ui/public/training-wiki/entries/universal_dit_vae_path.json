@@ -1,0 +1,17 @@
+{
+  "key": "universal_dit_vae_path",
+  "title": "VAE 目录（预览用）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "只用于预览出图的 VAE 目录；训练读的是缓存里的 latent。",
+    "effect": "必须与建缓存时用的是同一个 VAE，否则预览画面与训练目标不符。留空则只有 adapter 检视、不出预览图。",
+    "whenToUse": "想在训练中看预览图时填写。",
+    "avoidWhen": "换用别的 VAE 做预览会产生误导性画面，等于白看。"
+  },
+  "relatedConfigs": [
+    "universal_dit_preview_offload"
+  ]
+}

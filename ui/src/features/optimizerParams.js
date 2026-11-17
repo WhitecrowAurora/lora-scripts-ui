@@ -212,11 +212,11 @@ export const OPTIMIZER_SPECIFIC_FIELDS = [
 
   // ── lulynx Riemannion 扩展（历史 optimizer identifier: Riemannion） ───────
   { key: 'opt_riemannion_momentum', type: 'number', label: 'lulynx 流形动量',
-    desc: '默认 identity transport 的工程动量；momentum=0 才保留基础参数化不变边界。',
+    desc: '流形动量系数，推荐 0.9。基于 Riemannion (arXiv:2507.12142)，本仓另加 Muon 系 Newton-Schulz 白化；未核验与论文等价。',
     defaultValue: 0.9, min: 0, max: 1, step: 0.01,
     visibleWhen: isOpt('riemannion') },
   { key: 'opt_riemannion_orthogonalize', type: 'boolean', label: 'lulynx 更新白化',
-    desc: '对切向更新追加 Newton-Schulz 白化；这是 lulynx 扩展，不是论文等价保证。',
+    desc: '对切向更新追加 Newton-Schulz 白化，稳定固定秩流形上的步长。基于 Riemannion (arXiv:2507.12142)，本仓另加 Muon 系 Newton-Schulz 白化；未核验与论文等价。',
     defaultValue: true,
     visibleWhen: isOpt('riemannion') },
   { key: 'opt_riemannion_ns_steps', type: 'number', label: 'lulynx 白化迭代步数',

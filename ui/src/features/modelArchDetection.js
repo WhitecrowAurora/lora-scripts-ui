@@ -31,22 +31,26 @@ export async function detectModelArchitecture(modelPath) {
       body: JSON.stringify({ model_path: modelPath })
     });
 
-    const result = await response.json();
+    if (!response.ok) return null;
+    const body = await response.json();
+    if (!body || body.status === 'error') return null;
 
-    if (result.success && result.data) {
-      const detection = {
-        arch: result.data.detected_arch,
-        displayName: result.data.display_name,
-        confidence: result.data.confidence
-      };
-
-      // Cache result
-      detectionCache.set(modelPath, detection);
-
-      return detection;
+    // 后端统一信封 {status, data}；兼容直接返回业务对象的情况。
+    const data = body.data && typeof body.data === 'object' ? body.data : body;
+    if (!data.detected_arch) {
+      return null;
     }
 
-    return null;
+    const detection = {
+      arch: data.detected_arch,
+      displayName: data.display_name,
+      confidence: data.confidence
+    };
+
+    // Cache result
+    detectionCache.set(modelPath, detection);
+
+    return detection;
   } catch (error) {
     console.error('Model architecture detection failed:', error);
     return null;
@@ -55,14 +59,15 @@ export async function detectModelArchitecture(modelPath) {
 
 /**
  * Get current training page type from URL or state
- * @returns {'anima' | 'sdxl' | 'flux' | 'flux2' | 'sd15' | 'sd3' | 'krea2' | null}
+ * @returns {'anima' | 'sdxl' | 'flux' | 'flux2' | 'flux3' | 'sd15' | 'sd3' | 'krea2' | null}
  */
 function getCurrentPageArch() {
-  // Check URL hash — flux2/klein before bare flux
+  // Check the newer FLUX variants before the generic FLUX family.
   const hash = window.location.hash;
   if (hash.includes('anima')) return 'anima';
   if (hash.includes('krea2') || hash.includes('krea-2')) return 'krea2';
   if (hash.includes('sdxl')) return 'sdxl';
+  if (hash.includes('flux3') || hash.includes('flux-3')) return 'flux3';
   if (hash.includes('flux2') || hash.includes('flux-2') || hash.includes('klein')) return 'flux2';
   if (hash.includes('flux')) return 'flux';
 
@@ -72,6 +77,7 @@ function getCurrentPageArch() {
     if (type.includes('anima')) return 'anima';
     if (type.includes('krea2') || type.includes('krea-2')) return 'krea2';
     if (type.includes('sdxl')) return 'sdxl';
+    if (type.includes('flux3') || type.includes('flux-3')) return 'flux3';
     if (type.includes('flux2') || type.includes('flux-2') || type.includes('klein')) return 'flux2';
     if (type.includes('flux')) return 'flux';
     if (type.includes('sd15') || type.includes('sd1.5')) return 'sd15';
@@ -90,6 +96,7 @@ function getArchDisplayName(arch) {
     'sdxl': 'SDXL',
     'flux': 'FLUX',
     'flux2': 'FLUX.2 Klein',
+    'flux3': 'FLUX.3 Image Klein',
     'sd15': 'SD 1.5',
     'sd3': 'SD3',
     'krea2': 'Krea-2',

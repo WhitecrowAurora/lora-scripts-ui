@@ -1,0 +1,53 @@
+{
+  "key": "look_filter_enabled",
+  "title": "启用外观一致性检查",
+  "title_en": "Look Consistency Check",
+  "category": "数据集 / 预处理",
+  "category_en": "Dataset / Preprocessing",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "sd-lora",
+    "flux-lora",
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "anima-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "训练开始前给每张图打分，找出和这套数据集整体风格不像的图，结果写进输出目录的 lulynx_look_filter_report.json。只出报告，不动你的文件。",
+    "effect": "默认关闭。开启后会在第一步之前遍历全部图片，因此首步延迟明显；报告里给出离群数量与明细。",
+    "whenToUse": "怀疑数据集混进了风格不一致的图、想先看证据再决定清理时。",
+    "avoidWhen": "没有自备 ONNX embedding 权重时——开关打开但路径为空会被拒绝提交。数据集很大又赶时间时也不必开，它会实打实地拖慢启动。"
+  },
+  "standard_en": {
+    "summary": "Scores every image against the dataset's own look centroid before training and writes lulynx_look_filter_report.json into the output directory. Report only: nothing is moved or deleted.",
+    "effect": "Off by default. When on it walks every image before step 1, so the first step is noticeably delayed; the report carries the outlier count and details.",
+    "whenToUse": "When you suspect the dataset holds style-inconsistent images and want evidence before cleaning up.",
+    "avoidWhen": "Without a user-supplied ONNX embedding model -- enabling the check with an empty path is rejected. Skip it on a large dataset when time matters: it genuinely slows startup."
+  },
+  "advanced": {
+    "principle": "lulynx_look_filter.settings 解析开关与阈值（默认 action=plan），look_filter_preparation 在训练准备期扫图片、打相似度分、把低于阈值的图标记为离群，全过程只写报告。即使 action 设成 quarantine / delete，准备期也不会移动或删除任何文件，只在报告里提示「用数据集工具执行同一份计划」。",
+    "intervention": "训练准备期的一次性打分开销，训练循环里没有该分支。",
+    "expectedImpact": "无显存占用（取决于 likeness_device 选择），但首步前多一次全量图片遍历。",
+    "tradeoffs": "阈值是相似度下界，不是离群比例，换数据集就得重标；报告只覆盖打分成功且解码正常的图，坏图不进离群名单。"
+  },
+  "advanced_en": {
+    "principle": "lulynx_look_filter.settings parses the toggle and threshold (action defaults to plan), and look_filter_preparation scans images during training preparation, scores them and flags those below the threshold as outliers -- writing a report the whole way. Even with action set to quarantine / delete, preparation never moves or deletes anything; it only notes in the report that the dataset tool should execute the same plan.",
+    "intervention": "A one-off scoring cost during training preparation; the training loop has no such branch.",
+    "expectedImpact": "No VRAM cost (depending on likeness_device), but one full image pass before the first step.",
+    "tradeoffs": "The threshold is a similarity floor, not an outlier rate, so a new dataset needs re-calibration; the report only covers images that scored and decoded cleanly, so broken images never appear as outliers."
+  },
+  "relatedConfigs": [
+    "look_filter_outlier_threshold",
+    "look_filter_action",
+    "likeness_arcface_model_path",
+    "likeness_device"
+  ]
+}

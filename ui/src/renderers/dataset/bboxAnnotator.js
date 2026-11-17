@@ -371,7 +371,7 @@ export function createBBoxAnnotator({ state, api, $, escapeHtml, showToast }) {
 
   async function startBBoxBatchPredict() {
     syncBBoxInputsToState();
-    if (bboxState.batchJobId && ['pending', 'running'].includes(String(bboxState.batchJobSnapshot?.status || ''))) {
+    if (bboxState.batchJobId && ['pending', 'running', 'cancel_timeout'].includes(String(bboxState.batchJobSnapshot?.status || ''))) {
       showToast('已有批量预标注任务在运行，请先等它完成或手动取消。');
       return;
     }

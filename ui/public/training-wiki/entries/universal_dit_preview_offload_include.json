@@ -1,0 +1,18 @@
+{
+  "key": "universal_dit_preview_offload_include",
+  "title": "Offload 层路径过滤（可选）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "限定哪些层参与预览 offload，支持通配（如 transformer_blocks.*），留空表示所有冻结 Linear 都参与。",
+    "effect": "只把匹配的层搬进搬出，其余层保持常驻；用于只卸载最占显存的那部分。",
+    "whenToUse": "明确知道显存集中在哪几类块时精确指定。",
+    "avoidWhen": "写错模式会匹配不到任何层，等于没开；不确定就留空。"
+  },
+  "relatedConfigs": [
+    "universal_dit_preview_offload",
+    "universal_dit_preview_offload_min_mb"
+  ]
+}

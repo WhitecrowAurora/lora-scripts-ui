@@ -1,0 +1,42 @@
+{
+  "key": "lulynx_caption_lead",
+  "title": "文本前缀",
+  "category": "数据集 / 图说",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "anima-edit-model",
+    "flux-lora",
+    "lumina-lora",
+    "qwen-image-lora",
+    "qwen-image-2-lora",
+    "hunyuan-dit-lora",
+    "sd-lora",
+    "sdxl-finetune",
+    "flux-finetune",
+    "anima-finetune",
+    "qwen-image-finetune",
+    "qwen-image-2-finetune",
+    "lumina-finetune",
+    "sd-dreambooth",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "anima-controlnet",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "在处理后的非空 caption 正文前统一加一段文字（空格连接），默认空。",
+    "effect": "空文本与子集角色覆盖保持原语义，不会被强行加前缀；修改该值后需要重建文本缓存，图像缓存可复用。",
+    "whenToUse": "想给整个数据集统一注入触发词或质量描述时使用，比逐文件改 txt 更省事。",
+    "avoidWhen": "同一数据集里已有手工写好的触发词时不要重复加；前缀不参与标签打乱，会固定出现在最前。"
+  },
+  "relatedConfigs": [
+    "lulynx_caption_tail",
+    "lulynx_caption_line_mode",
+    "caption_extension"
+  ]
+}

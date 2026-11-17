@@ -1,30 +1,37 @@
 {
   "key": "soft_tokens_enabled",
   "title": "Soft Tokens",
-  "category": "训练 / 文本条件",
-  "appliesTo": [
-    "anima-lora",
-    "newbie-lora"
-  ],
-  "layers": [
-    "Text Conditioning"
-  ],
+  "title_en": "Soft Tokens",
+  "category": "前沿储备 / Anima",
+  "category_en": "Frontier Reserve / Anima",
+  "appliesTo": [],
   "standard": {
-    "summary": "Soft Tokens 是按 layer/timestep 插入的可学习文本 token。Lulynx 只保留当前 SoftREPA-style 路线，旧 AGSM/dispersive 方案不默认恢复。",
-    "effect": "token bank 会 prepend 到文本条件，并同步扩展 attention mask。",
-    "whenToUse": "后续需要轻量补强文本条件、风格提示或 layer-aware conditioning 时。",
-    "avoidWhen": "需要可静态合并到模型权重的 LoRA；Soft Tokens 是 live conditioning state。"
+    "summary": "给上下文前置一段可学习 token 的储备能力。当前只做到 seam 接线，运行时开关注入仍被闸住。",
+    "effect": "bank 为空或关闭时是默认路径，与未接线逐位一致；打开时前置的可学习 token 会带梯度参与训练。归档的 AGSM 与 dispersive 模式仍被封锁。",
+    "whenToUse": "研究性质地验证「额外前缀 token 能否承载概念」时，用本地短测观察。",
+    "avoidWhen": "常规训练里不要期待它——请求/配置接线与运行时激活都还没放行，产品路径上它不会真的前置 token。"
+  },
+  "standard_en": {
+    "summary": "A reserve capability that prepends a run of learnable tokens to the context. Only the seam is wired today; the runtime switch is still gated.",
+    "effect": "With an empty bank or disabled it is the default path and bitwise identical to not having the seam; enabled, the prepended learnable tokens carry gradients. The archived AGSM and dispersive modes stay blocked.",
+    "whenToUse": "For research-grade checks of whether extra prefix tokens can carry a concept, observed through a local short test.",
+    "avoidWhen": "Do not expect it in ordinary training -- request/config wiring and runtime activation are both unreleased, so the product path never actually prepends tokens."
   },
   "advanced": {
-    "principle": "根据 layer 和 timestep 选择 token bank，将 learnable tokens 拼到文本 embedding 前面。",
-    "intervention": "Text conditioning path → attention mask expansion → future checkpoint metadata。",
-    "expectedImpact": "会增加文本 token 长度和少量 attention 成本；训练效果需要 。",
-    "tradeoffs": "AGSM/dispersive 模式已明确拒绝，避免复活上游移除路径。",
-    "codePath": "backend/core/lulynx_trainer/soft_tokens.py"
+    "principle": "adapter_research_reserve_seam.apply_soft_tokens_reserve 在 bank 为 None 或关闭时直接返回原上下文；开启才前置可学习 token。价值验证记录为 5/5 与 13 个单测，均为本地 seam 级证据。",
+    "intervention": "上下文拼接位置的一次可选前置，不改模型结构。",
+    "expectedImpact": "目前无可宣称的训练收益；开启后序列变长，注意力开销随之上升。",
+    "tradeoffs": "这是一条默认关闭且未激活的储备路径，不能作为已交付功能宣传；产品界面也不应暴露成可启动开关。"
+  },
+  "advanced_en": {
+    "principle": "adapter_research_reserve_seam.apply_soft_tokens_reserve returns the original context untouched when the bank is None or disabled, and prepends learnable tokens only when enabled. Evidence is 5/5 plus 13 unit tests, all at the local seam level.",
+    "intervention": "An optional prefix at the context-assembly site; the model structure is unchanged.",
+    "expectedImpact": "No claimable training benefit today; enabling it lengthens the sequence and raises attention cost.",
+    "tradeoffs": "This is a default-off, unactivated reserve path and must not be presented as a shipped feature; the product UI should not surface it as a launchable switch either."
   },
   "relatedConfigs": [
-    "soft_tokens_enabled",
-    "soft_tokens_count",
-    "soft_tokens_schedule"
-  ]
+    "chimera_hydra_enabled",
+    "step_expert_routing"
+  ],
+  "reserved": true
 }

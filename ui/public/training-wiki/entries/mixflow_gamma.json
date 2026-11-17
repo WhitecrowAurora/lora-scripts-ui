@@ -1,0 +1,18 @@
+{
+  "key": "mixflow_gamma",
+  "title": "MixFlow Gamma",
+  "category": "LCM / Turbo 蒸馏参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "MixFlow 的插值强度参数，默认 0，仅在 MixFlow 开启时生效。",
+    "effect": "0 表示不额外插值；调大加强训练时间与输入插值之间的解耦程度。",
+    "whenToUse": "MixFlow 开启后按蒸馏路线微调。",
+    "avoidWhen": "MixFlow 关闭时调它没有效果。"
+  },
+  "relatedConfigs": [
+    "mixflow_enabled"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "key": "ltx23_train_audio",
+  "title": "联合训练音频",
+  "category": "训练用模型",
+  "appliesTo": [
+    "ltx23-lora",
+    "ltx25-lora",
+    "ltx23-finetune",
+    "ltx25-finetune"
+  ],
+  "standard": {
+    "summary": "同时训练视频、音频及跨模态交互。默认关闭（只训视频侧）。",
+    "effect": "要求训练视频带音轨、帧步长为 1；开启后自动取消模态隔离，音频分支与跨模态注意力一起进训练。",
+    "whenToUse": "素材有干净音轨、且希望生成结果保留声音时开启。",
+    "avoidWhen": "素材没音轨或帧步长不是 1 时开启会直接被拒；只想出无声视频时没必要开。"
+  },
+  "relatedConfigs": [
+    "ltx23_audio_loss_weight",
+    "ltx23_audio_vae_path"
+  ]
+}

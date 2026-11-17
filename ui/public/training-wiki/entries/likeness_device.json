@@ -1,0 +1,59 @@
+{
+  "key": "likeness_device",
+  "title": "Embedding 运行设备",
+  "title_en": "Embedding Device",
+  "category": "数据集 / 预处理",
+  "category_en": "Dataset / Preprocessing",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "sd-lora",
+    "flux-lora",
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "anima-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "特征提取跑在 CPU 还是 GPU。cpu 不占显存但更慢，cuda 更快但会和大模型抢显存。",
+    "effect": "只影响打分阶段的设备；训练本身仍在主设备上跑。",
+    "whenToUse": "显存吃紧或数据集不大时用 cpu；数据集很大、显存有余量时用 cuda。",
+    "avoidWhen": "显存已经贴着上限时不要用 cuda——打分和模型加载会同时争抢，更容易 OOM。",
+    "optionDescriptions": {
+      "cpu": "不占显存，速度取决于 CPU 核数与图片数量。",
+      "cuda": "走 GPU 前向，快很多，但要和主模型分显存。"
+    }
+  },
+  "standard_en": {
+    "summary": "Whether feature extraction runs on CPU or GPU. cpu costs no VRAM but is slower; cuda is much faster but competes with the model for VRAM.",
+    "effect": "It only affects the scoring stage; training itself still runs on the main device.",
+    "whenToUse": "Use cpu when VRAM is tight or the dataset is small; use cuda for a large dataset with headroom.",
+    "avoidWhen": "Do not use cuda when VRAM is already near the ceiling -- scoring and model loading then compete and OOM sooner.",
+    "optionDescriptions": {
+      "cpu": "No VRAM cost; speed depends on CPU cores and image count.",
+      "cuda": "GPU forward passes, much faster, but shares VRAM with the main model."
+    }
+  },
+  "advanced": {
+    "principle": "settings 把 likeness_device 原样带进 embedder 运行配置，打分阶段据此选设备；look_filter_preparation 的日志会把实际设备打出来，方便对照启动耗时。",
+    "intervention": "只改打分阶段的设备选择，不触碰训练设备与精度。",
+    "expectedImpact": "cuda 通常把打分从分钟级压到秒级，具体取决于模型与图片数量。",
+    "tradeoffs": "设备字符串不做严格校验，写错会在打分时才暴露；cpu / cuda 之外不要填别的。"
+  },
+  "advanced_en": {
+    "principle": "settings carries likeness_device straight into the embedder runtime config, and the scoring stage selects its device from it; look_filter_preparation logs the device it actually used so startup cost can be compared.",
+    "intervention": "Changes only the scoring stage's device choice, never the training device or precision.",
+    "expectedImpact": "cuda typically takes scoring from minutes to seconds, depending on the model and image count.",
+    "tradeoffs": "The device string is not strictly validated, so a typo only surfaces at scoring time; use nothing other than cpu / cuda."
+  },
+  "relatedConfigs": [
+    "likeness_arcface_model_path",
+    "look_filter_enabled"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "key": "universal_dit_sample_eta",
+  "title": "采样随机度 η（仅 ddpm）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "ddpm 目标下预览采样的随机程度，默认 0（确定性 DDIM）。",
+    "effect": "0=确定性 DDIM，同种子同结果；1=祖先采样，每次不同、更接近原始 DDPM。flow 目标忽略此项。",
+    "whenToUse": "想看模型自身多样性时调高；做 A/B 对照时保持 0。",
+    "avoidWhen": "flow-matching 目标下调它没有效果。"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_clean_end_share",
+  "title": "低噪声占比",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "被压到低噪声段的样本比例，默认 0.5（一半）。",
+    "effect": "值越大，越多样本在阈值以下的噪声水平训练；其余样本仍按原分布采样，整体分布两侧形状保留。",
+    "whenToUse": "开启低噪声训练后，想加强细节定型能力时上调。",
+    "avoidWhen": "调到接近 1 等于几乎放弃高噪声段训练，生成时的整体结构会退化。"
+  },
+  "relatedConfigs": [
+    "moss_image_clean_end_enabled",
+    "moss_image_clean_end_cutoff"
+  ]
+}

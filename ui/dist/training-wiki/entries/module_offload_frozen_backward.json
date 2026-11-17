@@ -1,0 +1,29 @@
+{
+  "key": "module_offload_frozen_backward",
+  "title": "冻结 Linear 反向按需读取",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "krea2-lora",
+    "moss-image-lora",
+    "boogu-lora",
+    "flux2-lora"
+  ],
+  "standard": {
+    "summary": "冻结 Linear 在反向读取权重，减少对整块重算的依赖。",
+    "effect": "默认关闭。适用于模块卸载和支持展开的 block 卸载；首先支持普通 FP32/FP16/BF16 Linear。adapter 仍正常求梯度和更新。",
+    "whenToUse": "现有卸载方式成为内存或传输瓶颈时做单项对照。",
+    "avoidWhen": "尚未确认收益时不要同时打开多个新策略。"
+  },
+  "advanced": {
+    "principle": "复用现有冻结层执行器，计算图保存权重访问记录，反向临时读取权重以计算输入梯度。报告 managed_dense_leaves 和 remaining_blocks；尚有块未展开时保留原重算要求。",
+    "tradeoffs": "MOSS 保留重算可降低显存，关闭重算因 RAM 压力中止。Boogu Base/FLUX.2 Klein 的 BF16、1024/BS1、LoRA 三步逐位对照中，活跃显存约降22%/26%，步时约增4%/21%。后续已补齐两家族激活接线，on_demand/shared/prefetch 与冻结权重按需读取的六组各三步逐位通过；shared 再降低约 11.5%/32% 活跃显存，预取未提速。MOSS BF16 sub_block/per-block Inductor 已单独逐位验证；其它家族编译、量化、二阶梯度及 DDP 组合尚未验证。运行中改变冻结权重或在反向前关闭管理器会报错。"
+  },
+  "relatedConfigs": [
+    "activation_cpu_offload_enabled",
+    "optimizer_state_paging_enabled",
+    "blockwise_fused_optimizers",
+    "module_offload_enabled"
+  ]
+}

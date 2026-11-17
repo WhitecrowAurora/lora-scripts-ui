@@ -1,0 +1,18 @@
+{
+  "key": "fp_1f_task",
+  "title": "单帧任务类型",
+  "category": "LCM / Turbo 蒸馏参数",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "单帧训练的任务类型，默认 ref2va。",
+    "effect": "决定数据组织方式；当前只支持 ref2va 一种取值。",
+    "whenToUse": "配合「启用 Ref2VA 单帧训练」使用。",
+    "avoidWhen": "开关没开时此项不生效。"
+  },
+  "relatedConfigs": [
+    "fp_1f_enabled"
+  ]
+}

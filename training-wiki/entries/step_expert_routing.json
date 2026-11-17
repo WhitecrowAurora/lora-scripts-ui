@@ -1,7 +1,9 @@
 {
   "key": "step_expert_routing",
   "title": "Step Expert Routing",
+  "title_en": "Step Expert Routing",
   "category": "LoRA / Turbo",
+  "category_en": "LoRA / Turbo",
   "appliesTo": [
     "anima-lora",
     "newbie-lora"
@@ -9,22 +11,42 @@
   "layers": [
     "LoRA Adapter"
   ],
+  "layers_en": [
+    "LoRA adapter"
+  ],
   "standard": {
-    "summary": "Step Expert Routing 会按 denoise step 或 timestep 选择不同 LoRA 专家，适合 Turbo/few-step 学生路线。",
-    "effect": "不同步数可走不同专家，提升 few-step 适配容量，但 adapter 需要 live routing，不能静态合并成普通 LoRA。",
-    "whenToUse": "后续做 DP-DMD/Turbo 学生并有 checkpoint/save-load 路线时。",
-    "avoidWhen": "需要可合并、可普通推理端加载的 LoRA；当前尚未注册训练入口。"
+    "summary": "Step Expert 会按 denoise 时间步在多个 LoRA 专家之间路由，适合 Turbo / few-step 学生路线。由 step_expert_enabled 开启，专家数与分界由 step_expert_num_experts / step_expert_boundaries 决定。",
+    "effect": "不同步数区间走不同专家，提升 few-step 适配容量；adapter 需要 live routing，不能静态合并成普通 LoRA。开启时 Step Expert 与 ChimeraHydra 互斥，同时要求 network_train_unet_only=true。",
+    "whenToUse": "做 DP-DMD / Turbo 学生、且能接受 adapter 必须带 live routing 加载时。",
+    "avoidWhen": "需要可合并、可由普通推理端加载的普通 LoRA；或同时想开 ChimeraHydra（二者互斥）。"
+  },
+  "standard_en": {
+    "summary": "Step Expert routes between several LoRA experts along the denoise step, which suits Turbo / few-step student routes. Turn it on with step_expert_enabled; the expert count and boundaries come from step_expert_num_experts / step_expert_boundaries.",
+    "effect": "Different step ranges go through different experts, raising few-step adaptation capacity; the adapter then needs live routing and cannot be merged into an ordinary LoRA. Step Expert is mutually exclusive with ChimeraHydra and requires network_train_unet_only=true.",
+    "whenToUse": "When building a DP-DMD / Turbo student and you can accept an adapter that must be loaded with live routing.",
+    "avoidWhen": "When you need a mergeable LoRA that an ordinary inference frontend can load, or you also want ChimeraHydra (the two are mutually exclusive)."
   },
   "advanced": {
-    "principle": "根据 step bucket/timestep 计算专家权重，再组合专家 LoRA delta。",
+    "principle": "StepExpertInjector 用 ContextVar 把采样时间步传给每层，专家分界是 num_experts 均分（也可显式给 boundaries）；up-proj 零初始化，因此 init 时是精确恒等。",
     "intervention": "Turbo denoise step context → live LoRA expert routing。",
     "expectedImpact": "完整接入后可能改善 few-step 质量，但会增加 adapter 参数和推理端要求。",
-    "tradeoffs": "不适合作为普通 LoRA 默认格式。",
-    "codePath": "backend/core/lulynx_trainer/step_expert_routing.py"
+    "tradeoffs": "专家数越多容量越大、显存与文件体积也越大；训练产物依赖 live routing，跨前端可移植性下降。 该能力当前不在 WebUI 训练 schema 内：后端字段 step_expert_enabled / step_expert_boundaries / step_expert_num_experts 只能由 TOML 或手写请求设置。"
+  },
+  "advanced_en": {
+    "principle": "StepExpertInjector passes the sampling timestep down through a ContextVar; expert boundaries are an even split of num_experts unless boundaries are given explicitly. The up-projection is zero-initialised, so at init the adapter is the exact identity.",
+    "intervention": "Turbo denoise step context → live LoRA expert routing.",
+    "expectedImpact": "Once fully wired in, may improve few-step quality, but adds adapter parameters and inference-side requirements.",
+    "tradeoffs": "More experts mean more capacity but also more VRAM and a larger file; the trained artifact then depends on live routing and is less portable across frontends. This capability is not part of the WebUI training schema right now: the backend fields step_expert_enabled / step_expert_boundaries / step_expert_num_experts are settable from TOML or a hand-written request only."
   },
   "relatedConfigs": [
     "step_expert_enabled",
-    "step_expert_count",
-    "step_expert_schedule"
-  ]
+    "step_expert_boundaries",
+    "step_expert_num_experts",
+    "network_dim",
+    "network_alpha"
+  ],
+  "aliases": [
+    "step_expert_routing"
+  ],
+  "reserved": true
 }

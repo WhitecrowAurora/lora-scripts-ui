@@ -10,6 +10,16 @@
 let turbocoreEnabled = false;
 
 /**
+ * 后端统一返回信封 {status, data}；这里同时兼容直接返回业务对象的情况。
+ */
+function unwrapEnvelope(body) {
+  if (body && typeof body === 'object' && body.data && typeof body.data === 'object') {
+    return body.data;
+  }
+  return body && typeof body === 'object' ? body : {};
+}
+
+/**
  * 初始化 TurboCore 切换器
  */
 export function setupTurbocoreToggle(api, showToast) {
@@ -38,8 +48,11 @@ async function loadTurbocoreState(api, btn, label) {
   try {
     const response = await fetch('/api/turbocore/status');
     if (response.ok) {
-      const data = await response.json();
-      turbocoreEnabled = data.enabled || false;
+      const body = await response.json();
+      if (body && body.status === 'error') {
+        throw new Error(body.message || 'TurboCore 状态读取失败');
+      }
+      turbocoreEnabled = unwrapEnvelope(body).enabled === true;
       updateUI(btn, label, turbocoreEnabled);
     }
   } catch (error) {
@@ -65,7 +78,11 @@ async function toggleTurbocore(api, showToast, btn, label) {
       body: JSON.stringify({ enabled: newState })
     });
 
-    if (response.ok) {
+    const body = await response.json().catch(() => null);
+    const data = unwrapEnvelope(body);
+    const businessOk = response.ok && !!body && body.status !== 'error' && data.ok !== false;
+
+    if (businessOk) {
       turbocoreEnabled = newState;
       updateUI(btn, label, turbocoreEnabled);
 
@@ -80,7 +97,7 @@ async function toggleTurbocore(api, showToast, btn, label) {
 
       showToast(turbocoreEnabled ? 'TurboCore 已启用' : '已切换到 PyTorch 原生');
     } else {
-      throw new Error('切换失败');
+      throw new Error((body && (body.message || body.error)) || data.message || '切换失败');
     }
   } catch (error) {
     showToast('TurboCore 切换失败: ' + error.message);

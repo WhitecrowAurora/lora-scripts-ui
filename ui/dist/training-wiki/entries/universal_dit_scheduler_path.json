@@ -1,0 +1,17 @@
+{
+  "key": "universal_dit_scheduler_path",
+  "title": "噪声调度目录（ddpm 目标必填）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "ddpm 类目标（epsilon / v_prediction / x0）需要的调度目录，用来定义「第 N 步」对应的噪声水平。",
+    "effect": "与 universal_dit_beta_schedule 二选一：填了目录就用目录里的调度；留空又选了 ddpm 目标会直接报错，不会静默退化。",
+    "whenToUse": "训练 DDPM 类目标时填写训练所用底模配套的 scheduler 目录。",
+    "avoidWhen": "flow-matching 目标不需要它。"
+  },
+  "relatedConfigs": [
+    "universal_dit_beta_schedule"
+  ]
+}

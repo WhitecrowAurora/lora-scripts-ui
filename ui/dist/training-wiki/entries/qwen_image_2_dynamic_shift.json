@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_2_dynamic_shift",
+  "title": "动态 Shift（图像序列长度自适应）",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-2-lora",
+    "qwen-image-2-finetune"
+  ],
+  "standard": {
+    "summary": "按图像序列长度使用 exponential dynamic shift 调整时间步映射，默认开启。",
+    "effect": "开=shift 随序列长度指数变化，长短序列的噪声水平分布更一致；关=用固定 shift。",
+    "whenToUse": "训练分辨率跨度大（同批里有长短序列）时保持开启。",
+    "avoidWhen": "想让不同分辨率严格共用同一 shift 做对照实验时关闭。"
+  },
+  "relatedConfigs": [
+    "qwen_image_2_timestep_sampling"
+  ]
+}

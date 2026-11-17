@@ -1,0 +1,37 @@
+{
+  "key": "sdxl_turbo_lora",
+  "title": "SDXL Turbo / LCM LoRA",
+  "title_en": "SDXL Turbo / LCM LoRA",
+  "category": "训练 / 蒸馏",
+  "category_en": "Training / Distillation",
+  "appliesTo": [],
+  "standard": {
+    "summary": "把 SDXL 的 teacher 蒸馏成 few-step（LCM 系）LoRA 的专项入口。当前重点是 LCM-LoRA 与短测链路。",
+    "effect": "从基础模型 + 可选 teacher LoRA 出发，按 teacher 步数与 student 步数构造一致性目标，产出带 scheduler-aware metadata 的加速 LoRA。蒸馏方法二选一：lcm_lora（当前推荐）或 turbo_lora。干跑默认开启；真实短测被限制在最多 4 步、batch 1、256~512 分辨率。",
+    "whenToUse": "想在已有风格/角色 LoRA 上做少步加速版本时。",
+    "avoidWhen": "追求成品质量时——真实短测的目的是验证链路与产物可识别，不代表最终质量。想做普通 LoRA 训练请走 LoRA 路线。"
+  },
+  "standard_en": {
+    "summary": "A dedicated entry that distils an SDXL teacher into a few-step (LCM-family) LoRA. The current focus is LCM-LoRA and the short-test chain.",
+    "effect": "Starting from the base model plus an optional teacher LoRA, it builds a consistency target from teacher and student step counts and emits an acceleration LoRA with scheduler-aware metadata. The distillation method is one of two: lcm_lora (currently recommended) or turbo_lora. Dry-run is on by default; a real short test is capped at 4 steps, batch 1 and 256-512 resolution.",
+    "whenToUse": "When you want a few-step accelerated version of an existing style or character LoRA.",
+    "avoidWhen": "When you are after production quality -- the short test exists to prove the chain and that the artifact is recognisable, not to represent final quality. For ordinary LoRA training use the LoRA routes."
+  },
+  "advanced": {
+    "principle": "表单要求关闭 dry-run 时必须同时打开 confirm_real_run；student 步数上限 12、batch 上限 1、分辨率夹在 256~512，超限在启动前就被拒。timestep_sampling 在短测里用 lcm 档，teacher target 取 t 到 t - lcm_target_stride 的一致性跨度。",
+    "intervention": "独立的蒸馏任务，不进入 LoRA 注入器；产物只是 metadata 加权重。",
+    "expectedImpact": "产出的是加速 LoRA，推理时要用对应 scheduler 才对齐；继续训练与合并走普通 LoRA 流程。",
+    "tradeoffs": "与 TurboLoRA（草稿模型投机采样）不是同一件事，名字相近但一个是蒸馏产物、一个是推理加速契约，别混用配置。"
+  },
+  "advanced_en": {
+    "principle": "The form requires confirm_real_run whenever dry-run is switched off; student steps cap at 12, batch at 1, and resolution is clamped to 256-512, so out-of-range values are rejected before launch. timestep_sampling uses the lcm tier in the short test, and the teacher target takes the consistency span from t to t - lcm_target_stride.",
+    "intervention": "An independent distillation job that never enters the LoRA injector; the artifact is metadata plus weights.",
+    "expectedImpact": "The result is an acceleration LoRA that needs the matching scheduler at inference; further training and merging follow the ordinary LoRA flow.",
+    "tradeoffs": "It is not the same thing as TurboLoRA (draft-model speculative sampling): similar names, but one is a distilled artifact and the other an inference acceleration contract -- do not mix their settings."
+  },
+  "relatedConfigs": [
+    "distill_method",
+    "distillation_enabled",
+    "turbo_lora_enabled"
+  ]
+}

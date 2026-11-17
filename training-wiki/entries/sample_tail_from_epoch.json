@@ -1,0 +1,36 @@
+{
+  "key": "sample_tail_from_epoch",
+  "title": "从第几轮起加密",
+  "title_en": "Dense From Epoch",
+  "category": "训练 / 预览",
+  "category_en": "Training / Preview",
+  "appliesTo": [],
+  "standard": {
+    "summary": "从这一轮开始改用下面的间隔出预览。0 表示不加密。计数从这一轮起算，不是从第 1 轮。默认 0。",
+    "effect": "它是加密段的切点，同时是加密计数的起点；配合「加密后每N轮预览」一起生效，单填本项而间隔为 0 时不起作用。",
+    "whenToUse": "总轮数已知、能大致算准「后期」从第几轮开始时。",
+    "avoidWhen": "轮数还没定下来时别填——切点写死之后改总轮数就得同步改这里。"
+  },
+  "standard_en": {
+    "summary": "From this epoch on, previews use the interval below. 0 means no dense phase. Counting starts at this epoch, not at epoch 1. Default 0.",
+    "effect": "It is both the dense phase's switch point and the origin its counter counts from; it works together with the dense interval, and filling it while the interval is 0 does nothing.",
+    "whenToUse": "When the total epoch count is known and you can estimate where \"late\" begins.",
+    "avoidWhen": "Do not set it before the epoch count is settled -- once fixed, changing the total means changing this too."
+  },
+  "advanced": {
+    "principle": "resolve_preview_cadence 先读切点与间隔，若切点 ≤ 0 则直接把加密间隔清零——这就是「切点无效则整段关闭」的落点。due_at_epoch 只在这两者都为正时进入加密判定，否则回落到基础间隔。",
+    "intervention": "预览调度判定中的一个切点比较。",
+    "expectedImpact": "只影响出图时刻表；不影响训练数值。",
+    "tradeoffs": "切点大于总轮数时加密段永远不会触发，程序不会提醒——这是配置上的静默无效，不是 bug 但很容易踩。"
+  },
+  "advanced_en": {
+    "principle": "resolve_preview_cadence reads the switch point and interval first, and zeroes the dense interval when the switch point is <= 0 -- that is where \"invalid switch point disables the whole phase\" lives. due_at_epoch only enters the dense test when both are positive, otherwise it falls back to the base interval.",
+    "intervention": "One switch-point comparison in the preview schedule decision.",
+    "expectedImpact": "Only the render timetable changes; training numerics do not.",
+    "tradeoffs": "A switch point beyond the total epoch count never fires and nothing warns you -- silent in configuration rather than a bug, but easy to fall into."
+  },
+  "relatedConfigs": [
+    "sample_tail_every_n_epochs",
+    "sample_every_n_epochs"
+  ]
+}

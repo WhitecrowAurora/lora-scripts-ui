@@ -1,17 +1,19 @@
 {
   "key": "weight_compression_format",
   "title": "压缩格式",
+  "title_en": "Weight Compression Format",
   "category": "训练参数",
+  "category_en": "Training Parameters",
   "appliesTo": [],
   "layers": [],
   "standard": {
-    "summary": "底层压缩后端。fp8_e4m3 默认；fp8_scaled_e4m3 只在 krea2 / FLUX.2 / Z-Image / Wan2.2 上可用",
+    "summary": "底层压缩后端。fp8_e4m3 默认；fp8_scaled_e4m3 只在 krea2 / FLUX.1 / FLUX.2 / Z-Image / Wan2.2 / MOSS-Image / Qwen-Image 1 / Qwen-Image 2.1 / Flux3 上可用；MiniMax-H3 另有稠密底模普通 LoRA 的条件支持",
     "effect": "",
     "whenToUse": "不确定时先保持默认，小步数短测后再调。",
     "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。",
     "optionDescriptions": {
       "fp8_e4m3": "FP8 E4M3。",
-      "fp8_scaled_e4m3": "FP8 E4M3 + per-output-channel 缩放，导出带 scaled_fp8 标记。仅 krea2 / FLUX.2 / Z-Image / Wan2.2 支持，其余架构预检直接拒；压缩目标必须是 backbone，选 text_encoder 或 both 会被拒。",
+      "fp8_scaled_e4m3": "FP8 E4M3 + 逐输出通道或 block64 缩放，导出带 scaled_fp8 标记。仅 krea2 / FLUX.1 / FLUX.2 / Z-Image / Wan2.2 / MOSS-Image / Qwen-Image 1 / Qwen-Image 2.1 / Flux3 支持；MiniMax-H3 仅支持稠密底模普通 LoRA 的主投影压缩，保留 FP32/AdaLN，INT8 来源和全参训练不支持；其余架构预检直接拒；压缩目标必须是 backbone，选 text_encoder 或 both 会被拒。",
       "torchao_int8": "torchao INT8。",
       "torchao_uint4": "torchao UINT4，压得更狠。",
       "torchao_float8": "torchao Float8。",
@@ -19,12 +21,31 @@
       "quanto_float8": "Quanto Float8。"
     }
   },
+  "standard_en": {
+    "summary": "The underlying compression backend. fp8_e4m3 is the default; fp8_scaled_e4m3 is only available on krea2 / FLUX.1 / FLUX.2 / Z-Image / Wan2.2 / MOSS-Image / Qwen-Image 1 / Qwen-Image 2.1 / Flux3; MiniMax-H3 additionally has conditional support for ordinary LoRA on a dense base",
+    "whenToUse": "When unsure keep the default; run a short low-step test before changing it.",
+    "avoidWhen": "When it conflicts with preflight, or when a mutually exclusive option is enabled at the same time.",
+    "optionDescriptions": {
+      "fp8_e4m3": "FP8 E4M3.",
+      "fp8_scaled_e4m3": "FP8 E4M3 plus per-output-channel or block64 scaling, exported with a scaled_fp8 marker. Only krea2 / FLUX.1 / FLUX.2 / Z-Image / Wan2.2 / MOSS-Image / Qwen-Image 1 / Qwen-Image 2.1 / Flux3 support it. MiniMax-H3 conditionally supports main-projection compression for ordinary LoRA on a dense base, preserving FP32/AdaLN; INT8 sources and full finetuning are unsupported. Preflight refuses other architectures; the compression target has to be backbone, and choosing text_encoder or both is refused.",
+      "torchao_int8": "torchao INT8.",
+      "torchao_uint4": "torchao UINT4, which compresses harder.",
+      "torchao_float8": "torchao Float8.",
+      "quanto_int8": "Quanto INT8.",
+      "quanto_float8": "Quanto Float8."
+    }
+  },
   "advanced": {
-    "principle": "底层压缩后端。fp8_e4m3 默认；fp8_scaled_e4m3 逐输出通道存一个缩放系数，比裸 FP8 保住更多动态范围，但架构矩阵限定在 krea2 / FLUX.2 / Z-Image / Wan2.2 且只压 backbone；torchao/quanto 系列需对应依赖可用，启动前建议开探测。",
+    "principle": "底层压缩后端。fp8_e4m3 默认；fp8_scaled_e4m3 逐输出通道存一个缩放系数，比裸 FP8 保住更多动态范围，但架构矩阵限定在 krea2 / FLUX.1 / FLUX.2 / Z-Image / Wan2.2 / MOSS-Image / Qwen-Image 1 / Qwen-Image 2.1 / Flux3 且只压 backbone；torchao/quanto 系列需对应依赖可用，启动前建议开探测。 MiniMax-H3 使用专用主投影选择，只允许稠密来源的普通 LoRA。",
     "intervention": "",
     "expectedImpact": "",
-    "tradeoffs": "",
-    "codePath": ""
+    "tradeoffs": "MOSS-Image、Qwen-Image 1/2.1、Flux3 已分别通过完整模型 BF16/rank2/block64 的短训、卸载与独立恢复；保存状态和下一更新逐字节一致。Qwen 两代覆盖单样本 epoch 尾，MOSS/Flux3 覆盖双样本 mid-epoch，均为 workers0 配方。压缩保持可选，默认不变；量化改变底模数值，尚无独立画质结论，也不是 FP8 GEMM。Qwen2 的一般启动就绪范围保持原限制。 MiniMax-H3 完整 Ref2VA 的 BF16/math/rank2、逐输出通道和 block64、48 块卸载及单样本 epoch 尾独立恢复已通过；两种 FP8 粒度均完成 2 步基线与独立恢复后的 1 步更新，保存状态与下一更新逐字节一致。teacher、其它配方和画质未验收。FP8 训练阶段 RAM 较低，但加载仍先物化 BF16 底模。"
+  },
+  "advanced_en": {
+    "principle": "Underlying compression backend. fp8_e4m3 is the default; fp8_scaled_e4m3 stores a scale factor per output channel, preserving more dynamic range than bare FP8, but the architecture matrix is limited to krea2 / FLUX.1 / FLUX.2 / Z-Image / Wan2.2 / MOSS-Image / Qwen-Image 1 / Qwen-Image 2.1 / Flux3 and it compresses only the backbone; the torchao/quanto family requires the corresponding dependencies available — run capability detection before launch. MiniMax-H3 uses a dedicated main-projection selection for ordinary LoRA on dense sources.",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "MOSS-Image, Qwen-Image 1/2.1 and Flux3 passed full-model BF16/rank2/block64 short training, offload and independent resume checks with byte-exact saved and next-update state. Qwen covers one sample at the epoch tail; MOSS/Flux3 cover two samples with mid-epoch resume, all with workers0. Compression remains opt-in and defaults are unchanged. Quantization changes base weights; image quality is unqualified and this is not FP8 GEMM. Qwen2 general launch readiness remains restricted. Full MiniMax-H3 Ref2VA passed BF16/math/rank2 short training with both per-output-channel and block64 FP8 storage, 48 swapped blocks and independent resume at a one-sample epoch boundary. Each FP8 granularity completed two baseline updates plus one independent resumed update with byte-exact saved state and next update. Teacher, other recipes and image quality remain unqualified. FP8 uses less RAM during training but still materializes the BF16 base during loading."
   },
   "relatedConfigs": []
 }

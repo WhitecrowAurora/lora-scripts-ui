@@ -1,0 +1,27 @@
+{
+  "key": "multi_aspect_guidance_min_t",
+  "title": "多维引导 σ 下界",
+  "category": "前沿储备 / 探针",
+  "appliesTo": [
+    "anima-lora",
+    "anima-edit-model",
+    "newbie-lora",
+    "sd3-lora"
+  ],
+  "standard": {
+    "summary": "仅噪声比例 σ 达到下界且实际带有该类别的样本参与。",
+    "effect": "引导只在 sigma 高于下界时生效。",
+    "whenToUse": "聚焦高噪声阶段。",
+    "avoidWhen": "默认 0 全程。"
+  },
+  "advanced": {
+    "principle": "类别来自最终选中的 JSON caption；新缓存保存类别，旧缓存无类别时跳过，可显式重建补齐。sigma 筛选后按类别选择样本。Latent scorer 比较统计特征，不产生自动身份/风格语义标签。"
+  },
+  "relatedConfigs": [],
+  "standard_en": {
+    "summary": "Include only samples inside the noise-fraction window that carry the evaluated category."
+  },
+  "advanced_en": {
+    "principle": "Categories follow the selected JSON caption and cache variant. Legacy caches without metadata are skipped until explicitly rebuilt. Each category uses its own samples within the sigma window; latent statistics are not semantic labels."
+  }
+}

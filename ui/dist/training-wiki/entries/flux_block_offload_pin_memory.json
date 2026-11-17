@@ -1,0 +1,39 @@
+{
+  "key": "flux_block_offload_pin_memory",
+  "title": "Block Offload Pin Memory",
+  "title_en": "Block Offload Pin Memory",
+  "category": "训练参数",
+  "category_en": "Training Parameters",
+  "appliesTo": [],
+  "layers": [],
+  "standard": {
+    "summary": "把 FLUX.1 卸载到内存的权重按块实际大小锁页，默认开启。16G 卡实测每步 19.3s→14.9s。锁页总量有上限（Windows 约为总内存的 45%），并始终保留 8 GiB 空闲；内存不够时只锁一部分，其余走普通内存。",
+    "effect": "",
+    "whenToUse": "使用 block_residency 时保持开启即可；内存小的机器会自动少锁一些。",
+    "avoidWhen": "训练时还要同时运行很吃内存的程序时可以关闭；关闭后可改用 CPU 预填充。"
+  },
+  "standard_en": {
+    "summary": "Page-locks the FLUX.1 weights offloaded to system RAM at their exact block size; on by default. Measured 19.3s to 14.9s per step on a 16GB card. The total is capped (about 45% of RAM on Windows) and 8 GiB is always left free; when RAM is short only part is locked and the rest stays pageable.",
+    "whenToUse": "Leave it on when using block_residency; machines with less RAM lock less automatically.",
+    "avoidWhen": "Turn it off if other memory-heavy programs must run during training; with it off, CPU prefill is available instead."
+  },
+  "advanced": {
+    "principle": "锁页内存不能被系统换出，GPU 可以直接异步读取，所以拷贝能和计算并行。普通内存的拷贝要先经过驱动的暂存区，CPU 会等它完成。",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "提速约 22%，代价是锁住的约 22GB 内存不能被换出或让给其他程序（权重本来就要放在内存里，总量不增加）。",
+    "codePath": ""
+  },
+  "advanced_en": {
+    "principle": "Pinned memory cannot be paged out and the GPU can read it asynchronously, so copies run alongside compute. Pageable copies go through a driver staging buffer and the CPU waits for them.",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "About 22% faster; the roughly 22GB that is locked cannot be paged out or given to other programs (the weights live in RAM either way, so the total does not grow).",
+    "codePath": ""
+  },
+  "relatedConfigs": [
+    "flux_block_offload_gpu_slots",
+    "flux_block_offload_prefetch_depth",
+    "flux_transformer_offload"
+  ]
+}

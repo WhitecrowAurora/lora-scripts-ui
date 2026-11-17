@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_block_offload_pin_memory",
+  "title": "Block Offload 锁页内存",
+  "category": "速度 / 显存",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "整块搬运时是否使用锁页内存，默认关闭。",
+    "effect": "开启后冻结权重块常驻锁页内存，搬运更快但锁页内存占用上升；关闭后可以改用小型锁页暂存池的 CPU 预填充方案。两者是二选一的搬运策略。",
+    "whenToUse": "内存充足、只想让搬运更快时开启。",
+    "avoidWhen": "打算用 CPU 预填充时保持关闭，否则预填充暂存池不会生效。"
+  },
+  "relatedConfigs": [
+    "moss_image_block_offload_prefill_enabled",
+    "moss_image_block_residency"
+  ]
+}

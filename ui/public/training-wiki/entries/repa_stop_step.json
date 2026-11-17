@@ -1,0 +1,26 @@
+{
+  "key": "repa_stop_step",
+  "title": "REPA 停止步数",
+  "category": "训练 / 表征对齐",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "完成 N 次优化器更新后停止 REPA/SoftREPA 对齐及其教师编码、特征捕获，默认 -1（持续对齐）。",
+    "effect": "0=从一开始就停用；梯度累积的微批次不单独计步，恢复训练沿用累计步数。停用后不再有对齐损失与教师编码开销。",
+    "whenToUse": "REPA 的收益集中在前半程、后期会拖慢训练时，设一个中后段步数提前收尾。",
+    "avoidWhen": "没开 REPA/SoftREPA 时此项无意义，保持默认即可。"
+  },
+  "relatedConfigs": [
+    "repa_enabled",
+    "repa_loss_weight"
+  ]
+}

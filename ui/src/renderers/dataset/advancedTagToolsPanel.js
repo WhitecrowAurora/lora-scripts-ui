@@ -25,20 +25,21 @@ const SEGMENTS = [
   { id: 'cross', label: '跨数据集情报' },
 ];
 
-export function createAdvancedTagToolsPanel({ api, $, escapeHtml, showToast }) {
+export function createAdvancedTagToolsPanel({ api, $, escapeHtml, showToast, state }) {
   let activeSegment = 'pipeline';
   let advancedEnabled = null;
 
-  const context = createAdvancedTagToolsContext({ $, escapeHtml });
-  const batchTools = createAdvancedTagBatchTools({ api, $, showToast, context });
-  const workflowTools = createAdvancedTagWorkflowTools({ api, $, showToast, context });
+  const context = createAdvancedTagToolsContext({ api, $, escapeHtml, state });
+  const authorityApi = context.withCaptionAuthorityApi;
+  const batchTools = createAdvancedTagBatchTools({ api: authorityApi, $, showToast, context });
+  const workflowTools = createAdvancedTagWorkflowTools({ api: authorityApi, $, showToast, context });
 
   async function renderAdvancedTagTools() {
     const content = $('#dataset-content');
     if (!content) return;
     if (advancedEnabled === null) {
       try {
-        const status = await api.getTagEditorStatus();
+        const status = await authorityApi.getTagEditorStatus();
         advancedEnabled = Boolean(status?.data?.advanced_enabled ?? status?.advanced_enabled);
       } catch (_e) {
         advancedEnabled = false;

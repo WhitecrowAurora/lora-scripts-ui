@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_tokenizer_path",
+  "title": "Tokenizer / Processor 目录（可选）",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "单独指定 tokenizer / processor 目录，留空则按默认布局加载。",
+    "effect": "与文本编码器配套；两者不匹配会导致编码长度或特殊 token 不一致。",
+    "whenToUse": "tokenizer 与文本编码器分开存放时填写。",
+    "avoidWhen": "默认布局完整时留空，避免配错。"
+  },
+  "relatedConfigs": [
+    "moss_image_text_encoder_path",
+    "moss_image_processor_path"
+  ]
+}

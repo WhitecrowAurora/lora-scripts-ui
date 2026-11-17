@@ -1,7 +1,26 @@
 // Shared DOM and response helpers for the advanced tag tools panel.
 
-export function createAdvancedTagToolsContext({ $, escapeHtml }) {
+export function createAdvancedTagToolsContext({ api, $, escapeHtml, state }) {
   const esc = (value) => escapeHtml(String(value ?? ''));
+  const captionAuthority = () => ({
+    caption_extension: state?.config?.caption_extension || '.txt',
+    prefer_json_caption: Boolean(state?.config?.prefer_json_caption),
+  });
+  const withCaptionAuthority = (params = {}) => ({
+    ...params,
+    ...captionAuthority(),
+  });
+  const withCaptionAuthorityApi = new Proxy({}, {
+    get(_target, property) {
+      const value = api?.[property];
+      if (typeof value !== 'function') return value;
+      return (params = {}, ...rest) => value.call(
+        api,
+        withCaptionAuthority(params),
+        ...rest,
+      );
+    },
+  });
 
   function pathPicker(id, placeholder = './train/your_dataset') {
     return `
@@ -67,6 +86,9 @@ export function createAdvancedTagToolsContext({ $, escapeHtml }) {
     errorBox,
     unwrap,
     samplesList,
+    captionAuthority,
+    withCaptionAuthority,
+    withCaptionAuthorityApi,
   };
 }
 

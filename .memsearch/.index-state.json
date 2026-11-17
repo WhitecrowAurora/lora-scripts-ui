@@ -1,16 +1,18 @@
 {
   "collection": "ms_lora_scripts_ui_main_1f3eed63",
   "failed_files": [],
-  "last_completed_at": "2026-07-28T05:10:09.694115Z",
-  "last_error": "RuntimeError: milvus-lite does not support Windows (no wheels on PyPI).\nUse a remote Milvus server instead:\n  docker run -d -p 19530:19530 milvusdb/milvus:latest standalone\n  MemSearch(milvus_uri='http://localhost:19530')\nOr run memsearch inside WSL2: https://learn.microsoft.com/en-us/windows/wsl/install",
-  "last_failed_at": "2026-07-28T05:10:09.694115Z",
-  "last_started_at": "2026-07-28T05:10:07.301723Z",
+  "indexed_chunks": 129,
+  "indexed_files": 11,
+  "last_completed_at": "2026-10-30T03:51:40.546263Z",
+  "last_started_at": "2026-10-30T03:50:36.389833Z",
+  "last_success_at": "2026-10-30T03:51:40.546263Z",
   "milvus_uri": "~/.memsearch/milvus.db",
   "operation": "index",
   "paths": [
     "H:/lulynx-trainer/plugin/lora-scripts-ui-main/.memsearch/memory"
   ],
   "schema_version": 1,
-  "status": "error",
-  "updated_at": "2026-07-28T05:10:09.694115Z"
+  "status": "ok",
+  "total_files": 11,
+  "updated_at": "2026-10-30T03:51:40.546263Z"
 }

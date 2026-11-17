@@ -1,0 +1,36 @@
+{
+  "alias": [
+    "auto_controller_enabled -> ac_enabled",
+    "ema_use_ema -> ema_enabled",
+    "lulynx_ema_enabled -> ema_enabled",
+    "lulynx_safeguard_enabled -> safeguard_enabled",
+    "optimizer_args -> optimizer_args_custom",
+    "bw_enable -> enable_block_weights",
+    "block_swap_sliding_window_granularity -> swap_granularity",
+    "pruning_enabled -> adapter_mask_pruning_enabled",
+    "native_training_method -> network_module",
+    "fp8_base_compute -> fp8_base",
+    "fused_optimizer -> blockwise_fused_optimizers",
+    "p2_weighting_enabled -> p2_weighting_mode",
+    "anima_model_prediction_type -> model_prediction_type"
+  ],
+  "rekey": [
+    "lulynx_progressive_rank_min -> tlora_min_rank",
+    "lulynx_progressive_rank_schedule -> tlora_rank_schedule",
+    "muon_momentum -> opt_muon_momentum",
+    "use_dora -> dora_variant",
+    "lora_rank_dropout -> rank_dropout",
+    "newbie_lora_target -> newbie_target_modules"
+  ],
+  "superseded": [
+    "num_train_epochs (removed from 6 copies)",
+    "lulynx_progressive_rank_lora (removed from 6 copies)",
+    "anima_compile_scope (removed from 6 copies)",
+    "train_text_encoder (removed from 6 copies)",
+    "lineart_loss_enabled (removed from 6 copies)"
+  ],
+  "errors": [
+    "alias target missing: lulynx_tensor_ring_adapter_enabled -> tensorring_lora_enabled",
+    "alias target missing: perceptual_anchor_loss_enabled -> lulynx_latent_anchor_enabled"
+  ]
+}

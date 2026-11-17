@@ -1,0 +1,44 @@
+{
+  "key": "quality_readback_model_path",
+  "title": "本地提示词回读与图像诊断",
+  "title_en": "Local prompt readback and image diagnostics",
+  "category": "训练 / 质量评估",
+  "standard": {
+    "summary": "训练结束质量评估中的两项可选本地诊断：spectra_readback 与 class_drift。",
+    "effect": "在评估指标中填写对应名称后显示模型配置。默认指标列表不变，两项默认综合权重均为0；不会据此自动改参数。",
+    "whenToUse": "已有兼容本地模型，希望检查提示词回读、固定类别相对概率，或生成图分类器在独立标注测试集上的准确率时使用。回读需视觉语言模型；逐类诊断可选完整CLIP或本地DINOv2权重及官方代码。 DINOv2 SAE 可对照相同提示词与 seed 的基模/检查点图像概念能量，无需类别标签。",
+    "avoidWhen": "没有通用质量提升保证。固定类别 CLIP 概率不等于准确率。CLIP 生成图原型采用DriftScope文中描述的均值原型子协议，不是原始Gaussian分类器或完整论文实现；只评价所提供的独立测试集，不代表每类240图规模或完整SAE定位。两种方法均不证明遗忘因果。"
+  },
+  "advanced": {
+    "summary": "CLIP与回读仅读取本地模型；Gaussian执行显式选择的本地DINOv2 hub代码与权重，不联网下载。CPU节省显存，CUDA额外占用显存。",
+    "details": [
+      "回读计算图像条件下提示词第二个及以后token的平均logprob，排除模板、图像、首token和EOS；2–512 token，超出不截断。SmolVLM使用已记录的单图512px处理。",
+      "固定类别每行一项或JSON字符串数组，至少两个不同非空类别；CLIP文本模板为a photo of {class}。",
+      "逐类诊断方法默认clip_fixed_class_softmax；clip_generated_prototypes将各阶段已有生成图的CLIP图像嵌入按类别取均值作为原型，在同一独立标注测试集上做最近余弦分类。生成图数量仍由原质量评估采样设置控制，不自动生成每类240张图。",
+      "dinov2_gaussian按原GDC的DINOv2特征→每类Gaussian→独立测试图分类结构执行。使用x_norm_clstoken、224×224 RGB双三次缩放、ImageNet标准化，不对CLS做L2归一化；全协方差按N估计，加quality_class_gaussian_regularization（默认1e-8）乘单位阵，采用等类先验。不是CLIP余弦原型。",
+      "Gaussian复用quality_dino_model/quality_dino_code_path/quality_dino_model_path/quality_dino_device。每类至少2张不同生成图且特征有变化；协方差秩最多N-1，正则项不增加真实自由度。输出实际样本数、特征维度、秩、正则项与各类后验；后验未经独立校准。不会重复扰动同图来冒充独立抽样，不自动增加生成步数。",
+      "dinov2_sae 使用本地 RA-SAE-DINOv2-32k encoder safetensors（quality_sae_encoder_path）、匹配 dinov2_vitb14_reg 的权重（quality_sae_dino_model_path）与 quality_dino_code_path 官方本地 hub 代码。固定 CPU、FP32、全261 token能量求和；与 Gaussian/DINO-I 权重分开，不下载或执行 SAE pickle/decoder。",
+      "SAE 需开启基础模型对比，以相同case/prompt/seed/完整suite身份与实际加载provider内容配对。逐图保存图片SHA与完整非零概念能量，成对保存原始signed energy delta和sigmoid(delta)，跨图使用等权平均能量；缺图、编码失败或身份不一致不会补零。空能量字典只表示成功编码后的真实全零。概念ID未经语义标注，sigmoid不代表质量、遗忘概率或因果；score保持为空，不加入综合奖励。",
+      "官方SAE材料来源：matybohacek/RA-SAE-DINOv2-32k，revision 1e10a216938e112302b31e3bb2f69818e59a12a9，CC-BY-SA-4.0；encoder是本地无损提取的四推理张量，不包含大decoder。阈值评估协议采用官方HF wrapper的running_threshold=0.829，不是旧训练脚本的batch top-k。详见本地材料转换说明。",
+      "生成图原型独立测试集清单格式：{\"schema_id\":\"lulynx.class_prototype_reference\",\"schema_version\":1,\"dataset_id\":\"my-reference-set\",\"label_source\":\"人工或公开数据集标签出处\",\"samples\":[{\"case_id\":\"ref-cat-1\",\"class_name\":\"cat\",\"image_path\":\"images/cat.png\"},{\"case_id\":\"ref-dog-1\",\"class_name\":\"dog\",\"image_path\":\"images/dog.png\"}]}。路径可相对清单或绝对路径；标签需由使用者明确提供，不能以模型预测充当真值。",
+      "生成图原型至少两类，各类需有生成原型和独立测试图；原型与测试同图会被拒绝。基模/检查点只比较原型case集及参考数据身份一致的有效结果。结果显示正确数/已评分数、参考图总数、逐类分母及原型数量；缺失不记为零，不从单阶段推导变化。准确率和下降阈值采用0–1数值。",
+      "提示词类别按实际评估提示词顺序填写，每行一项或JSON数组；中间空行保留位置，缺失或不属于固定表的类别不评分。不从提示词猜类别。评估提示词仍沿原逗号/换行语法解析。",
+      "需开启基础模型对比，使用相同prompt/seed/class/suite/provider/taxonomy的有效成对结果计算下降。缺图、失败或重复case不补分。",
+      "关闭质量评估或未选择对应指标时，界面不提交其模型配置。缺少模型/标签在评估产物中记unavailable。"
+    ]
+  },
+  "relatedConfigs": [
+    "quality_evaluation_enabled",
+    "quality_evaluation_metrics",
+    "quality_evaluation_compare_base",
+    "quality_class_method",
+    "quality_class_reference_manifest",
+    "quality_class_labels",
+    "quality_class_prompt_labels",
+    "quality_class_gaussian_regularization",
+    "quality_dino_model_path",
+    "quality_dino_code_path",
+    "quality_sae_encoder_path",
+    "quality_sae_dino_model_path"
+  ]
+}

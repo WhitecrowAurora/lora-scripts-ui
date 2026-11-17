@@ -1,0 +1,52 @@
+{
+  "key": "likeness_arcface_model_path",
+  "title": "Embedding 权重路径 (ONNX)",
+  "title_en": "Embedding Weights (ONNX)",
+  "category": "数据集 / 预处理",
+  "category_en": "Dataset / Preprocessing",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "sd-lora",
+    "flux-lora",
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "anima-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "自备的 ArcFace 或其它 embedding 模型的 .onnx 路径。本程序不附带权重、也不自动下载，许可由你自行遵守。",
+    "effect": "外观一致性检查与相似度打分都从这里加载特征提取器。开关打开却留空时提交会被拒绝，而不是静默跳过整段检查。",
+    "whenToUse": "要开 likeness 打分或外观一致性检查时必填。",
+    "avoidWhen": "不打算用这两个功能时留空——路径填错会在训练准备期才炸，白等一次 DataLoader 构建。"
+  },
+  "standard_en": {
+    "summary": "Path to your own ArcFace (or other embedding) .onnx model. No weights are bundled and nothing is downloaded automatically; the licence is yours to honour.",
+    "effect": "Both the look-consistency check and similarity scoring load their feature extractor from here. With the check on and this empty, submission is rejected rather than the whole check being silently skipped.",
+    "whenToUse": "Required when enabling likeness scoring or the look-consistency check.",
+    "avoidWhen": "Leave it empty if you are not using either feature -- a wrong path only blows up during training preparation, wasting a DataLoader build."
+  },
+  "advanced": {
+    "principle": "lulynx_embedder.settings 把 likeness_arcface_model_path 与 likeness_model_path 一起读进 settings，backend=arcface 时优先用前者；base.py 的 arcface stub 在没有权重时直接抛错，而不是返回零向量。",
+    "intervention": "训练准备期的数据集打分阶段，与主训练图无关。",
+    "expectedImpact": "打分本身要遍历全部图片，会延后第一步；用 CPU 时更明显。",
+    "tradeoffs": "ONNX 只做前向推理，不参与反传；不要把它和训练用 LoRA / 底模路径混为一谈。"
+  },
+  "advanced_en": {
+    "principle": "lulynx_embedder.settings reads likeness_arcface_model_path alongside likeness_model_path into the settings object, preferring the former when backend=arcface; the arcface stub in base.py raises instead of returning zero vectors when no weights are configured.",
+    "intervention": "The dataset scoring stage of training preparation; unrelated to the main training graph.",
+    "expectedImpact": "Scoring itself walks every image and delays the first step, more so on CPU.",
+    "tradeoffs": "ONNX is used for forward inference only and takes no part in backprop; do not confuse it with a training LoRA or base-model path."
+  },
+  "relatedConfigs": [
+    "likeness_device",
+    "look_filter_enabled",
+    "likeness_model_path"
+  ]
+}

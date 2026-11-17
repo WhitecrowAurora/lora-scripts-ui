@@ -1,26 +1,51 @@
 {
   "key": "module_offload_profile",
   "title": "Module Offload 配置",
-  "category": "训练参数",
-  "appliesTo": [],
-  "layers": [],
+  "title_en": "Module offload profile",
+  "category": "速度 / 显存",
+  "category_en": "Speed / VRAM",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sd-lora",
+    "sdxl-finetune",
+    "sd-dreambooth",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "aliases": [
+    "offload_optimizer_device"
+  ],
   "standard": {
-    "summary": "预设的 offload 策略：balanced=平衡；aggressive=激进（最省显存）；conservative=保守（更快）。",
-    "effect": "",
-    "whenToUse": "不确定时先保持默认，小步数短测后再调。",
-    "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。",
-    "optionDescriptions": {
-      "conservative": "少卸，快，占显存。",
-      "balanced": "中间。",
-      "aggressive": "多卸，峰值最低，空等也多。"
-    }
+    "summary": "按预设比例把 backbone / text encoder 权重卸载到 CPU 内存，用吞吐换显存。旧的「优化器状态卸载」入口已并入该策略。",
+    "effect": "conservative=backbone 25% / TE 0%（最快）；balanced=50% / 25%（默认）；aggressive=75% / 50%（最省显存、最慢）。与 memory swap、vram_swap_to_ram、safe_fallback、多卡/DeepSpeed、Thunder 后端互斥；配合 torch.compile 时只允许 per_block 且关闭 fullgraph。",
+    "whenToUse": "显存吃紧但还想保留单卡训练时先试 balanced；OOM 再升 aggressive。",
+    "avoidWhen": "已经开了 swap_granularity / vram_swap_to_ram / safe_fallback 或多卡训练时不要再开，二者只能选一。"
+  },
+  "standard_en": {
+    "summary": "Offloads backbone / text-encoder weights to CPU memory at preset ratios, trading VRAM for throughput. The old optimizer-state offload entry has been merged into this profile.",
+    "effect": "conservative = backbone 25% / TE 0% (fastest); balanced = 50% / 25% (default); aggressive = 75% / 50% (lowest VRAM, slowest). Mutually exclusive with memory swap, vram_swap_to_ram, safe_fallback, multi-GPU/DeepSpeed and the Thunder backend; with torch.compile only per_block scope with fullgraph disabled is allowed.",
+    "whenToUse": "Try balanced first when VRAM is tight but you want single-GPU training; move up to aggressive on OOM.",
+    "avoidWhen": "Do not combine with swap_granularity / vram_swap_to_ram / safe_fallback or multi-GPU training -- pick one strategy."
   },
   "advanced": {
-    "principle": "预设的 offload 策略：balanced=平衡；aggressive=激进（最省显存）；conservative=保守（更快）。",
-    "intervention": "",
-    "expectedImpact": "",
-    "tradeoffs": "",
-    "codePath": ""
+    "principle": "按模块粒度而非优化器状态粒度做 CPU offload；比例预设由 module_offload_contract 定义，后端另有 custom 档可自行指定比例。",
+    "tradeoffs": "卸载的速度代价：CPU offload ≈ 2-5× 慢（取决于 PCIe 带宽）；disk offload ≈ 5-20× 慢（取决于 SSD 速度）。但对于原本显存不足无法训练的场景，这是唯一选择。"
   },
-  "relatedConfigs": []
+  "advanced_en": {
+    "principle": "Offload happens at module granularity rather than optimizer-state granularity; the ratio presets come from module_offload_contract, and the backend also offers a custom profile for manual ratios.",
+    "tradeoffs": "Offload's speed cost: CPU offload ≈ 2-5× slower (PCIe-bound); disk offload ≈ 5-20× slower (SSD-bound). But for setups that cannot train due to VRAM shortage, it is the only option."
+  },
+  "relatedConfigs": [
+    "gradient_checkpointing",
+    "anima_block_prefetch",
+    "xformers"
+  ]
 }

@@ -1,4 +1,7 @@
+import { getModelCodeTrust, withoutModelCodeTrust } from '../features/modelCodeTrust.js';
+
 function cloneValue(value) {
+  value = withoutModelCodeTrust(value);
   if (typeof structuredClone === 'function') return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
 }
@@ -62,6 +65,7 @@ export function createConfigTransaction({ state, api, debounceMs = 240 }) {
   }
 
   function markDirty(typeId = state.activeTrainingType, config = state.config) {
+    getModelCodeTrust(state).isEnabled(config, typeId);
     const normalizedType = String(typeId || '').trim();
     if (!normalizedType || !config || typeof config !== 'object') return editRevision;
     editRevision += 1;

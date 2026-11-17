@@ -1,0 +1,25 @@
+{
+  "key": "dop_trigger_replacement",
+  "title": "DOP 类别替换文本",
+  "category": "采样与优化",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "把移除的触发词替换成这段类别描述；留空则直接移除。",
+    "effect": "替换后条件仍保留一个泛类别语义，避免条件为空；留空则条件里完全不出现该概念。",
+    "whenToUse": "想让去触发条件仍带一点类别先验时填（如 generic person）。",
+    "avoidWhen": "替换文本本身含触发词时等于没移除。"
+  },
+  "relatedConfigs": [
+    "dop_trigger_words"
+  ]
+}

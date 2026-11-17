@@ -1,0 +1,39 @@
+{
+  "key": "h3_video_only",
+  "title": "仅训练视频",
+  "title_en": "Video Only",
+  "category": "MiniMax H3 / 高级",
+  "category_en": "MiniMax H3 / Advanced",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "开着时丢掉音轨，只让视频分支参与训练；ref2va（单帧参考生视频+音频）任务例外，仍然带音频。",
+    "effect": "audio latents 在 train step 里直接不加载，音频侧 loss 与 CFG 合成整段不执行。",
+    "whenToUse": "数据集音频质量差、或只想练视频分支时。",
+    "avoidWhen": "要练音视频联合生成时——这会静默去掉一半监督信号。ref2va 任务不受此开关影响，别指望用它关掉参考任务的音频。"
+  },
+  "standard_en": {
+    "summary": "When on, the audio track is dropped and only the video branch trains; the ref2va task (one reference frame to video plus audio) is exempt and still carries audio.",
+    "effect": "Audio latents are not loaded in the train step at all, so the audio loss and audio CFG composition never run.",
+    "whenToUse": "When dataset audio quality is poor, or you only want to train the video branch.",
+    "avoidWhen": "For joint audio-video generation -- this silently removes half the supervision. ref2va tasks ignore this switch, so do not expect it to mute a reference task's audio."
+  },
+  "advanced": {
+    "principle": "train_step 用 cached.one_frame_task == 'ref2va' or not h3_video_only 决定是否保留 audio latents；保留后再按 audio_present 掩码剔除缺失音频的样本，混批（部分有音频）直接报错要求重新分桶或把 batch 降到 1。",
+    "intervention": "DiT 前向之前的输入准备，模型与 loss 结构不变。",
+    "expectedImpact": "开启后每步少一次音频分支前向，显存与耗时都下降。",
+    "tradeoffs": "缓存在数据集层面已经建好，开关只影响读取；要彻底省下音频缓存的磁盘占用得重建缓存。"
+  },
+  "advanced_en": {
+    "principle": "train_step keeps audio latents based on cached.one_frame_task == 'ref2va' or not h3_video_only; after that it masks out samples without audio by audio_present, and a mixed batch (some with audio) raises immediately, asking for re-bucketing or batch size 1.",
+    "intervention": "Input preparation before the DiT forward; the model and loss structure are unchanged.",
+    "expectedImpact": "Turning it on removes one audio-branch forward per step, cutting both VRAM and time.",
+    "tradeoffs": "Caches are already built at the dataset layer, so the switch only affects reading; reclaiming the audio cache's disk footprint needs a rebuild."
+  },
+  "relatedConfigs": [
+    "h3_cfg_scale",
+    "h3_blocks_to_swap"
+  ]
+}

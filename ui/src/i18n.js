@@ -49,6 +49,22 @@ const translations = {
     json_panel: {
       header: 'Parameter preview',
     },
+    // 参数说明弹窗的壳。正文来自 wiki 词条的 `*_en`（`utils/trainingWiki.js` 的
+    // `pickLocalizedEntry`），壳在这里 —— 只译正文的话英文界面上是中文小标题套英文段落。
+    help: {
+      summary: 'Summary',
+      effect: 'Effect',
+      when: 'When to use',
+      avoid: 'Avoid when',
+      options: 'Options',
+      notes: 'Notes',
+      related: 'Related settings',
+      loading: 'Loading…',
+      close: 'Close',
+      title_fallback: 'Parameter',
+      category_fallback: 'Training Parameters',
+      fallback_note: 'The full wiki entry is still being written; what you see comes from the training schema.',
+    },
     settings: {
       title: 'System settings',
       language: 'Language',
@@ -105,6 +121,20 @@ const translations = {
     },
     json_panel: {
       header: '参数预览',
+    },
+    help: {
+      summary: '简单说',
+      effect: '打开后效果',
+      when: '适合什么时候开',
+      avoid: '什么时候先别开',
+      options: '可选值',
+      notes: '补充说明',
+      related: '相关配置',
+      loading: '正在加载参数说明...',
+      close: '关闭',
+      title_fallback: '参数说明',
+      category_fallback: '训练参数',
+      fallback_note: '完整 Wiki 条目还在补充中，当前内容来自训练 schema。',
     },
     settings: {
       title: '系统设置',

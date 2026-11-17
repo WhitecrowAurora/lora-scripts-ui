@@ -20,10 +20,16 @@ import {
   resolveSectionTitle,
 } from '../schemaFieldI18n.js';
 import { api } from '../api.js';
+import { request } from '../apiTransport.js';
+import { getModelCodeTrust, renderModelCodeTrust } from '../features/modelCodeTrust.js';
+import { qualityClassListDisplayValue } from '../features/qualityDiagnosticValues.js';
+import { buildRunConfig } from '../schemaIndex.js';
 import { createWeightComposerActions, renderWeightComposerPreview, scheduleWeightComposerPreview } from './weightComposerPreview.js';
 import { createTrainingIntentProfileActions, renderTrainingIntentProfilePreview } from './trainingIntentProfilePreview.js';
 import { renderProgressivePhaseEditorField } from './progressivePhaseEditor.js';
+import { renderConceptDirectionPairsField } from './conceptDirectionPairs.js';
 import { renderOrderedMultiSelectField } from './orderedMultiSelect.js';
+import { renderOptimizationChoices } from './optimizationChoices.js';
 import { attentionBackendBlockReason, makeAttentionOptions } from '../features/attentionCapabilities.js';
 import { deviceOptions } from '../features/deviceOptions.js';
 import {
@@ -336,6 +342,9 @@ export function createConfigFormRenderer({
       return renderPreviewGroupsField(field, disabledAttr, disabledCls, modCls, conflictWith, renderHeader);
     }
 
+    if (field.type === 'concept_direction_pairs') {
+      return renderConceptDirectionPairsField({ field, value, disabledAttr, disabledCls, modCls, renderHeader, renderFieldDescription });
+    }
     if (field.type === 'semantic_region_weights') {
       return renderSemanticRegionWeightsField({
         field,
@@ -365,6 +374,12 @@ export function createConfigFormRenderer({
         renderConflictHint,
       });
     }
+    if (field.type === 'csvMultiSelect' && ['lulynx_optimization_features', 'turbocore_optimizer_algorithms'].includes(field.key)) {
+      return renderOptimizationChoices({
+        field, value, options: resolveFieldOptions(field), disabledAttr, renderHeader,
+        description: renderFieldDescription(field, state.lang), lang: state.lang,
+      });
+    }
     if (field.type === 'ordered_multiselect') {
       // 只有设备表这一种候选集来自机器;其余字段的候选集在 ORDERED_MULTISELECT_CATALOGS
       // 里按 key 反查,塞一个空 options 进去会把它们的候选池清空(空数组也是 truthy)。
@@ -387,12 +402,13 @@ export function createConfigFormRenderer({
       });
     }
     if (field.type === 'textarea') {
+      const displayValue = qualityClassListDisplayValue(field.key, value);
       if (COLLAPSIBLE_FIELD_KEYS.has(field.key)) {
         return renderCollapsibleField(`
           ${renderHeader()}
           ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
-          <textarea class="text-area"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(value || '')}</textarea>
+          <textarea class="text-area"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(displayValue || '')}</textarea>
         `);
       }
       return `
@@ -400,7 +416,7 @@ export function createConfigFormRenderer({
           ${renderHeader()}
           ${renderFieldDescription(field, state.lang)}
           ${renderConflictHint(conflictWith)}
-          <textarea class="text-area"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(value || '')}</textarea>
+          <textarea class="text-area"${disabledAttr} oninput="updateConfigValue('${field.key}', this.value)">${escapeHtml(displayValue || '')}</textarea>
         </div>
       `;
     }
@@ -524,7 +540,8 @@ export function createConfigFormRenderer({
     const contentWithHelpers = content
       + (showGhostReplayHelper ? renderGhostReplayHelperCard() : '')
       + (section.id === 'weight-composer' ? renderWeightComposerPreview() : '')
-      + (section.id === 'training-intent-profile' ? renderTrainingIntentProfilePreview() : '');
+      + (section.id === 'training-intent-profile' ? renderTrainingIntentProfilePreview() : '')
+      + (section.id === 'extractor-settings' ? renderModelCodeTrust(state) : '');
     if (section.id === 'weight-composer') scheduleWeightComposerPreview(config, api);
 
     if (section.id === 'data-aug-settings' || section.id === 'noise-settings' || section.id === 'validation-settings') {
@@ -587,6 +604,8 @@ export function createConfigFormRenderer({
     showToast: (message) => window.showToast?.(message),
   });
   return {
+    toggleModelCodeTrust: (enabled) => getModelCodeTrust(state).toggle(enabled,
+      (query) => request(`/api/aesthetic_infer/runtime_status?${query}`), undefined, buildRunConfig),
     ...weightComposerActions,
     ...trainingIntentProfileActions,
     renderField,

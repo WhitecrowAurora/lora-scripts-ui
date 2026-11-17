@@ -1,0 +1,39 @@
+{
+  "key": "flux_block_offload_prefetch_depth",
+  "title": "Block Offload 预取深度",
+  "title_en": "Block Offload prefetch depth",
+  "category": "训练参数",
+  "category_en": "Training Parameters",
+  "appliesTo": [],
+  "layers": [],
+  "standard": {
+    "summary": "异步预取后续 FLUX.1 block 的个数，需开启 Pin Memory 才有效；默认 1。",
+    "effect": "",
+    "whenToUse": "仅在 FLUX Transformer Offload 为 block_residency 时生效；开启 Pin Memory 后保持默认 1。",
+    "avoidWhen": "未开启 Pin Memory 时预取无法与计算重叠，调大没有收益。"
+  },
+  "standard_en": {
+    "summary": "How many upcoming FLUX.1 blocks are prefetched asynchronously; only effective with Pin Memory on. Default 1.",
+    "whenToUse": "Only applies when FLUX Transformer Offload is block_residency; keep the default of 1 once Pin Memory is on.",
+    "avoidWhen": "Without Pin Memory the prefetch cannot overlap compute, so raising it gains nothing."
+  },
+  "advanced": {
+    "principle": "预取在独立传输流上把下一个 block 的权重搬进显存。只有锁页内存的拷贝能与计算并行；普通内存的拷贝会卡住 CPU。",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "预取深度受 GPU 槽位数限制，深度大于槽位数减一时多出的部分不会生效。",
+    "codePath": ""
+  },
+  "advanced_en": {
+    "principle": "Prefetch copies the next block's weights to VRAM on a separate transfer stream. Only copies from pinned memory run alongside compute; pageable copies block the CPU.",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "Depth is capped by the GPU slot count; depth beyond slots minus one has no effect.",
+    "codePath": ""
+  },
+  "relatedConfigs": [
+    "flux_block_offload_gpu_slots",
+    "flux_block_offload_pin_memory",
+    "flux_transformer_offload"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_2_block_offload_pin_memory",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-2-lora"
+  ],
+  "title": "Qwen Image 2.1：Block Offload Pin Memory",
+  "standard": {
+    "summary": "整块搬运时是否使用锁页内存（pin memory），默认关闭。",
+    "effect": "开启后冻结权重块常驻锁页内存，搬运更快但锁页内存占用上升；关闭后可改用小型锁页暂存池的 CPU 预填充方案。两者是二选一的搬运策略。",
+    "whenToUse": "显存够、想让搬运更快且内存充足时开启。",
+    "avoidWhen": "打算用 CPU 预填充（prefill）时保持关闭——开启整块 pin memory 后就无法走预填充暂存池。"
+  },
+  "relatedConfigs": [
+    "qwen_image_2_block_offload_prefill_enabled",
+    "qwen_image_2_block_residency"
+  ]
+}

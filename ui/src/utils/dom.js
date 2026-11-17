@@ -43,7 +43,22 @@ export function showToast(message, duration = 2500) {
   }
   const toast = document.createElement('div');
   toast.className = 'toast-item';
-  toast.textContent = message;
+  const raw = String(message ?? '');
+  const iconPattern = /<svg class="icon" style="width:(\d+)px;height:\1px;vertical-align:middle;display:inline-block;flex-shrink:0;"><use href="#icon-([a-z0-9_-]+)"><\/use><\/svg>/g;
+  let cursor = 0;
+  let match;
+  while ((match = iconPattern.exec(raw))) {
+    if (match.index > cursor) toast.appendChild(document.createTextNode(raw.slice(cursor, match.index)));
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'icon');
+    svg.setAttribute('style', `width:${match[1]}px;height:${match[1]}px;vertical-align:middle;display:inline-block;flex-shrink:0;`);
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', `#icon-${match[2]}`);
+    svg.appendChild(use);
+    toast.appendChild(svg);
+    cursor = iconPattern.lastIndex;
+  }
+  toast.appendChild(document.createTextNode(raw.slice(cursor)));
   container.appendChild(toast);
 
   // 标记 .show 以应用最终背景/边框样式（style.css 仍使用该类设置静态颜色）

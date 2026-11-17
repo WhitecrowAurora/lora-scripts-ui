@@ -464,6 +464,288 @@ export function createPreflightRenderer({ state, deps }) {
     return html;
   }
 
+  // ---------------------------------------------------------------------
+  // 预检附加报告段（display-only）
+  //
+  // 这些段来自后端 training_preflight_adapter_reports.py，属于"看到就好"的观察项：
+  // 它们只报告，永远不参与 can_start 判定。家族兼容段尤其如此——注册表里 58 个 schema
+  // 有 8 个过不了那道门（sdxl-ileco / anima-ileco / sd-ileco / 三个 addift / yolo /
+  // aesthetic-scorer），今天全都能跑，所以后端把它的判定降级成 warning 后才放进 issues。
+  // ---------------------------------------------------------------------
+
+  function _pfObject(value) {
+    return (value && typeof value === 'object' && !Array.isArray(value)) ? value : null;
+  }
+
+  function _pfText(value) {
+    return escapeHtml(String(value == null ? '' : value));
+  }
+
+  function _renderDatasetAuditSection(pf) {
+    var health = _pfObject(pf.dataset_health);
+    var audit = _pfObject(pf.dataset_audit);
+    var auditFindings = audit
+      ? [].concat(
+        Array.isArray(audit.blocking_issues) ? audit.blocking_issues : [],
+        Array.isArray(audit.non_blocking_issues) ? audit.non_blocking_issues : [],
+      )
+      : [];
+    // An empty section is what a degraded build returns; keep the panel clean.
+    if (!(health && (health.health_score != null || health.readiness)) && !auditFindings.length) return '';
+
+    var readiness = health ? String(health.readiness || '') : '';
+    var readinessTone = readiness === 'ready' ? 'ok' : (readiness === 'blocked' ? 'err' : (readiness ? 'warn' : ''));
+    var readinessLabel = { ready: '就绪', warning: '可用（有警告）', blocked: '存在阻塞项' }[readiness] || readiness || '未知';
+    var counts = (health && _pfObject(health.finding_counts)) || {};
+
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;" open>';
+    html += '<summary class="preflight-group-title">' + _ico('shield', 14) + ' 数据集审计<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += '<div class="preflight-dataset-grid">';
+    if (health && health.health_score != null) {
+      html += _pfTag('健康分', health.health_score, Number(health.health_score) >= 80 ? 'ok' : 'warn');
+    }
+    html += _pfTag('就绪度', _pfText(readinessLabel), readinessTone);
+    if (counts.blocking != null) html += _pfTag('阻塞项', counts.blocking, Number(counts.blocking) > 0 ? 'err' : 'ok');
+    if (counts.non_blocking != null) html += _pfTag('非阻塞项', counts.non_blocking, Number(counts.non_blocking) > 0 ? 'warn' : '');
+    if (counts.warnings != null) html += _pfTag('检查警告', counts.warnings, Number(counts.warnings) > 0 ? 'warn' : '');
+    if (counts.recommended_actions != null) html += _pfTag('建议动作', counts.recommended_actions, Number(counts.recommended_actions) > 0 ? 'warn' : '');
+    html += '</div>';
+
+    var blocking = audit && Array.isArray(audit.blocking_issues) ? audit.blocking_issues : [];
+    var nonBlocking = audit && Array.isArray(audit.non_blocking_issues) ? audit.non_blocking_issues : [];
+    var actions = (audit && Array.isArray(audit.recommended_actions) ? audit.recommended_actions : [])
+      .concat(health && Array.isArray(health.recommended_actions) ? health.recommended_actions : []);
+
+    blocking.slice(0, 4).forEach(function(issue) {
+      html += '<div class="preflight-item preflight-warning">' + _pfText(_formatPreflightIssue(issue)) + '</div>';
+    });
+    nonBlocking.slice(0, 4).forEach(function(issue) {
+      html += '<div class="preflight-item preflight-note">' + _pfText(_formatPreflightIssue(issue)) + '</div>';
+    });
+    var seenActions = {};
+    actions.slice(0, 4).forEach(function(action) {
+      var code = String((action && action.code) || '');
+      var message = String((action && action.message) || '');
+      var key = code + '|' + message;
+      if (!message || seenActions[key]) return;
+      seenActions[key] = true;
+      html += '<div class="preflight-item preflight-note">建议: ' + _pfText(message + (code ? ' [' + code + ']' : '')) + '</div>';
+    });
+    if (blocking.length > 4 || nonBlocking.length > 4) {
+      html += '<div class="preflight-item preflight-note">另有 ' + (blocking.length - 4 > 0 ? blocking.length - 4 : 0) + ' 条阻塞项、' + (nonBlocking.length - 4 > 0 ? nonBlocking.length - 4 : 0) + ' 条非阻塞项未展开。</div>';
+    }
+    html += '<div class="preflight-item preflight-note">数据集审计只报告，不阻止启动训练。</div>';
+    html += '</details>';
+    return html;
+  }
+
+  function _renderStagePlan(report) {
+    if (!_pfObject(report)) return '';
+    var stages = Array.isArray(report.stages) ? report.stages : [];
+    if (!stages.length && !(Array.isArray(report.blockers) && report.blockers.length)) return '';
+    var blockers = Array.isArray(report.blockers) ? report.blockers : [];
+    var skipped = Array.isArray(report.skipped) ? report.skipped : [];
+    var gpuStages = Array.isArray(report.gpu_stages) ? report.gpu_stages : [];
+
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;">';
+    html += '<summary class="preflight-group-title">' + _ico('layout', 14) + ' 训练阶段计划<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += '<div class="preflight-dataset-grid">';
+    html += _pfTag('阶段', stages.length);
+    html += _pfTag('需要 GPU', gpuStages.length, gpuStages.length ? 'accent' : '');
+    html += _pfTag('跳过', skipped.length, skipped.length ? 'warn' : '');
+    if (report.dataset_images != null) html += _pfTag('数据集图片', report.dataset_images);
+    html += _pfTag('时长估计', _pfText(report.duration_estimate || 'unknown'), 'warn');
+    html += '</div>';
+
+    if (blockers.length) {
+      blockers.forEach(function(blocker) {
+        html += '<div class="preflight-item preflight-warning">' + _pfText(blocker) + '</div>';
+      });
+    }
+    stages.forEach(function(stage) {
+      var runs = stage && stage.runs !== false;
+      var label = String((stage && stage.label) || (stage && stage.key) || 'stage');
+      var reason = String((stage && stage.reason) || '');
+      var writes = String((stage && stage.writes) || '');
+      var source = String((stage && stage.source) || '');
+      var head = (stage && stage.order ? stage.order + '. ' : '') + label;
+      var meta = [];
+      if (!runs && reason) meta.push('跳过：' + reason);
+      if (writes) meta.push('写入 ' + writes);
+      if (source) meta.push(source);
+      html += '<div class="preflight-item ' + (runs ? 'preflight-note' : 'preflight-warning') + '">'
+        + _pfText(head) + (meta.length ? ' — ' + _pfText(meta.join('；')) : '') + '</div>';
+    });
+    if (report.duration_note) {
+      html += '<div class="preflight-item preflight-note">' + _pfText(report.duration_note) + '</div>';
+    }
+    html += '</details>';
+    return html;
+  }
+
+  function _renderFamilyCompatibilityReport(report) {
+    var fc = _pfObject(report);
+    if (!fc || !fc.schema_id) return '';
+    var family = _pfObject(fc.family) || {};
+    var findings = []
+      .concat(Array.isArray(fc.errors) ? fc.errors : [])
+      .concat(Array.isArray(fc.warnings) ? fc.warnings : []);
+    var ok = fc.ok !== false;
+
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;" open>';
+    html += '<summary class="preflight-group-title">' + _ico('package', 14) + ' 模型族兼容<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += '<div class="preflight-dataset-grid">';
+    html += _pfTag('判定', ok ? '一致' : '有差异', ok ? 'ok' : 'warn');
+    if (fc.schema_id) html += _pfTag('Schema', _pfText(fc.schema_id));
+    if (family.family_id) html += _pfTag('模型族', _pfText(family.family_id));
+    if (family.training_type) html += _pfTag('训练类型', _pfText(family.training_type));
+    if (Array.isArray(family.supported_training_types) && family.supported_training_types.length) {
+      html += _pfTag('族声明支持', _pfText(family.supported_training_types.join(' / ')), ok ? '' : 'warn');
+    }
+    html += '</div>';
+    findings.slice(0, 6).forEach(function(item) {
+      html += '<div class="preflight-item ' + (ok ? 'preflight-note' : 'preflight-warning') + '">' + _pfText(_formatPreflightIssue(item)) + '</div>';
+    });
+    if (!ok) {
+      html += '<div class="preflight-item preflight-note">这条判定不阻止启动：族注册表的声明可能与实际训练路径不一致，以运行时结果为准。</div>';
+    }
+    html += '</details>';
+    return html;
+  }
+
+  function _renderResumeAndLockReport(pf) {
+    var resume = _pfObject(pf.resume);
+    var checkpoints = _pfObject(pf.checkpoint_info);
+    var lock = _pfObject(pf.lock_check);
+    if (!resume && !checkpoints && !lock) return '';
+
+    var count = resume && resume.checkpoint_count != null
+      ? resume.checkpoint_count
+      : (checkpoints && checkpoints.checkpoint_count != null ? checkpoints.checkpoint_count : null);
+    var suggested = (resume && resume.suggested_resume) || (checkpoints && checkpoints.suggested_resume) || '';
+    var hasSomething = Number(count || 0) > 0 || suggested || (resume && (resume.output_collision || resume.valid === false)) || lock;
+    if (!hasSomething) return '';
+
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;">';
+    html += '<summary class="preflight-group-title">' + _ico('refresh-cw', 14) + ' 续训检查点<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += '<div class="preflight-dataset-grid">';
+    if (count != null) html += _pfTag('检查点', count, Number(count) > 0 ? 'ok' : '');
+    if (resume && resume.resume_field_type) html += _pfTag('续训字段', _pfText(resume.resume_field_type));
+    if (resume && resume.resume_path) html += _pfTag('续训路径', _pfText(resume.resume_path));
+    if (resume && resume.output_collision) html += _pfTag('输出目录', '已有产物', 'warn');
+    if (resume && resume.valid === false) html += _pfTag('续训校验', _pfText(resume.message || '未通过'), 'err');
+    html += '</div>';
+    if (suggested) {
+      html += '<div class="preflight-item preflight-note">建议续训候选: ' + _pfText(suggested) + '</div>';
+    }
+    if (lock) {
+      var status = String(lock.status || '');
+      var lockLabel = {
+        matched: '一致', missing: '未发现锁文件', invalid: '报文无效', unsupported: '暂不支持校验',
+      }[status] || status || '未知';
+      var lockTone = status === 'matched' ? 'ok' : (status === 'missing' ? '' : 'warn');
+      html += '<div class="preflight-dataset-grid" style="margin-top:8px;">';
+      html += _pfTag('配置锁', _pfText(lockLabel), lockTone);
+      if (Array.isArray(lock.mismatches) && lock.mismatches.length) {
+        html += _pfTag('不一致字段', lock.mismatches.length, 'warn');
+      }
+      html += '</div>';
+      var lockMessages = []
+        .concat(Array.isArray(lock.errors) ? lock.errors : [])
+        .concat(Array.isArray(lock.warnings) ? lock.warnings : []);
+      lockMessages.slice(0, 4).forEach(function(message) {
+        html += '<div class="preflight-item ' + (status === 'matched' ? 'preflight-note' : 'preflight-warning') + '">' + _pfText(_formatPreflightIssue(message)) + '</div>';
+      });
+    }
+    html += '</details>';
+    return html;
+  }
+
+  function _renderFixedPreviewReport(report) {
+    var preview = _pfObject(report);
+    if (!preview) return '';
+    var values = _pfObject(preview.values) || {};
+    var validationSet = _pfObject(preview.fixed_prompt_validation_set) || {};
+    var prompts = Array.isArray(validationSet.prompts) ? validationSet.prompts : [];
+    var keys = Object.keys(values);
+    if (!keys.length && !prompts.length) return '';
+
+    var sourceLabels = {
+      explicit_sample_prompt: '配置里显式指定的采样提示词',
+      dataset_audit: '由数据集审计推导',
+      route_family_fallback: '按模型族回退默认',
+      normalized_config: '归一化后的配置',
+    };
+    var source = String(preview.source || validationSet.source || '');
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;">';
+    html += '<summary class="preflight-group-title">' + _ico('image', 14) + ' 本次运行的验证提示词<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += '<div class="preflight-dataset-grid">';
+    html += _pfTag('来源', _pfText(sourceLabels[source] || source || '未知'), source === 'route_family_fallback' ? 'warn' : '');
+    html += _pfTag('固定提示词', prompts.length);
+    if (values.sample_sampler || values.sample_scheduler) html += _pfTag('采样器', _pfText(values.sample_sampler || values.sample_scheduler));
+    if (values.sample_steps != null) html += _pfTag('采样步数', values.sample_steps);
+    if (values.sample_cfg != null) html += _pfTag('CFG', values.sample_cfg);
+    if (values.sample_seed != null) html += _pfTag('种子', values.sample_seed);
+    html += '</div>';
+    prompts.slice(0, 3).forEach(function(entry) {
+      var prompt = String((entry && entry.prompt) || '');
+      var reason = String((entry && entry.reason_selected) || '');
+      html += '<div class="preflight-item preflight-note">' + _pfText(prompt + (reason ? '（' + reason + '）' : '')) + '</div>';
+    });
+    if (prompts.length > 3) {
+      html += '<div class="preflight-item preflight-note">另有 ' + (prompts.length - 3) + ' 条未展开。</div>';
+    }
+    html += '<div class="preflight-item preflight-note">这些提示词在模型加载前就固定下来，训练与预览会用同一组，便于跨 epoch 比较。</div>';
+    html += '</details>';
+    return html;
+  }
+
+  function _renderRuntimeReports(pf) {
+    var cost = _pfObject(pf.resource_cost);
+    var geometry = _pfObject(pf.concept_geometry);
+    var tensorboard = _pfObject(pf.tensorboard);
+    var blocks = '';
+
+    if (cost && cost.status) {
+      var costStatus = String(cost.status);
+      var costTone = costStatus === 'unsupported' || costStatus === 'insufficient_evidence' ? '' : 'warn';
+      var costLabel = {
+        unsupported: '本配置不适用', insufficient_evidence: '证据不足', unknown: '无法判定',
+      }[costStatus] || costStatus;
+      blocks += '<div class="preflight-dataset-grid">';
+      blocks += _pfTag('驻留成本对照', _pfText(costLabel), costTone);
+      if (cost.family) blocks += _pfTag('模型族', _pfText(cost.family));
+      blocks += '</div>';
+      if (cost.recommendation_reason) {
+        blocks += '<div class="preflight-item preflight-note">' + _pfText(cost.recommendation_reason) + '</div>';
+      }
+    }
+
+    if (geometry && geometry.enabled) {
+      var inner = _pfObject(geometry.concept_geometry) || {};
+      var risk = String(inner.risk || geometry.risk || 'unknown');
+      blocks += '<div class="preflight-dataset-grid" style="margin-top:8px;">';
+      blocks += _pfTag('Concept Geometry', risk === 'unknown' ? _pfText(risk) : _pfText(risk), risk === 'high' || risk === 'unavailable' ? 'warn' : 'ok');
+      if (inner.geometry_attach_rate != null) blocks += _pfTag('附着率', Number(inner.geometry_attach_rate).toFixed(2), Number(inner.geometry_attach_rate) < 0.5 ? 'warn' : '');
+      if (inner.concept_group_count != null) blocks += _pfTag('概念组', inner.concept_group_count);
+      blocks += '</div>';
+    }
+
+    if (tensorboard && tensorboard.enabled) {
+      blocks += '<div class="preflight-dataset-grid" style="margin-top:8px;">';
+      blocks += _pfTag('TensorBoard', '已开启', 'ok');
+      if (tensorboard.log_dir) blocks += _pfTag('日志目录', _pfText(tensorboard.log_dir));
+      blocks += '</div>';
+    }
+
+    if (!blocks) return '';
+    var html = '<details class="preflight-group collapsible-subgroup" style="margin-top:8px;">';
+    html += '<summary class="preflight-group-title">' + _ico('cpu', 14) + ' 运行时附加报告<span class="collapsible-caret" aria-hidden="true">⌄</span></summary>';
+    html += blocks;
+    html += '</details>';
+    return html;
+  }
+
   function renderPreflightReport() {
     const pf = state.preflight;
     if (!pf) return '';
@@ -489,6 +771,12 @@ export function createPreflightRenderer({ state, deps }) {
       && !precisionSwapProfile
       && !nativeUnetProfile
       && !(stepBreakdown && stepBreakdown.available)
+      && !pf.dataset_health
+      && !pf.dataset_audit
+      && !(pf.stage_plan && pf.stage_plan.stages && pf.stage_plan.stages.length)
+      && !pf.family_compatibility
+      && !pf.fixed_preview
+      && !(pf.repair_actions && pf.repair_actions.length)
     ) {
       return '';
     }
@@ -544,6 +832,14 @@ export function createPreflightRenderer({ state, deps }) {
     }
 
     html += _renderStepBreakdown(stepBreakdown);
+
+    // 后端报告段（display-only，永不参与 can_start）
+    html += _renderDatasetAuditSection(pf);
+    html += _renderStagePlan(pf.stage_plan);
+    html += _renderFamilyCompatibilityReport(pf.family_compatibility);
+    html += _renderResumeAndLockReport(pf);
+    html += _renderFixedPreviewReport(pf.fixed_preview);
+    html += _renderRuntimeReports(pf);
 
     // 依赖检测
     if (deps) {

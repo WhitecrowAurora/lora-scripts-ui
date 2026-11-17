@@ -1,0 +1,1260 @@
+[
+ {
+  "key": "auto_convert_to_slora",
+  "label": "保存时自动转 SLoRA",
+  "type": "boolean",
+  "desc": "PiSSA/LoftQ 等初始化策略训练完成后，保存时自动转换为标准 LoRA 兼容格式。默认开启；关闭则保留初始化时的原始 adapter 状态。",
+  "def": true,
+  "section": "保存设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "allow_unverified_dataset_start",
+  "label": "允许未完成数据集验证时启动（高级）",
+  "type": "boolean",
+  "desc": "风险提示：开启后，数据集探测异常或顾问不可用导致的阻断会降级为警告，训练可能在启动后立刻因数据集问题失败或产出废模型。数据集路径缺失/为空仍然无条件阻断。默认关闭。",
+  "def": false,
+  "section": "数据集设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "subset_content_roles",
+  "label": "素材解耦配置",
+  "type": "textarea",
+  "desc": "每行给一个相对 train_data_dir 的素材子文件夹指定内容角色、标注模式与 mask 模式，序列化为 JSON 字符串提交。",
+  "def": "",
+  "section": "素材解耦（高级）",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "tag_dropout_rate",
+  "label": "按标签丢弃概率",
+  "type": "number",
+  "desc": "按逗号分隔的标签来随机丢弃 tag 的概率",
+  "def": "",
+  "section": "Caption 选项",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "glora_compat_layout",
+  "label": "GLoRA 实现方式",
+  "type": "select",
+  "desc": "标准=精确低秩分解（lora_up/lora_down + alpha），无精度损失、体积最小、任何 LoRA loader 都能读；Lulynx 优化=单张量 diff，与 GLoKr 导出键布局一致，不依赖低秩结构但体积大得多。",
+  "def": "standard",
+  "options": [
+   {
+    "value": "standard",
+    "label": "标准（精确低秩分解）"
+   },
+   {
+    "value": "lulynx",
+    "label": "Lulynx 优化（diff 单张量）"
+   }
+  ],
+  "section": "网络设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_enabled",
+  "label": "启用模块级自适应 Rank",
+  "type": "boolean",
+  "desc": "按模块敏感度在固定总预算内分配 Rank；关闭时保持现有统一 Rank。",
+  "def": false,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_mode",
+  "label": "Rank 分配策略",
+  "type": "select",
+  "desc": "静态模式在注入前分配；动态模式按梯度/更新证据周期性迁移并保留优化器状态。",
+  "def": "off",
+  "options": [
+   {
+    "value": "off",
+    "label": "关闭"
+   },
+   {
+    "value": "auto_static",
+    "label": "静态自动分配"
+   },
+   {
+    "value": "dynamic",
+    "label": "训练中动态分配"
+   }
+  ],
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_total_budget",
+  "label": "Rank 总预算",
+  "type": "number",
+  "desc": "所有模块 Rank 总和上限；0 表示按当前 Rank 预算运行。",
+  "def": 0,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_min_rank",
+  "label": "模块最小 Rank",
+  "type": "number",
+  "desc": "",
+  "def": 1,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_max_rank",
+  "label": "模块最大 Rank",
+  "type": "number",
+  "desc": "",
+  "def": 64,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_locked_modules_json",
+  "label": "锁定模块 JSON",
+  "type": "textarea",
+  "desc": "可选。锁定指定模块 Rank，不参与预算重分配。支持模块名数组或模块到 Rank 的映射。",
+  "def": "",
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_probe_window",
+  "label": "Rank 探测窗口",
+  "type": "number",
+  "desc": "累计多少次梯度/更新观测后形成稳定敏感度。",
+  "def": 32,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_ema_decay",
+  "label": "敏感度 EMA 衰减",
+  "type": "number",
+  "desc": "越高越平滑，越低越快速响应近期变化。",
+  "def": 0.9,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_warmup_steps",
+  "label": "Rank 调整预热步数",
+  "type": "number",
+  "desc": "预热完成前只采样敏感度，不迁移 Rank。",
+  "def": 0,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_reallocation_interval",
+  "label": "Rank 重分配间隔",
+  "type": "number",
+  "desc": "动态模式每隔多少 optimizer step 重新评估。",
+  "def": 100,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_min_delta",
+  "label": "Rank 最小变更量",
+  "type": "number",
+  "desc": "小于该 Rank 差值时不迁移，减少频繁形状变化。",
+  "def": 1,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_profile_json",
+  "label": "Rank 敏感度 Profile JSON",
+  "type": "textarea",
+  "desc": "静态自动分配可选的离线 profile；动态模式留空则使用训练中采集的敏感度。该能力仍处于实验验证阶段，需同参数 A/B 后再作为推荐配置。",
+  "def": "",
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_rank_profile_path",
+  "label": "Rank Profile 文件",
+  "type": "file",
+  "desc": "可选离线敏感度 profile 文件；显式 JSON 与文件只需提供一种。",
+  "def": "",
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_strategy",
+  "label": "训练策略",
+  "type": "select",
+  "desc": "经典固定不创建 controller；建议模式只记录动作；受限自动仅调整学习率/区域权重；完整自动才允许 Rank/模块冻结接口。",
+  "def": "fixed",
+  "options": [
+   {
+    "value": "fixed",
+    "label": "经典固定"
+   },
+   {
+    "value": "suggest",
+    "label": "自适应建议"
+   },
+   {
+    "value": "auto_limited",
+    "label": "受限自动调整"
+   },
+   {
+    "value": "auto_full",
+    "label": "完整自动调整"
+   }
+  ],
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_objective",
+  "label": "优化目标",
+  "type": "select",
+  "desc": "",
+  "def": "balanced",
+  "options": [
+   {
+    "value": "target_region",
+    "label": "目标区域优先"
+   },
+   {
+    "value": "balanced",
+    "label": "平衡"
+   },
+   {
+    "value": "generalization",
+    "label": "最大化泛化"
+   },
+   {
+    "value": "pollution_minimization",
+    "label": "最小化污染"
+   }
+  ],
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_adjustments",
+  "label": "自动调整项",
+  "type": "multiSelect",
+  "desc": "建议模式也会记录建议；自动模式会先经过证据门槛、上下界和锁定项检查。",
+  "def": [],
+  "options": [
+   {
+    "value": "learning_rate",
+    "label": "学习率"
+   },
+   {
+    "value": "region_weight",
+    "label": "区域权重"
+   },
+   {
+    "value": "rank",
+    "label": "Rank"
+   },
+   {
+    "value": "module_freeze",
+    "label": "模块冻结/解冻"
+   },
+   {
+    "value": "overfit_protection",
+    "label": "过拟合保护"
+   }
+  ],
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_interval_steps",
+  "label": "控制调整间隔",
+  "type": "number",
+  "desc": "控制器只在该间隔评估动作，避免每步改变策略。",
+  "def": 50,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_minimum_evidence",
+  "label": "最小证据数",
+  "type": "number",
+  "desc": "收到足够 RewardReport/telemetry 证据前不产生动作。",
+  "def": 3,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_patience",
+  "label": "下降耐心",
+  "type": "number",
+  "desc": "连续多少次质量分下降后才触发收敛修正。",
+  "def": 2,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_max_actions",
+  "label": "最大调整次数",
+  "type": "number",
+  "desc": "",
+  "def": 8,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_learning_rate_min",
+  "label": "学习率下限",
+  "type": "number",
+  "desc": "",
+  "def": 1e-8,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_learning_rate_max",
+  "label": "学习率上限",
+  "type": "number",
+  "desc": "",
+  "def": 1,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_learning_rate_step",
+  "label": "学习率调整比例",
+  "type": "number",
+  "desc": "下降时乘以该比例，范围 0.01~1。",
+  "def": 0.8,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_region_weight_min",
+  "label": "区域权重下限",
+  "type": "number",
+  "desc": "",
+  "def": 0.1,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_region_weight_max",
+  "label": "区域权重上限",
+  "type": "number",
+  "desc": "",
+  "def": 4,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_region_weight_step",
+  "label": "区域权重步长",
+  "type": "number",
+  "desc": "",
+  "def": 0.1,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_locked_items",
+  "label": "用户锁定项",
+  "type": "multiSelect",
+  "desc": "锁定项不会被控制器修改。",
+  "def": [],
+  "options": [
+   {
+    "value": "learning_rate",
+    "label": "学习率"
+   },
+   {
+    "value": "region_weight",
+    "label": "区域权重"
+   },
+   {
+    "value": "rank",
+    "label": "Rank"
+   },
+   {
+    "value": "module_freeze",
+    "label": "模块冻结/解冻"
+   },
+   {
+    "value": "overfit_protection",
+    "label": "过拟合保护"
+   }
+  ],
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "adaptive_training_rollback_on_decline",
+  "label": "质量下降时允许撤销",
+  "type": "boolean",
+  "desc": "保留最近可逆动作的旧值，并在验证分数下降时支持回滚。",
+  "def": true,
+  "section": "渐进式 / 分阶段训练",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "validation_every_n_epochs",
+  "label": "每 N 轮验证（后端键）",
+  "type": "number",
+  "desc": "与 validation_split>0 配合；每 N 个 epoch 跑一次验证 loss。默认 1。",
+  "def": 1,
+  "section": "验证设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "validation_loss_only",
+  "label": "验证仅计算 Loss",
+  "type": "boolean",
+  "desc": "验证阶段只算 loss、不生成采样图。默认开启。",
+  "def": true,
+  "section": "验证设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "training_vram_profile_control",
+  "type": "hidden",
+  "desc": "",
+  "def": "managed",
+  "section": "速度优化",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "detected_vram_gb",
+  "type": "hidden",
+  "desc": "",
+  "def": 0,
+  "section": "速度优化",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "sageattn_drift_threshold",
+  "label": "SageAttn 漂移阈值",
+  "type": "number",
+  "desc": "相对误差超过该阈值时触发 warning 或 fallback。",
+  "def": 0.01,
+  "section": "编译与执行后端",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "custom_toml",
+  "label": "自定义 TOML 覆盖",
+  "type": "textarea",
+  "desc": "危险：会直接覆盖界面中的参数",
+  "def": "",
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ema_power",
+  "label": "EMA Warmup 幂次",
+  "type": "number",
+  "desc": "EMA warmup 曲线幂次（inv_gamma 配合使用）。",
+  "def": 0.666,
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ema_inv_gamma",
+  "label": "EMA inv_gamma",
+  "type": "number",
+  "desc": "EMA warmup 时间常数相关参数。",
+  "def": 1,
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ema_reset_on_resume",
+  "label": "Resume 时重置 EMA",
+  "type": "boolean",
+  "desc": "从 checkpoint 恢复训练时丢弃已有 EMA 状态并重新累计。",
+  "def": false,
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "clip_l_dropout_rate",
+  "label": "CLIP-L Dropout",
+  "type": "number",
+  "desc": "训练时以该概率丢弃 CLIP-L 条件（0=关闭）。",
+  "def": 0,
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "clip_g_dropout_rate",
+  "label": "CLIP-G Dropout",
+  "type": "number",
+  "desc": "训练时以该概率丢弃 CLIP-G / pooled 条件。",
+  "def": 0,
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "t5_dropout_rate",
+  "label": "T5 Dropout",
+  "type": "number",
+  "desc": "训练时以该概率丢弃 T5 文本条件（FLUX/Anima 等）。",
+  "def": 0,
+  "section": "其他设置",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "krona_allora",
+  "label": "KronA 梯度范数重缩放",
+  "type": "boolean",
+  "desc": "参数级梯度范数重缩放。同族上游 ALLoRA (arXiv:2410.09692) 只作用于 LoRA 因子并移除 dropout/scaling，本仓对 optimizer 名下全部参数做 1/(‖param‖₂+eps) ⇒ 不等价。",
+  "def": false,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "krona_allora_eta",
+  "label": "KronA 重缩放强度",
+  "type": "number",
+  "desc": "梯度范数重缩放强度",
+  "def": 2,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "cdka_allora",
+  "label": "CDKA 梯度范数重缩放",
+  "type": "boolean",
+  "desc": "参数级梯度范数重缩放。同族上游 ALLoRA (arXiv:2410.09692) 只作用于 LoRA 因子并移除 dropout/scaling，本仓对 optimizer 名下全部参数做 1/(‖param‖₂+eps) ⇒ 不等价。",
+  "def": false,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ed_lora_decomp_dim",
+  "label": "ED-LoRA 分解维度",
+  "type": "number",
+  "desc": "Embedding 分解维度 (推荐 64)。",
+  "def": 64,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ed_lora_alpha",
+  "label": "ED-LoRA Alpha",
+  "type": "number",
+  "desc": "V_class 缩放因子 (推荐 1.0)。",
+  "def": 1,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ed_lora_sequence_length",
+  "label": "ED-LoRA 序列长度",
+  "type": "number",
+  "desc": "Token 序列长度（CLIP 标准 77）。",
+  "def": 77,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "ed_lora_num_concepts",
+  "label": "ED-LoRA 概念数",
+  "type": "number",
+  "desc": "概念数量（多概念预留）",
+  "def": 1,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "mora_enabled",
+  "label": "MoRA（方阵适配器）",
+  "type": "boolean",
+  "desc": "用 r×r 方阵 + 非学习 compress/decompress 替代 BA。参数量 r²；非 A1111 原生 LoRA 格式，导出为 mora_matrix 或 materialize。与 DoRA/AdaLoRA 互斥。",
+  "def": false,
+  "section": "LoRA 结构变体",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "lpips_latent_weight",
+  "label": "Latent 特征蒸馏权重",
+  "type": "number",
+  "desc": "相对主损失权重。推荐 0.05-0.15。",
+  "def": 0.1,
+  "section": "图像质量增强",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "lpips_latent_feature_weight",
+  "label": "各层权重",
+  "type": "text",
+  "desc": "各层权重，逗号分隔 (如 \"1.0,1.0,1.0\")。",
+  "def": "1.0,1.0,1.0",
+  "section": "图像质量增强",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "lpips_latent_normalize_features",
+  "label": "归一化特征",
+  "type": "boolean",
+  "desc": "是否归一化特征 (L2 norm)。归一化后损失更关注方向而非幅度。",
+  "def": true,
+  "section": "图像质量增强",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "lpips_latent_min_t",
+  "label": "最小 sigma (Latent 特征蒸馏)",
+  "type": "number",
+  "desc": "sigma 窗口下界，0=全范围。",
+  "def": 0,
+  "section": "图像质量增强",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "lpips_latent_max_t",
+  "label": "最大 sigma (Latent 特征蒸馏)",
+  "type": "number",
+  "desc": "sigma 窗口上界，1=全范围。",
+  "def": 1,
+  "section": "图像质量增强",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "contrastive_latent_temperature",
+  "type": "hidden",
+  "desc": "",
+  "def": 0.07,
+  "section": "图像质量增强",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "turbocore_enabled",
+  "type": "hidden",
+  "desc": "",
+  "def": false,
+  "section": "TurboCore 内核优化",
+  "types": [
+   "sdxl-lora"
+  ]
+ },
+ {
+  "key": "anima_require_explicit_components",
+  "label": "组件必须显式指定",
+  "type": "boolean",
+  "desc": "开启后：上面的 VAE / Qwen3 / T5 tokenizer 路径留空不再自动扫描模型目录，直接停下并点名缺哪个字段。适合模型目录里放了多个同类权重、不希望训练器替你挑的情况。",
+  "def": false,
+  "section": "训练用模型",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "anima_merge_export",
+  "label": "保存后导出合并 Anima 整模",
+  "type": "boolean",
+  "desc": "训练完成后将 LoRA 合并进 Anima DiT 并额外保存 dense 整模（体积大）。",
+  "def": false,
+  "section": "保存设置",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sigma_depth_schedule_enabled",
+  "label": "σ 深度调度",
+  "type": "boolean",
+  "desc": "按当前样本 RF σ 调度本步 DiT 计算深度；跳过的 block 走 identity 残差旁路（不断 grad）。与 Vortex Aircon 正交。",
+  "def": false,
+  "section": "σ 深度调度",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sigma_depth_schedule_mode",
+  "label": "σ 深度模式",
+  "type": "select",
+  "desc": "hard_depth=按 σ 决定最大深度；soft_prob=深度边界后软概率跳过。",
+  "def": "hard_depth",
+  "options": [
+   {
+    "value": "hard_depth",
+    "label": "hard_depth"
+   },
+   {
+    "value": "soft_prob",
+    "label": "soft_prob"
+   }
+  ],
+  "section": "σ 深度调度",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sigma_depth_schedule_alpha",
+  "label": "σ 深度 α",
+  "type": "number",
+  "desc": "sigmoid 斜率；越大深度随 σ 变化越陡。",
+  "def": 8,
+  "section": "σ 深度调度",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sigma_depth_schedule_beta",
+  "label": "σ 深度 β",
+  "type": "number",
+  "desc": "sigmoid 中心（RF σ ∈ [0,1]）。",
+  "def": 0.35,
+  "section": "σ 深度调度",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sigma_depth_schedule_min_blocks_kept",
+  "label": "最少保留 Block",
+  "type": "number",
+  "desc": "始终计算前 N 个 block，保护浅层稳定性。",
+  "def": 4,
+  "section": "σ 深度调度",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "anima_ema_feat_align_teacher_layers",
+  "label": "EMA Teacher 层",
+  "type": "string",
+  "desc": "逗号分隔的 teacher 层索引，如 \"9\"。",
+  "def": "",
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "anima_ema_feat_align_decay",
+  "label": "EMA 衰减",
+  "type": "number",
+  "desc": "EMA-of-LoRA 影子衰减率。",
+  "def": 0.9999,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_capture_layers",
+  "label": "捕获层后缀",
+  "type": "string",
+  "desc": "逗号分隔的 module-name 后缀。",
+  "def": "",
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_base_weight",
+  "label": "基础权重",
+  "type": "number",
+  "desc": "对齐损失基础权重",
+  "def": 1,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_start_step",
+  "label": "起始步",
+  "type": "number",
+  "desc": "从此优化步开始",
+  "def": 0,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_stop_step",
+  "label": "结束步",
+  "type": "number",
+  "desc": "-1=不提前结束",
+  "def": -1,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_decay_start_step",
+  "label": "衰减起始步",
+  "type": "number",
+  "desc": "-1=不衰减",
+  "def": -1,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_decay_end_step",
+  "label": "衰减结束步",
+  "type": "number",
+  "desc": "衰减到 min_weight 的终点。",
+  "def": -1,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_min_weight",
+  "label": "最小权重",
+  "type": "number",
+  "desc": "衰减后的下限",
+  "def": 0,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_plateau_patience",
+  "label": "平台耐心",
+  "type": "number",
+  "desc": "0=关闭平台早停",
+  "def": 0,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_min_relative_improvement",
+  "label": "最小相对改进",
+  "type": "number",
+  "desc": "平台判定阈值",
+  "def": 0,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_normalize_targets",
+  "label": "归一化 target",
+  "type": "boolean",
+  "desc": "对齐前对 target 做归一化。",
+  "def": true,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "sra2_haste_stop_grad_target",
+  "label": "target 停梯度",
+  "type": "boolean",
+  "desc": "对 target 侧 stop-grad。",
+  "def": true,
+  "section": "表征对齐",
+  "types": [
+   "anima-lora"
+  ]
+ },
+ {
+  "key": "newbie_dataloader_workers",
+  "label": "Newbie DataLoader 线程数",
+  "type": "string",
+  "desc": "auto 或显式整数。auto = 按平台保守值（Windows ≥8 核给 2，其它给 min(4, 核数/2)）；填整数则覆盖通用 cached_dataloader_workers 与 dataloader_num_workers。这里以前出厂填 4，而表单每次都把它发给后端，等于所有人都在「显式选了 4」，缓存路的专用 worker 设置永远赢不了。",
+  "def": "auto",
+  "section": "数据集设置",
+  "types": [
+   "newbie-lora"
+  ]
+ },
+ {
+  "key": "newbie_merge_export",
+  "label": "保存后导出合并 Newbie 整模",
+  "type": "boolean",
+  "desc": "训练完成后将 LoRA 合并进 Newbie 整模并额外保存 dense 包。",
+  "def": false,
+  "section": "训练与保存",
+  "types": [
+   "newbie-lora"
+  ]
+ },
+ {
+  "key": "newbie_use_flash_attn2",
+  "label": "Newbie FlashAttention 2",
+  "type": "boolean",
+  "desc": "Newbie 路线启用 FlashAttention 2（需环境支持）。默认开启。",
+  "def": true,
+  "section": "缓存与运行时",
+  "types": [
+   "newbie-lora"
+  ]
+ },
+ {
+  "key": "krea2_text_fusion_mode",
+  "label": "文本融合模式",
+  "type": "select",
+  "desc": "决定缓存与 DiT 装载：fusion_frozen 缓存 txtfusion 后输出（默认，塔不参训）；fusion_trainable 缓存 12 层原始 stack 并装回 343M txtfusion 塔参训。两种模式的缓存互不兼容，切换需重建缓存",
+  "def": "fusion_frozen",
+  "options": [
+   {
+    "value": "fusion_frozen",
+    "label": "Fusion Frozen（默认；缓存融合后文本，塔冻结）"
+   },
+   {
+    "value": "fusion_trainable",
+    "label": "Fusion Trainable（缓存 12 层 stack，塔参训）"
+   }
+  ],
+  "section": "训练用模型",
+  "types": [
+   "krea2-lora"
+  ]
+ },
+ {
+  "key": "krea2_merge_export",
+  "label": "保存后导出合并 Krea2 整模",
+  "type": "boolean",
+  "desc": "训练完成后将 LoRA 合并进 Krea-2 DiT 并额外保存 dense 整模。",
+  "def": false,
+  "section": "保存设置",
+  "types": [
+   "krea2-lora"
+  ]
+ },
+ {
+  "key": "boogu_merge_export",
+  "label": "保存后导出合并整模",
+  "type": "boolean",
+  "desc": "训练完成后将 LoRA 合并进 Boogu 系 DiT 并额外保存 dense 整模。",
+  "def": false,
+  "section": "保存设置",
+  "types": [
+   "flux2-lora"
+  ]
+ },
+ {
+  "key": "wan22_max_text_length",
+  "label": "最大文本长度",
+  "type": "number",
+  "desc": "umT5 序列长度，默认 512。",
+  "def": 512,
+  "section": "训练用模型",
+  "types": [
+   "wan22-ti2v-lora"
+  ]
+ },
+ {
+  "key": "wan22_target_frames",
+  "label": "目标帧数",
+  "type": "number",
+  "desc": "训练 clip 目标帧数；1=单帧/图生视频退化。",
+  "def": 1,
+  "section": "数据集设置",
+  "types": [
+   "wan22-ti2v-lora"
+  ]
+ },
+ {
+  "key": "wan22_frame_stride",
+  "label": "帧步长",
+  "type": "number",
+  "desc": "采样相邻帧的 stride；1=连续帧。",
+  "def": 1,
+  "section": "数据集设置",
+  "types": [
+   "wan22-ti2v-lora"
+  ]
+ },
+ {
+  "key": "weight_compression_include_patterns",
+  "label": "压缩包含模式",
+  "type": "string",
+  "desc": "可选，逗号分隔；仅压缩匹配的组件或参数。",
+  "def": "",
+  "section": "速度优化",
+  "types": [
+   "ltx23-lora"
+  ]
+ },
+ {
+  "key": "weight_compression_exclude_patterns",
+  "label": "压缩排除模式",
+  "type": "string",
+  "desc": "可选，逗号分隔；匹配的组件或参数不会被压缩。",
+  "def": "",
+  "section": "速度优化",
+  "types": [
+   "ltx23-lora"
+  ]
+ },
+ {
+  "key": "schema_id",
+  "type": "hidden",
+  "desc": "",
+  "def": "anima-lora",
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "model_type",
+  "type": "hidden",
+  "desc": "",
+  "def": "anima",
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "edit_training_enabled",
+  "type": "hidden",
+  "desc": "",
+  "def": true,
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "edit_training_mode",
+  "type": "hidden",
+  "desc": "",
+  "def": "edit_lora",
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "edit_source_path_policy",
+  "type": "hidden",
+  "desc": "",
+  "def": "auto",
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "edit_target_path_policy",
+  "type": "hidden",
+  "desc": "",
+  "def": "auto",
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "edit_mask_policy",
+  "type": "hidden",
+  "desc": "",
+  "def": "optional",
+  "section": "Edit 训练",
+  "types": [
+   "anima-edit-model"
+  ]
+ },
+ {
+  "key": "model_family",
+  "type": "hidden",
+  "desc": "",
+  "def": "anima",
+  "section": "Anima few-step 输入",
+  "types": [
+   "anima-few-step-lora"
+  ]
+ },
+ {
+  "key": "ddpm_timestep_sampling",
+  "label": "DDPM 时间步采样",
+  "type": "select",
+  "desc": "留空=均匀采样；logit_normal=对数正态分布（FLUX 实验项）。",
+  "def": "",
+  "options": [
+   {
+    "value": "",
+    "label": "默认（均匀）"
+   },
+   {
+    "value": "logit_normal",
+    "label": "logit_normal"
+   }
+  ],
+  "section": "训练参数",
+  "types": [
+   "flux-lora"
+  ]
+ },
+ {
+  "key": "flux_transformer_offload",
+  "label": "FLUX Transformer Offload",
+  "type": "select",
+  "desc": "FLUX 预览/训练时 transformer 块 offload 策略。auto=按显存自动。",
+  "def": "auto",
+  "options": [
+   {
+    "value": "auto",
+    "label": "auto（自动）"
+   },
+   {
+    "value": "off",
+    "label": "off（关闭）"
+   },
+   {
+    "value": "aggressive",
+    "label": "aggressive（激进）"
+   }
+  ],
+  "section": "速度优化",
+  "types": [
+   "flux-lora"
+  ]
+ },
+ {
+  "key": "val_ratio",
+  "label": "验证集比例",
+  "type": "number",
+  "desc": "未使用 split 时按比例随机切分验证集",
+  "def": 0.1,
+  "section": "数据集设置",
+  "types": [
+   "aesthetic-scorer"
+  ]
+ }
+]

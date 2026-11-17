@@ -18,6 +18,7 @@ import { schedulerOption } from '../features/settingsOptions.js';
 import { formatDuration, renderSummaryCard } from '../utils/trainingMetrics.js';
 import { getMultiBatchEvidenceFromTask, renderMultiBatchEvidenceBadge } from '../utils/multiBatchEvidence.js';
 import { getTrainingRuntimeSummaryFromTask } from '../utils/trainingRuntimeSummary.js';
+import { preserveTrainingSummaryPanels } from '../utils/trainingQualityReport.js';
 import { canDeleteTask, getQueueMetaText, getQueuedTasks, getRunningTasks, getTaskId, isTaskQueued, isTaskRunning, isTaskPaused, isTaskFailed, isTaskSuccessful } from '../utils/taskStatus.js';
 import { tweenNumber, clearNumberCache } from '../utils/numberTween.js';
 import {
@@ -59,11 +60,15 @@ export function createTrainingRenderer({ state, renderSlot, deps }) {
           item.epoch >= 0 ? 'Epoch ' + item.epoch : '',
           item.sample >= 0 ? 'Sample ' + item.sample : '',
         ].filter(Boolean).join(' · ');
-        return '<a class="train-preview-item" href="' + url + '" target="_blank" rel="noopener">'
-          + '<img src="' + url + '" loading="lazy" alt="' + escapeHtml(name) + '">'
+        const video = item.media_type === 'video' || /\.(mp4|webm)$/i.test(name);
+        const media = video
+          ? '<video src="' + url + '" controls playsinline preload="metadata" aria-label="' + escapeHtml(name) + '" style="width:100%;max-height:220px;object-fit:contain"></video>'
+          : '<a href="' + url + '" target="_blank" rel="noopener"><img src="' + url + '" loading="lazy" alt="' + escapeHtml(name) + '"></a>';
+        return '<div class="train-preview-item">'
+          + media
           + '<span>' + escapeHtml(name) + '</span>'
           + (meta ? '<small>' + escapeHtml(meta) + '</small>' : '')
-          + '</a>';
+          + '</div>';
       }).join('') + '</div>';
     }
     return '<section class="train-preview-run">'
@@ -477,6 +482,7 @@ var statusDot = '', statusText = '';
     }).join('');
     var historyTasks = state.tasks.slice().reverse();
 
+    const restoreSummaryPanels = preserveTrainingSummaryPanels(container);
     container.innerHTML = ''
     + '<div class="train-dashboard">'
     + '<div class="train-exec-header">'
@@ -666,6 +672,7 @@ var statusDot = '', statusText = '';
     ) : '') // end monitor conditional
     + '</div>'; // close train-dashboard
 
+    restoreSummaryPanels();
     _syncFooterAction();
 
     // Live number tween — scan all data-tween-key nodes

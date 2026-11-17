@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_prompt_upsampler_model_id",
+  "title": "上采样模型 ID",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "caption 上采样使用的模型 ID，留空则沿用 caption_llm_model。",
+    "effect": "只在上采样开启时生效；指定后覆盖全局 caption_llm_model。",
+    "whenToUse": "想让上采样用更强/更便宜的模型、与全局 caption LLM 分开时填写。",
+    "avoidWhen": "上采样没开时填写无效果。"
+  },
+  "relatedConfigs": [
+    "moss_image_prompt_upsample"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "key": "h3_ref2va_manifest_path",
+  "title": "Ref2VA 参考清单",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "指向 h3_ref2va_auxiliary_v1 格式的 JSON 清单（含目标图、参考图与提示词）。",
+    "effect": "清单定义每个训练样本的 target / reference 配对与提示；格式不符会在加载时被拒。",
+    "whenToUse": "做 Ref2VA（参考图生视频/音频）训练或 Ref2VA Teacher 训练时必填。",
+    "avoidWhen": "普通 T2V 训练不需要清单，留空即可。"
+  },
+  "relatedConfigs": [
+    "h3_teacher_matching",
+    "fp_1f_enabled"
+  ]
+}

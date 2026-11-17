@@ -136,8 +136,13 @@ const prodigyConfig = {
   lr_scheduler: 'torch.optim.lr_scheduler.CosineAnnealingLR',
 };
 const prodigyPayload = buildRunConfig(prodigyConfig, 'sdxl-lora');
-assert.equal(prodigyPayload.lr_scheduler, 'constant');
-assert.equal(prodigyPayload.lr_scheduler_type, 'torch.optim.lr_scheduler.CosineAnnealingLR');
+// CosineAnnealingLR 是 SchedulerType 成员 ⇒ normalizeScheduler 把它改写进 lr_scheduler 本身,
+// 不再借 lr_scheduler_type 那条自由文本通道。老写法钉 constant 是为了绕后端 enum 墙,
+// 产品在 4fa5add（2026-09-04）已经改掉,这两行断言当时没跟着改 ⇒ 判据侧的陈旧红,不是产品缺陷。
+// constant + lr_scheduler_type 那条通道并没有消失,只是入口换了 —— 由下面 StepLR /
+// my.custom.Scheduler 两组守着(见 normalizeScheduler 的后两个分支)。
+assert.equal(prodigyPayload.lr_scheduler, 'cosine');
+assert.equal('lr_scheduler_type' in prodigyPayload, false);
 assert.deepEqual(prodigyPayload.optimizer_args, [
   'decouple=True',
   'weight_decay=0.02',
@@ -155,19 +160,42 @@ const canonicalLulynxScheduler = buildRunConfig({
 assert.equal(canonicalLulynxScheduler.lr_scheduler, 'lulynx_exponential_warmup');
 assert.equal(canonicalLulynxScheduler.lr_scheduler_type, undefined);
 
-const legacyRexScheduler = buildRunConfig({
+// `rex` 不是 lulynx_exponential_warmup 的旧别名:两者都是后端 SchedulerType 的独立成员
+// (configs_enums.py:135 `REX = 'rex'`),把 rex 改写成 lulynx_exponential_warmup 等于
+// 悄悄换掉用户选的调度器。原断言是与上面 cosine 同一批的陈旧红。
+const nativeRexScheduler = buildRunConfig({
   ...createDefaultConfig('sdxl-lora'),
   lr_scheduler: 'rex',
 }, 'sdxl-lora');
-assert.equal(legacyRexScheduler.lr_scheduler, 'lulynx_exponential_warmup');
-assert.equal(legacyRexScheduler.lr_scheduler_type, undefined);
+assert.equal(nativeRexScheduler.lr_scheduler, 'rex');
+assert.equal('lr_scheduler_type' in nativeRexScheduler, false);
 
+// 第三方类名映射到成员时也走第一分支:改写 lr_scheduler 本身,不占自由文本通道。
 const thirdPartyRexScheduler = buildRunConfig({
   ...createDefaultConfig('sdxl-lora'),
   lr_scheduler: 'pytorch_optimizer.REXScheduler',
 }, 'sdxl-lora');
-assert.equal(thirdPartyRexScheduler.lr_scheduler, 'constant');
-assert.equal(thirdPartyRexScheduler.lr_scheduler_type, 'pytorch_optimizer.REXScheduler');
+assert.equal(thirdPartyRexScheduler.lr_scheduler, 'rex');
+assert.equal('lr_scheduler_type' in thirdPartyRexScheduler, false);
+
+// normalizeScheduler 的第二分支(映射目标不是成员 ⇒ constant + type)今天**不可达**:
+// SCHEDULER_VALUE_TO_TYPE 里三个看着像第三方的目标 step / multi_step / cyclic 本身就在
+// STANDARD_SCHEDULERS 里。钉住这一格是为了让「哪天从成员表里删掉 step」显性红出来,
+// 而不是让分支静默改道。constant 通道由下一组(完全没映射的自由文本)守着。
+const mappedMemberStepScheduler = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  lr_scheduler: 'torch.optim.lr_scheduler.StepLR',
+}, 'sdxl-lora');
+assert.equal(mappedMemberStepScheduler.lr_scheduler, 'step');
+assert.equal('lr_scheduler_type' in mappedMemberStepScheduler, false);
+
+// 完全没映射的自由文本 ⇒ 第三分支:原样搬进 lr_scheduler_type。
+const freeTextScheduler = buildRunConfig({
+  ...createDefaultConfig('sdxl-lora'),
+  lr_scheduler: 'my.custom.Scheduler',
+}, 'sdxl-lora');
+assert.equal(freeTextScheduler.lr_scheduler, 'constant');
+assert.equal(freeTextScheduler.lr_scheduler_type, 'my.custom.Scheduler');
 
 const doraVariantField = getFieldDefinition('dora_variant', 'sdxl-lora');
 assert.ok(doraVariantField, 'DoRA algorithm selector must be visible in LoRA WebUI');
@@ -384,8 +412,9 @@ const newbieOptimizerPayload = buildRunConfig({
 }, 'newbie-lora');
 assert.equal(newbieOptimizerPayload.optimizer_type, 'PytorchOptimizer');
 assert.deepEqual(newbieOptimizerPayload.optimizer_args, ['name=CAME', 'eps=1e-8']);
-assert.equal(newbieOptimizerPayload.lr_scheduler, 'constant');
-assert.equal(newbieOptimizerPayload.lr_scheduler_type, 'torch.optim.lr_scheduler.CosineAnnealingLR');
+// 同上:成员名走 lr_scheduler 本身,lr_scheduler_args 仍按原样透传。
+assert.equal(newbieOptimizerPayload.lr_scheduler, 'cosine');
+assert.equal('lr_scheduler_type' in newbieOptimizerPayload, false);
 assert.deepEqual(newbieOptimizerPayload.lr_scheduler_args, ['T_max=10']);
 
 const sdxlGenericOptimizerPayload = buildRunConfig({

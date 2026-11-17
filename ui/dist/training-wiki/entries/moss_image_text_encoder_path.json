@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_text_encoder_path",
+  "title": "Qwen3.5 文本编码器目录（可选）",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "单独指定文本编码器目录，留空则按默认布局加载。",
+    "effect": "用于拆分存储或自定义路径的部署；加载失败会直接报错。",
+    "whenToUse": "文本编码器独立存放时填写。",
+    "avoidWhen": "默认布局完整时留空。"
+  },
+  "relatedConfigs": [
+    "moss_image_tokenizer_path",
+    "moss_image_max_text_length"
+  ]
+}

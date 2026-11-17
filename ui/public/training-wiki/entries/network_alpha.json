@@ -1,7 +1,9 @@
 {
   "key": "network_alpha",
   "title": "LoRA Alpha（缩放系数）",
+  "title_en": "Network Alpha",
   "category": "LoRA / 网络结构",
+  "category_en": "LoRA / Network Structure",
   "appliesTo": [
     "anima-lora",
     "sdxl-lora",
@@ -13,14 +15,24 @@
     "lora_alpha"
   ],
   "standard": {
-    "summary": "LoRA 输出的缩放系数。实际学习率有效缩放 = lr × alpha / rank。通常设为 rank 的 1/2 或等于 rank。",
-    "effect": "alpha=rank：缩放系数为 1，LoRA 权重按原始幅度生效；alpha=rank/2：缩放为 0.5，更保守；alpha=1：若 rank=16 则有效缩放 1/16，等价于 LR 极小。",
-    "whenToUse": "推荐 alpha = rank 或 rank/2（如 rank=16，alpha=8~16）。使用高 rank 时为了稳定性可降低 alpha/rank 比值。",
-    "avoidWhen": "alpha > rank（缩放 > 1）会放大 LoRA 更新，训练初期可能不稳定。alpha=0 则 LoRA 永远输出 0，训练无效。"
+    "summary": "标准 LoRA 的输出缩放为 alpha/rank；开启 RS-LoRA 时为 alpha/√rank。它会影响训练，但不能直接等同于学习率。",
+    "effect": "标准 LoRA 中，alpha=rank 时输出缩放为 1；alpha=rank/2 时为 0.5；alpha=1、rank=16 时为 1/16。这些是相同 A/B 权重下的输出比例，不是学习率比例。",
+    "whenToUse": "可从已有配方的 alpha=rank 或 rank/2 起步。改变 rank、alpha 或 RS-LoRA 时，应一起检查初始化方式和学习率，不假设原配方的更新幅度不变。",
+    "avoidWhen": "提高 alpha 会放大相同 A/B 权重的输出；标准 LoRA 在 alpha>rank 时缩放大于 1，RS-LoRA 则在 alpha>√rank 时大于 1。不要仅凭这个边界判断训练是否稳定；若实际 scaling 为 0，LoRA 分支没有输出或任务梯度。"
+  },
+  "standard_en": {
+    "summary": "Standard LoRA scales its output by alpha/rank; RS-LoRA uses alpha/sqrt(rank). This affects training but is not equivalent to the learning rate.",
+    "effect": "For standard LoRA, alpha=rank gives output scale 1; alpha=rank/2 gives 0.5; alpha=1 with rank=16 gives 1/16. These ratios compare identical A/B weights, not learning rates.",
+    "whenToUse": "An existing recipe using alpha=rank or rank/2 is a starting point. When changing rank, alpha or RS-LoRA, review initialization and learning rate together rather than assuming unchanged update magnitudes.",
+    "avoidWhen": "Raising alpha amplifies the output of identical A/B weights. Scaling exceeds 1 when alpha>rank for standard LoRA, or alpha>sqrt(rank) for RS-LoRA. This threshold alone does not establish training stability; if actual scaling is zero, the LoRA branch has no output or task gradient."
   },
   "advanced": {
-    "principle": "ΔW = (alpha/rank) × B × A。alpha/rank 等价于对 LoRA 输出的全局乘法缩放，与 lr 正交但效果相似。维持 alpha/rank 常数时改变 rank 不影响收敛速度。",
-    "tradeoffs": "实际上 alpha 和 lr 是高度冗余的：lr × (alpha/rank) 才是有效步长。常见做法是固定 alpha=rank（缩放=1），只调 lr。"
+    "principle": "标准 LoRA 的 ΔW = (alpha/rank) × B × A，RS-LoRA 改用 alpha/√rank。A、B 都会更新，实际 ΔW 的变化还取决于初始化、rank 和优化器，不能只用 lr×scaling 推导。",
+    "tradeoffs": "μA 研究表明，rank 的学习率迁移规律依赖初始化及有效缩放。论文中的 alpha 指 BA 的有效乘数，不等于这里的 network_alpha；保持 alpha/rank 不变也不能保证收敛速度不变。"
+  },
+  "advanced_en": {
+    "principle": "Standard LoRA uses ΔW = (alpha/rank) × B × A; RS-LoRA uses alpha/sqrt(rank). Both A and B are updated, so changes in ΔW also depend on initialization, rank and optimizer rather than lr×scaling alone.",
+    "tradeoffs": "μA shows that learning-rate transfer across ranks depends on initialization and effective scaling. Its alpha denotes the multiplier on BA, not this network_alpha. Keeping alpha/rank fixed does not guarantee unchanged convergence speed."
   },
   "relatedConfigs": [
     "network_dim",

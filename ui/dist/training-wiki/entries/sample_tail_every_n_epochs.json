@@ -1,0 +1,36 @@
+{
+  "key": "sample_tail_every_n_epochs",
+  "title": "加密后每N轮预览",
+  "title_en": "Tail Sample Every N Epochs",
+  "category": "训练 / 预览",
+  "category_en": "Training / Preview",
+  "appliesTo": [],
+  "standard": {
+    "summary": "从「从第几轮起加密」那一轮开始，每 N 轮出一次预览。0 表示不启用加密段。默认 0。",
+    "effect": "计数从切换轮起算，不是从第 1 轮：切换轮 50、间隔 5 会在 50/55/60 出图，而不是等 62（62 % 5 = 2 那种错法）。校验和定期保存共用同一份节奏，不会各走各的。",
+    "whenToUse": "训练后期想更密地看效果、早期又不想浪费渲染时间时。",
+    "avoidWhen": "「从第几轮起加密」仍为 0 时填它——切点无效，加密段会被整个关掉。"
+  },
+  "standard_en": {
+    "summary": "Preview every N epochs starting from the switch epoch. 0 disables the dense phase. Default 0.",
+    "effect": "Counting starts at the switch epoch, not at epoch 1: switch 50 with interval 5 fires at 50/55/60 rather than waiting for 62 (the 62 % 5 = 2 mistake). Validation and periodic saves share the same cadence instead of each keeping its own.",
+    "whenToUse": "When you want denser previews late in a run without wasting renders early.",
+    "avoidWhen": "Do not fill this while the switch epoch is still 0 -- the switch point is invalid and the dense phase gets disabled entirely."
+  },
+  "advanced": {
+    "principle": "preview.preview_cadence 是这个规则的唯一权威：resolve_preview_cadence 读出基础间隔、切换轮、加密间隔与按步间隔，构造不可变 PreviewCadence；due_at_epoch 里加密段用 (epoch - switch) % tail == 0 判定。训练侧三处调用（预览回调与执行循环配置）都走这一份，避免与定期保存分叉。",
+    "intervention": "预览调度判定，与采样器、图像质量无关。",
+    "expectedImpact": "只影响出图频率与渲染开销；对训练本身的数值与速度没有影响。",
+    "tradeoffs": "加密段要求切换轮与间隔同时为正；只填间隔不填切点是这里最常见的「明明填了却没生效」。"
+  },
+  "advanced_en": {
+    "principle": "preview.preview_cadence is the single authority for this rule: resolve_preview_cadence reads the base interval, switch epoch, dense interval and per-step interval into an immutable PreviewCadence, and due_at_epoch decides the dense phase with (epoch - switch) % tail == 0. All three trainer call sites (preview callbacks and the execution-loop config) use that one object, so previews cannot drift away from periodic saves.",
+    "intervention": "Preview scheduling only; unrelated to the sampler or image quality.",
+    "expectedImpact": "Affects how often images render and the render cost; no effect on training numerics or speed.",
+    "tradeoffs": "The dense phase needs both a positive switch epoch and a positive interval, so filling the interval alone is the usual cause of \"I set it but nothing happened\"."
+  },
+  "relatedConfigs": [
+    "sample_tail_from_epoch",
+    "sample_every_n_epochs"
+  ]
+}

@@ -13,6 +13,8 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
     <!-- WD14 / CL 标签器 -->
     <section class="form-section">
       <header class="section-header"><h3>WD14 / CL 标签器</h3></header>
+      <details><summary>最近提交任务的参数</summary><pre data-submitted-tagger style="white-space:pre-wrap;"></pre></details>
+      <p class="field-desc">下方是下一轮草稿；修改不会改变已提交的任务。</p>
       <div class="section-summary">对训练数据集进行自动标注，为每张图片生成 .txt 标签文件。使用本地 ONNX 模型运行，无需网络。</div>
       <div class="section-content tool-fields">
         <div class="config-group" style="grid-column:1/-1;">
@@ -76,6 +78,8 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
     <!-- LLM 标签器 -->
     <section class="form-section">
       <header class="section-header"><h3>LLM 标签器（大语言模型）</h3></header>
+      <details><summary>最近提交任务的参数</summary><pre data-submitted-llm style="white-space:pre-wrap;"></pre></details>
+      <p class="field-desc">下方是下一轮草稿；修改不会改变已提交的任务。</p>
       <div class="section-summary">使用 OpenAI / Claude / 自定义 API 的视觉语言模型对图片进行标注。需要填写 API Key，会消耗 API 额度。</div>
       <div class="section-content tool-fields">
         <div class="config-group" style="grid-column:1/-1;">
@@ -103,6 +107,15 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
         <div class="config-group">
           <label>重试次数</label>
           <input class="text-input" type="number" id="llm-retries" value="1" min="0" max="5">
+        </div>
+        <div class="config-group">
+          <label>请求间隔（秒）</label>
+          <input class="text-input" type="number" id="llm-interval" value="0" min="0" max="3600" step="0.1">
+        </div>
+        <div class="config-group">
+          <label>重试初始间隔（秒）</label>
+          <p class="field-desc">失败后按重试次数递增等待；0 表示立即重试。</p>
+          <input class="text-input" type="number" id="llm-retry-interval" value="0" min="0" max="3600" step="0.1">
         </div>
         <div class="config-group">
           <label>模板预设</label>
@@ -157,6 +170,16 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
           <div class="label-col"><label>仅预演，不调用模型</label></div>
           <label class="switch switch-compact"><input type="checkbox" id="llm-dry-run"><span class="slider round"></span></label>
         </div>
+        <div class="config-group row boolean-card">
+          <div class="label-col"><label>生成后审核，再手动应用</label><p class="field-desc">调用模型生成真实结果，原标签文件保持到你选择应用。</p></div>
+          <label class="switch switch-compact"><input type="checkbox" id="llm-review-before-save"><span class="slider round"></span></label>
+        </div>
+        <details class="config-group" id="llm-stages-panel" style="grid-column:1/-1;">
+          <summary>多阶段 Caption（可选）</summary>
+          <p class="field-desc">按顺序生成、校正或压缩描述。每个阶段都会调用 API；提示词中可用 {caption} 引用上一阶段结果。最多 8 个阶段。</p>
+          <div data-stage-rows></div>
+          <button class="btn btn-outline btn-sm" type="button" data-add-stage>添加阶段</button>
+        </details>
         <div class="config-group" style="grid-column:1/-1;">
           <label>通道管理</label>
           <div style="display:grid;grid-template-columns:1fr 160px 1fr 1fr;gap:8px;align-items:end;">
@@ -170,11 +193,15 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
             <input class="text-input" type="text" id="llm-channel-base" placeholder="API 地址，可留空">
           </div>
           <textarea class="text-input" id="llm-channel-keys" style="margin-top:8px;min-height:72px;width:100%;" placeholder="API Key，一行一个；已有通道留空会保留旧密钥"></textarea>
+          <label>请求超时（秒）<input class="text-input" type="number" id="llm-channel-timeout" value="120" min="1" max="600"></label>
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
             <button class="btn btn-outline btn-sm" type="button" onclick="saveLlmTaggerChannelFromForm()">保存通道</button>
             <button class="btn btn-outline btn-sm" type="button" onclick="refreshLlmTaggerChannels()">刷新通道</button>
             <button class="btn btn-outline btn-sm" type="button" onclick="clearSelectedLlmTaggerChannelKeys()">清空密钥</button>
             <button class="btn btn-outline btn-sm" type="button" onclick="deleteSelectedLlmTaggerChannel()">删除所选通道</button>
+            <button class="btn btn-outline btn-sm" type="button" data-channel-export>导出可分享通道预设</button>
+            <button class="btn btn-outline btn-sm" type="button" data-channel-import>导入通道预设</button>
+            <input type="file" accept=".json,application/json" data-channel-import-file hidden>
           </div>
         </div>
       </div>
@@ -182,6 +209,16 @@ export function renderTaggerTemplate({ models, defaultModel, llmModels, presets,
         <button class="btn btn-primary btn-sm" type="button" id="btn-run-llm-tagger" onclick="runLlmTagger()">LLM 开始标注</button>
         <span id="llm-tagger-status-hint" style="margin-left:12px;font-size:0.85rem;color:var(--text-dim);"></span>
       </div>
+      <details id="llm-review-panel" style="margin-top:16px;">
+        <summary>审核生成结果</summary>
+        <label>任务 ID <input class="text-input" data-review-task placeholder="粘贴已生成结果的任务 ID"></label>
+        <button class="btn btn-outline btn-sm" type="button" data-review-load>载入 / 刷新</button>
+        <span data-review-status role="status"></span>
+        <div data-review-items></div>
+        <button class="btn btn-outline btn-sm" type="button" data-review-previous>上一页</button>
+        <button class="btn btn-outline btn-sm" type="button" data-review-next>下一页</button>
+        <button class="btn btn-primary btn-sm" type="button" data-review-apply>应用选中结果</button>
+      </details>
     </section>
   `;
 }

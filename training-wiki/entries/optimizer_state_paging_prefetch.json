@@ -1,0 +1,27 @@
+{
+  "key": "optimizer_state_paging_prefetch",
+  "title": "预取下一批优化器状态",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "krea2-lora",
+    "moss-image-lora"
+  ],
+  "standard": {
+    "summary": "在更新当前批参数时提前加载下一批优化器状态。",
+    "effect": "默认关闭；需要优化器状态分页、分块分页、CPU 驻留、保持原精度、pin_memory 和单 CUDA 设备。",
+    "whenToUse": "现有卸载方式成为内存或传输瓶颈时做单项对照。",
+    "avoidWhen": "尚未确认收益时不要同时打开多个新策略。"
+  },
+  "advanced": {
+    "principle": "现有逐参数优化器的分块更新方式不变。下一批状态复制通过完成事件衔接；复制源保持存活直到传输结束，异常退出时恢复梯度引用。",
+    "tradeoffs": "CUDA 分页、保存加载和后续更新正确性已验证。额外驻留下一批状态；本次 MOSS 整步速度处于基线波动范围，没有稳定提速证据。CPU 会报告 requires_one_cuda_device，并继续原分页路径。"
+  },
+  "relatedConfigs": [
+    "activation_cpu_offload_enabled",
+    "optimizer_state_paging_enabled",
+    "blockwise_fused_optimizers",
+    "module_offload_enabled"
+  ]
+}

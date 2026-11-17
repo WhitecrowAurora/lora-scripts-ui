@@ -3,6 +3,8 @@ export function createTrainingChromeActions({
   getFieldDefinition,
   loadTrainingWikiEntry,
   buildSchemaFallbackEntry,
+  pickLocalizedEntry,
+  t,
   escapeHtml,
   renderNavigator,
   renderView,
@@ -36,14 +38,23 @@ export function createTrainingChromeActions({
     renderView(state.activeModule || 'config');
   }
 
+  // 语言与训练类型都从 state 现取：`state.lang` 是设置里那个开关，`activeTrainingType`
+  // 决定 by-type 英文表命中哪一格 —— 不给 typeId 那一维，同一个键会显示别的训练类型那句。
   async function openTrainingOptionHelp(fieldKey) {
     const field = getFieldDefinition(fieldKey, state.activeTrainingType);
     renderTrainingOptionHelpModal({ loading: true, field, fieldKey });
+    const lang = state.lang;
+    const typeId = state.activeTrainingType;
     try {
       const wikiEntry = await loadTrainingWikiEntry(fieldKey);
-      renderTrainingOptionHelpModal({ entry: wikiEntry || buildSchemaFallbackEntry(field), field, fieldKey });
+      const localized = pickLocalizedEntry(wikiEntry, lang);
+      renderTrainingOptionHelpModal({
+        entry: localized || buildSchemaFallbackEntry(field, lang, typeId),
+        field,
+        fieldKey,
+      });
     } catch (_error) {
-      renderTrainingOptionHelpModal({ entry: buildSchemaFallbackEntry(field), field, fieldKey });
+      renderTrainingOptionHelpModal({ entry: buildSchemaFallbackEntry(field, lang, typeId), field, fieldKey });
     }
   }
 
@@ -54,12 +65,13 @@ export function createTrainingChromeActions({
 
   function renderTrainingOptionHelpModal({ entry = null, loading = false, field = null, fieldKey = '' }) {
     closeTrainingOptionHelp();
-    const safeEntry = entry || buildSchemaFallbackEntry(field) || {
+    const lang = state.lang;
+    const safeEntry = entry || buildSchemaFallbackEntry(field, lang, state.activeTrainingType) || {
       key: fieldKey,
-      title: fieldKey || '参数说明',
-      category: '训练参数',
+      title: fieldKey || t('help.title_fallback', lang),
+      category: t('help.category_fallback', lang),
       standard: {
-        summary: '正在加载参数说明...',
+        summary: t('help.loading', lang),
         effect: '',
         whenToUse: '',
         avoidWhen: '',
@@ -68,26 +80,26 @@ export function createTrainingChromeActions({
     };
     const standard = safeEntry.standard || {};
     const related = Array.isArray(safeEntry.relatedConfigs) ? safeEntry.relatedConfigs : [];
-    const optionsHtml = loading ? '' : renderSelectOptionsHelp(field, safeEntry);
+    const optionsHtml = loading ? '' : renderSelectOptionsHelp(field, safeEntry, lang);
     const body = document.createElement('div');
     body.className = 'training-option-help-modal open';
     body.innerHTML = `
-      <div class="training-option-help-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(safeEntry.title || '参数说明')}">
+      <div class="training-option-help-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(safeEntry.title || t('help.title_fallback', lang))}">
         <div class="training-option-help-head">
           <div>
-            <span class="training-option-help-category">${escapeHtml(safeEntry.category || '训练参数')}</span>
-            <h3>${escapeHtml(safeEntry.title || field?.label || fieldKey || '参数说明')}</h3>
+            <span class="training-option-help-category">${escapeHtml(safeEntry.category || t('help.category_fallback', lang))}</span>
+            <h3>${escapeHtml(safeEntry.title || field?.label || fieldKey || t('help.title_fallback', lang))}</h3>
           </div>
-          <button class="modal-close" type="button" title="关闭" onclick="closeTrainingOptionHelp()">×</button>
+          <button class="modal-close" type="button" title="${escapeHtml(t('help.close', lang))}" onclick="closeTrainingOptionHelp()">×</button>
         </div>
         <div class="training-option-help-body">
-          ${loading ? '<p class="field-desc">正在加载参数说明...</p>' : ''}
-          ${renderHelpRow('简单说', typeof standard.summary === 'string' ? standard.summary : '')}
-          ${renderHelpRow('打开后效果', typeof standard.effect === 'string' ? standard.effect : '')}
-          ${renderHelpRow('适合什么时候开', typeof standard.whenToUse === 'string' ? standard.whenToUse : '')}
-          ${renderHelpRow('什么时候先别开', typeof standard.avoidWhen === 'string' ? standard.avoidWhen : '')}
+          ${loading ? `<p class="field-desc">${escapeHtml(t('help.loading', lang))}</p>` : ''}
+          ${renderHelpRow(t('help.summary', lang), typeof standard.summary === 'string' ? standard.summary : '')}
+          ${renderHelpRow(t('help.effect', lang), typeof standard.effect === 'string' ? standard.effect : '')}
+          ${renderHelpRow(t('help.when', lang), typeof standard.whenToUse === 'string' ? standard.whenToUse : '')}
+          ${renderHelpRow(t('help.avoid', lang), typeof standard.avoidWhen === 'string' ? standard.avoidWhen : '')}
           ${optionsHtml}
-          ${safeEntry.fallback ? '<p class="training-option-help-note">完整 Wiki 条目还在补充中，当前内容来自训练 schema。</p>' : ''}
+          ${safeEntry.fallback ? `<p class="training-option-help-note">${escapeHtml(t('help.fallback_note', lang))}</p>` : ''}
           ${related.length ? `<div class="training-option-help-related">${related.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>` : ''}
         </div>
       </div>
@@ -170,7 +182,7 @@ export function createTrainingChromeActions({
     return Array.isArray(raw) ? raw : [];
   }
 
-  function renderSelectOptionsHelp(field, entry) {
+  function renderSelectOptionsHelp(field, entry, lang) {
     const schemaOpts = resolveHelpOptions(field);
     const wikiDesc = {
       ...asStringMap(entry?.optionDescriptions),
@@ -234,14 +246,14 @@ export function createTrainingChromeActions({
     const optionsBlock = items
       ? `
       <div class="training-option-help-row training-option-help-options-block">
-        <strong>可选值</strong>
+        <strong>${escapeHtml(t('help.options', lang))}</strong>
         <ul class="training-option-help-options">${items}</ul>
       </div>`
       : '';
     const notesBlock = noteItems
       ? `
       <div class="training-option-help-row training-option-help-options-block">
-        <strong>补充说明</strong>
+        <strong>${escapeHtml(t('help.notes', lang))}</strong>
         <ul class="training-option-help-options">${noteItems}</ul>
       </div>`
       : '';

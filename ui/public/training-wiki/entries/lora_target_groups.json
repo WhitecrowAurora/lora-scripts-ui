@@ -1,0 +1,14 @@
+{
+  "key": "lora_target_groups",
+  "title": "LoRA 训练目标族",
+  "category": "网络 / 训练目标",
+  "appliesTo": ["sd-lora", "sdxl-lora", "sd3-lora", "flux-lora", "flux3-lora", "krea2-lora", "qwen-image-lora", "minimax-h3-lora", "boogu-lora", "boogu-edit-lora", "zimage-lora", "wan22-ti2v-lora", "wan22-t2v-a14b-lora", "ltx23-lora", "ltx25-lora"],
+  "standard": {
+    "summary": "选择去噪模型内训练注意力、MLP/FFN，或同时训练两者。留空沿用该模型默认的适配器目标。",
+    "effect": "attention 与 mlp 映射到当前模型的真实模块。辅助投影保持该模型默认目标，文本编码器设置独立；改变目标可能影响容量、速度和效果，没有统一推荐。",
+    "whenToUse": "需要限制适配器的训练位置，或对注意力与前馈网络分别做效果对照时使用。",
+    "avoidWhen": "Anima 使用自己的目标族选项；FLUX.2、Newbie、Universal DiT 不提供通用两族选择。LoRA2 自适应和 ED-LoRA 使用独立目标。"
+  },
+  "advanced": null,
+  "relatedConfigs": ["network_dim", "anima_lora_target_groups"]
+}

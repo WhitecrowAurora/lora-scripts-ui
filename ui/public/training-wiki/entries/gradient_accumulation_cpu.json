@@ -1,0 +1,27 @@
+{
+  "key": "gradient_accumulation_cpu",
+  "title": "CPU 暂存累积梯度",
+  "category": "优化器 / 累积",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "krea2-lora",
+    "moss-image-lora"
+  ],
+  "standard": {
+    "summary": "将未完成累积的梯度暂存到 CPU，减少微批之间的 GPU 驻留。",
+    "effect": "默认关闭。下一微批对参数累积前取回旧梯度，由 PyTorch 在原设备按原顺序相加；最后一个微批结束时还原完整梯度，沿用原有缩放、全局裁剪和优化器更新。",
+    "whenToUse": "单卡 fast 模式、累积步数大于 1，并且前向期间的梯度驻留构成显存压力时。",
+    "avoidWhen": "PCGrad、随机梯度累积、反向中执行优化器、closure 优化器、CUDA Graph、多设备和 DDP 不支持。梯度释放使用 post_step 模式。"
+  },
+  "advanced": {
+    "principle": "每个参数的 AccumulateGrad 前恢复未完成梯度，累积后卸载；未在最后微批使用的参数也会在更新前还原。中途 checkpoint 保存 CPU 梯度和累积窗口，恢复后继续原窗口。",
+    "tradeoffs": "同步 CPU 传输会增加步时。最终更新仍需完整 GPU 梯度，因此不保证降低整步峰值。MOSS 1024、BS1、累积 2 的 LoHa r16 对照可暂存约 142 MiB，最终更新逐位一致；完整进程在半个累积窗口保存后退出、重新启动，现场梯度与后续两次更新也逐位一致。其它模型和分布式未验收。"
+  },
+  "relatedConfigs": [
+    "gradient_accumulation_steps",
+    "gradient_accumulation_mode",
+    "gradient_release_mode",
+    "max_grad_norm"
+  ]
+}

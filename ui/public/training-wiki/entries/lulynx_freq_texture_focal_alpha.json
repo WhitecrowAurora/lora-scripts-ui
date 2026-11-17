@@ -1,0 +1,26 @@
+{
+  "key": "lulynx_freq_texture_focal_alpha",
+  "title": "难频率加权指数",
+  "category": "感知锚/频域纹理损失",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "focal 模式下误差加权的集中程度，默认 1（论文设置）；0 等价于 clean latent 的均方误差。",
+    "effect": "值越大越集中于误差最大的频率分量；使用完整频谱、不做高通分离。",
+    "whenToUse": "focal 模式下先保持 1，出现高频过锐或噪点时向下调。",
+    "avoidWhen": "模式不是 focal 时此项不生效。"
+  },
+  "relatedConfigs": [
+    "lulynx_freq_texture_mode",
+    "lulynx_freq_texture_band_levels"
+  ]
+}

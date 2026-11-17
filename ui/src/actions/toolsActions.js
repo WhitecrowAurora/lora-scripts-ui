@@ -4,6 +4,7 @@
 // 依赖（工厂注入）：api, showToast, _renderLogLines
 
 import { $, escapeHtml, _ico } from '../utils/dom.js';
+import { renderLoraDiagnostics } from '../renderers/loraDiagnostics.js';
 
 export function createToolsActions({ api, showToast, _renderLogLines }) {
   function getToolboxStore() {
@@ -153,6 +154,121 @@ export function createToolsActions({ api, showToast, _renderLogLines }) {
     }).join('') + '</div>';
   }
 
+  // 三条 block 工具共用的窄列：能量是量级差异很大的正数，用相对占比当条宽，
+  // 原值留在数字列，避免把 0.003 和 300 画成同一条。
+  function renderBlockBars(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return '<div class="xray-empty">没有任何 block 数据</div>';
+    const max = Math.max(...rows.map((row) => Number(row?.energy ?? row?.energy_share ?? 0)), 1e-12);
+    return '<div class="xray-table-wrap"><table class="xray-table"><thead><tr>'
+      + '<th>Block</th><th>模块数</th><th>能量占比</th><th>能量</th><th>有效 rank</th></tr></thead><tbody>'
+      + rows.map((row) => {
+        const energy = Number(row?.energy ?? 0);
+        const pct = Math.max(0, Math.min(100, (energy / max) * 100));
+        const share = Number(row?.energy_share ?? 0);
+        return '<tr>'
+          + '<td><strong>' + escapeHtml(String(row?.block ?? '-')) + '</strong></td>'
+          + '<td class="xray-num">' + escapeHtml(String(row?.module_count ?? '-')) + '</td>'
+          + '<td class="xray-num">' + escapeHtml((share * 100).toFixed(2)) + '%</td>'
+          + '<td><div class="xray-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div></td>'
+          + '<td class="xray-num">' + escapeHtml(String(
+            row?.effective_rank_mean != null ? Number(row.effective_rank_mean).toFixed(2) : '-')) + '</td>'
+          + '</tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  }
+
+  function renderEnergyReport(body) {
+    const approximated = Object.values(body?.modules || {}).some((row) => row?.approximated);
+    return '<div class="xray-result">'
+      + '<div class="xray-result-head"><div><strong>Block Energy</strong>'
+      + '<span>' + escapeHtml(String(body?.family || '未知')) + ' 家族的逐 block 奇异值能量</span></div></div>'
+      + '<div class="xray-metrics">'
+      + renderMetric('家族', body?.family || '-')
+      + renderMetric('总能量', Number(body?.total_energy ?? 0).toFixed(2))
+      + renderMetric('block 数', Array.isArray(body?.blocks) ? body.blocks.length : 0)
+      + '</div>'
+      + (approximated
+        ? '<div class="xray-summary-box"><pre>部分模块超过单文件能量上限，已改用近似值（通常偏高）。'
+          + '它只适合排序，不适合当绝对量对比。</pre></div>'
+        : '')
+      + renderBlockBars(body?.blocks)
+      + renderLoraDiagnostics(body)
+      + '<details class="xray-json"><summary>查看原始 JSON</summary><pre>'
+      + escapeHtml(JSON.stringify(body, null, 2)) + '</pre></details></div>';
+  }
+
+  function renderAdviceReport(body) {
+    const summary = body?.summary || {};
+    const rows = Array.isArray(body?.blocks) ? body.blocks : [];
+    const changed = rows.filter((row) => Number(row?.suggested_scale ?? 1) !== 1);
+    const scales = body?.block_scales || {};
+    return '<div class="xray-result">'
+      + '<div class="xray-result-head"><div><strong>Block Advice</strong>'
+      + '<span>死块归零、过重块压低、其余保持；每条都带理由</span></div></div>'
+      + '<div class="xray-metrics">'
+      + renderMetric('死块', summary.dead ?? 0)
+      + renderMetric('过重', summary.overweighted ?? 0)
+      + renderMetric('保持', summary.keep ?? 0)
+      + renderMetric('需调整', changed.length)
+      + '</div>'
+      + (changed.length
+        ? '<div class="xray-section-head"><strong>建议的滑块值</strong><span>可直接粘到 Block Bake / Block Render 的 block 权重里</span></div>'
+          + '<div class="xray-summary-box"><pre>' + escapeHtml(JSON.stringify(scales, null, 2)) + '</pre>'
+          + '<div class="xray-summary-actions"><button class="toolbox-mini-btn" type="button" data-copy-text="'
+          + escapeHtml(JSON.stringify(scales)) + '">复制权重 JSON</button></div></div>'
+        : '<div class="xray-empty">所有 block 都在合理区间，没有需要调整的项。</div>')
+      + '<div class="xray-table-wrap"><table class="xray-table"><thead><tr>'
+      + '<th>Block</th><th>建议系数</th><th>理由</th><th>能量占比</th></tr></thead><tbody>'
+      + rows.map((row) => '<tr>'
+        + '<td><strong>' + escapeHtml(String(row?.block ?? '-')) + '</strong></td>'
+        + '<td class="xray-num">' + escapeHtml(String(Number(row?.suggested_scale ?? 1).toFixed(2))) + '</td>'
+        + '<td>' + escapeHtml(String(row?.reason ?? '-')) + '</td>'
+        + '<td class="xray-num">' + escapeHtml((Number(row?.energy_share ?? 0) * 100).toFixed(2)) + '%</td>'
+        + '</tr>').join('')
+      + '</tbody></table></div>'
+      + '<details class="xray-json"><summary>查看原始 JSON</summary><pre>'
+      + escapeHtml(JSON.stringify(body, null, 2)) + '</pre></details></div>';
+  }
+
+  function renderRenderResult(body) {
+    // 两个渲染入口回来的形状不同：块渲染带 scaled_blocks / 未归属计数，
+    // 蒸馏渲染带 comparable 判定。这里按各自有的字段显示，缺的就不显示，
+    // 不要用一个默认值把"没这个信息"画成"这个信息是好的"。
+    const scaledBlocks = Array.isArray(body?.scaled_blocks) ? body.scaled_blocks : [];
+    const unattributedCount = Number(body?.unattributed_modules ?? 0);
+    const hasComparable = Object.prototype.hasOwnProperty.call(body || {}, 'comparable');
+    return '<div class="xray-result">'
+      + '<div class="xray-result-head"><div><strong>渲染结果</strong>'
+      + '<span>生效的 block 与实际写入的文件</span></div></div>'
+      + '<div class="xray-metrics">'
+      + renderMetric('生效模块', body?.scaled_modules ?? body?.modules_loaded ?? '-')
+      + (hasComparable
+        ? renderMetric('可比性', body.comparable ? '与训练预览可比' : '不可直接比较')
+        : renderMetric('未归属模块', unattributedCount))
+      + (body?.steps != null ? renderMetric('步数', body.steps) : '')
+      + '</div>'
+      + (body?.output_path
+        ? '<div class="xray-output-list"><code>' + escapeHtml(String(body.output_path)) + '</code></div>'
+        : '')
+      + (Array.isArray(body?.warnings) && body.warnings.length
+        ? '<div class="xray-summary-box"><pre>' + escapeHtml(body.warnings.join('\n')) + '</pre></div>'
+        : '')
+      + (scaledBlocks.length
+        ? '<div class="xray-section-head"><strong>收到权重的 block</strong>'
+          + '<span>这张图就是这些 block 被缩放后的样子</span></div>'
+          + '<div class="xray-output-list">' + scaledBlocks.map((block) =>
+            '<code>' + escapeHtml(String(block)) + '</code>').join('') + '</div>'
+        : (body?.scaled_modules === 0
+          ? '<div class="xray-empty">没有任何 block 收到权重，渲染出来的就是基座模型。</div>'
+          : ''))
+      + (unattributedCount > 0
+        ? '<div class="xray-empty">有 ' + escapeHtml(String(unattributedCount))
+          + ' 个模块的家族映射对不上，它们的权重没有被应用。</div>'
+        : '')
+      + '<details class="xray-json"><summary>查看原始 JSON</summary><pre>'
+      + escapeHtml(JSON.stringify(body, null, 2)) + '</pre></details></div>';
+  }
+
   function renderCoreResult(toolId, payload) {
     const body = payload?.data ?? payload;
     if (payload?.card_base64 || body?.card_base64) {
@@ -202,6 +318,15 @@ export function createToolsActions({ api, showToast, _renderLogLines }) {
         + '<details class="xray-json"><summary>查看原始 JSON</summary><pre>' + escapeHtml(JSON.stringify(body, null, 2)) + '</pre></details>'
         + '</div>';
     }
+    if (toolId === 'core_lora_block_energy' && body) {
+      return renderEnergyReport(body);
+    }
+    if (toolId === 'core_lora_block_advice' && body) {
+      return renderAdviceReport(body);
+    }
+    if (toolId === 'core_lora_render_preview' || toolId === 'core_lora_render_distilled') {
+      return renderRenderResult(body);
+    }
     if (body?.success || body?.output_path || body?.output_paths || body?.residual_path) {
       const outputs = [body.output_path, body.residual_path, body.adapter_path, ...(body.output_paths || [])].filter(Boolean);
       return '<div class="xray-result"><div class="xray-result-head"><div><strong>工具运行完成</strong><span>输出文件已写入指定路径</span></div></div>'
@@ -219,19 +344,36 @@ export function createToolsActions({ api, showToast, _renderLogLines }) {
    let hasAnyField = false;
     // 这些 key 接受空格分隔的多值，后端 run_script 遇到 list 会展开为多个 CLI 参数
     const listKeys = new Set(['models', 'ratios']);
+    // 这些 key 必须是数字/对象，原样当字符串发出去 pydantic 会 422。
+    const numberKeys = new Set([
+      'rank', 'health_score', 'alpha', 'ratio',
+      'steps', 'guidance_scale', 'seed', 'width', 'height',
+      'dead_share', 'hot_ratio', 'training_steps', 'training_guidance_scale',
+      'spectral_top_k', 'intrusion_threshold',
+    ]);
+    const jsonKeys = new Set([
+      'base_params', 'x_axis', 'y_axis', 'z_axis', 'metrics',
+      'block_scales', 'scales_a', 'scales_b', 'energy_report',
+      'base_key_map',
+    ]);
     for (const key of keys) {
       const input = $(`#tool-${toolId}-${key}`);
       if (input && input.value.trim()) {
         const val = input.value.trim();
-        if (['keep_blocks', 'drop_blocks', 'issues'].includes(key)) {
+        if (key === 'checkpoint_paths') {
+          params[key] = val.split(/\r?\n/).map((part) => part.trim()).filter(Boolean);
+        } else if (['keep_blocks', 'drop_blocks', 'issues'].includes(key)) {
           params[key] = val.split(',').map((part) => part.trim()).filter(Boolean);
-        } else if (['rank', 'health_score', 'alpha'].includes(key)) {
+        } else if (numberKeys.has(key)) {
           params[key] = Number(val);
-        } else if (key === 'ratio') {
-          params[key] = Number(val);
-        } else if (['base_params', 'x_axis', 'y_axis', 'z_axis', 'metrics'].includes(key)) {
-          params[key] = JSON.parse(val);
-        } else if (['half'].includes(key)) {
+        } else if (jsonKeys.has(key)) {
+          try {
+            params[key] = JSON.parse(val);
+          } catch (_error) {
+            showToast(`字段 ${key} 不是合法 JSON。`);
+            return;
+          }
+        } else if (['half', 'save_cells'].includes(key)) {
           params[key] = !['0', 'false', 'no', 'off'].includes(val.toLowerCase());
         } else if (listKeys.has(key)) {
           params[key] = val.split(/\s+/);

@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_comfy_int8_weights_rotated",
+  "title": "INT8 权重旋转（Comfy 导出）",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "导出 ComfyUI INT8 权重时是否反转 ConvRot，默认跟随权重元数据。",
+    "effect": "跟随元数据=按输入权重的标记自动决定；反转=强制对卷积权重做反向旋转；不反转=保持原样。只有导出 comfy int8 时才有意义。",
+    "whenToUse": "ComfyUI 那边加载后画质异常、怀疑旋转标记与实际不符时手动指定。",
+    "avoidWhen": "不导出 INT8 时改它没有任何效果。"
+  },
+  "relatedConfigs": [
+    "export_comfy_int8_engine",
+    "export_comfy_int8_base"
+  ]
+}

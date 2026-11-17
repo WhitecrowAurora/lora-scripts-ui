@@ -1,0 +1,21 @@
+{
+  "key": "ltx23_audio_vae_path",
+  "title": "LTX-2.x 音频 VAE",
+  "category": "训练用模型",
+  "appliesTo": [
+    "ltx23-lora",
+    "ltx25-lora",
+    "ltx23-finetune",
+    "ltx25-finetune"
+  ],
+  "standard": {
+    "summary": "自定义音频 VAE 路径，可选；留空则从模型中加载匹配的音频 VAE。",
+    "effect": "只在组件布局非标准、需要单独指定音频 VAE 时填写；填错会比留空更早失败。",
+    "whenToUse": "拆分存储的模型权重、音频 VAE 单独存放时。",
+    "avoidWhen": "模型自带音频 VAE 时留空，让系统自动匹配。"
+  },
+  "relatedConfigs": [
+    "ltx23_train_audio",
+    "ltx23_audio_loss_weight"
+  ]
+}

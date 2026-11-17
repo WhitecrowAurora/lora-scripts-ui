@@ -67,6 +67,7 @@ export const DIT_BLOCK_RESIDENCY_OPTIONS = [
 export const STREAMING_BLOCK_RESIDENCY_VALUES = new Set(['block_offload', 'layer_offload']);
 export const GRADIENT_CHECKPOINT_BACKED_RESIDENCY_KEYS = [
   ['flux2_block_residency', 'FLUX.2'],
+  ['flux3_block_residency', 'FLUX.3'],
   ['boogu_block_residency', 'Boogu'],
   ['zimage_block_residency', 'Z-Image'],
   ['wan22_block_residency', 'Wan2.2'],
@@ -219,7 +220,7 @@ export const vortexRuntimeFields = (residencyKey, baseVisible = null) => {
       key: 'vortex_budget_mb',
       type: 'number',
       label: 'Vortex Cache 预算 MB',
-      desc: 'Vortex Cache 预算 MB',
+      desc: 'Vortex 显存涡流管理的缓存预算（MB）。',
       defaultValue: 256,
       min: 0,
       step: 64,
@@ -294,9 +295,9 @@ export const LORA_METHOD_TYPES = [
   'lora',       // 标准 LoRA（基础）
   'lora_plus',  // LoRA+ (rsLoRA 的前身，学习率自适应)
   'rs_lora',    // rsLoRA (rank-stabilized LoRA)
-  { value: 'lulynx_frozen_a_lora', label: 'lulynx Frozen-A LoRA（兼容旧 LoRA-FA）' },
+  { value: 'lulynx_frozen_a_lora', label: 'Frozen-A LoRA（LoRA-FA 系，只冻 A 不做闭式梯度校正）' },
   'vera',       // VeRA (vector parameterization)
-  { value: 'lulynx_progressive_rank_lora', label: 'lulynx 渐进秩 LoRA（按训练进度）' },
+  { value: 'lulynx_progressive_rank_lora', label: '渐进秩 LoRA（按训练进度）' },
   'flexrank',   // FlexRank LoRA
   'fera',       // FeRA (feature reparameterization)
   'gdlokr',     // GDLoKr (Generalized DoRA + LoKr, 独立架构)
@@ -322,12 +323,16 @@ export const ADAPTER_ENTITY_PRIORITY = Object.freeze([
   { id: 'fera', key: 'fera_enabled', label: 'FeRA' },
   { id: 'hydralora', key: 'hydralora_enabled', label: 'HydraLoRA' },
   { id: 'vera', key: 'vera_enabled', label: 'VeRA' },
-  { id: 'lora_fa', key: 'lora_fa_enabled', label: 'lulynx Frozen-A LoRA' },
-  { id: 'tlora', key: 'tlora_enabled', label: 'lulynx 渐进秩 LoRA' },
+  { id: 'lora_fa', key: 'lora_fa_enabled', label: 'Frozen-A LoRA' },
+  { id: 'tlora', key: 'tlora_enabled', label: '渐进秩 LoRA' },
   { id: 'flexrank', key: 'flexrank_lora_enabled', label: 'FlexRank' },
-  { id: 'reslora', key: 'reslora_enabled', label: 'ResLoRA' },
+  { id: 'reslora', key: 'reslora_enabled', label: 'lulynx 跨层残差 LoRA' },
+  // lora2_enabled 有意只留在这张表里，没有对应的 schema 字段：LoRA2 Gate 是 default-off
+  // 储备（2026-09-05 裁决），后端完整接线但不给界面入口。导入的旧配置或手写 TOML 仍可能
+  // 带上这个键，所以归一化必须认得它 —— 这一行不是死代码。判据在
+  // backend/smoke/audit/misc/lora2_gate_smoke.py 的 test_readiness_api。
   { id: 'lora2', key: 'lora2_enabled', label: 'LoRA2 Gate' },
-  { id: 'tensorring', key: 'tensorring_lora_enabled', label: 'lulynx Tensor-Ring Adapter' },
+  { id: 'tensorring', key: 'tensorring_lora_enabled', label: 'Tensor-Ring 适配器' },
   { id: 'dokr', key: 'dokr_enabled', label: 'DoKr' },
   { id: 'gdlokr', key: 'gdlokr_enabled', label: 'GDLoKr' },
   { id: 'cdka', key: 'cdka_enabled', label: 'CDKA' },
@@ -625,7 +630,7 @@ export const vParameterizationFields = (includeVPredOptions = false) => {
 
 // ---- 数据集字段构造器 ----
 export const ds = (reso, bucketMax = 2048, bucketStep = 64, extra = []) => [
-  { key: 'train_data_dir', type: 'folder', pickerType: 'folder', label: '训练数据集路径', title: 'train_data_dir', desc: '训练数据集路径', defaultValue: './output/lulynx' },
+  { key: 'train_data_dir', type: 'folder', pickerType: 'folder', label: '训练数据集路径', title: 'train_data_dir', desc: '训练图像所在目录，子目录名可作为概念名。', defaultValue: './output/lulynx' },
   { key: 'reg_data_dir', type: 'folder', pickerType: 'folder', label: '正则化数据集路径', title: 'reg_data_dir', desc: '正则化数据集路径。默认留空，不使用正则化图像。', defaultValue: '' },
   { key: 'prior_loss_weight', type: 'number', label: '先验损失权重', title: 'prior_loss_weight', desc: '正则化 - 先验损失权重', defaultValue: 1, min: 0, step: 0.1 },
   { key: 'resolution', type: 'string', label: '训练分辨率', title: 'resolution', desc: '训练图片分辨率，宽x高。支持非正方形，但必须是 64 倍数。', importantDesc: '训练分辨率', defaultValue: reso },
@@ -641,6 +646,13 @@ export const ds = (reso, bucketMax = 2048, bucketStep = 64, extra = []) => [
   { key: 'image_decode_backend', type: 'select', label: '图片解码后端', title: 'image_decode_backend', desc: 'pil 最兼容；pil_lru 会按文件 mtime/大小缓存已解码 RGB', defaultValue: 'pil', options: IMAGE_DECODE_BACKEND_OPTIONS, visibleWhen: when('performance_expert_mode', true) },
   { key: 'data_backend', type: 'select', label: '数据后端', title: 'data_backend', desc: 'auto/caption 当前继续走 CaptionDataset', defaultValue: 'auto', options: DATA_BACKEND_OPTIONS, visibleWhen: when('performance_expert_mode', true) },
   { key: 'image_decode_cache_size', type: 'number', label: '图片解码缓存张数', title: 'image_decode_cache_size', desc: '每个 DataLoader worker 的 PIL 解码 LRU', defaultValue: 0, min: 0, visibleWhen: all(when('performance_expert_mode', true), oneOf('image_decode_backend', ['auto', 'pil_lru'])) },
+  // 外观一致性检查：训练前给每张图打相似度分，找出和这套数据集整体风格不像的图。
+  // 只出报告，不移动、不删除任何文件；权重由用户自备（程序不附带、不自动下载），
+  // 开了开关却没填路径会被后端拒绝提交，而不是静默跳过。
+  { key: 'look_filter_enabled', type: 'boolean', label: '外观一致性检查', title: 'look_filter_enabled', desc: '训练前给每张图打相似度分，低于阈值标记为离群，结果写进输出目录的 lulynx_look_filter_report.json。只出报告：不会移动或删除你的图片。需要自备 ONNX embedding 权重。默认关闭。', defaultValue: false },
+  { key: 'likeness_arcface_model_path', type: 'file', pickerType: 'model-file', label: 'Embedding 权重 (ONNX)', title: 'likeness_arcface_model_path', desc: '你自己的 ArcFace 或其它 embedding 模型的 .onnx 文件绝对路径。本程序不附带任何权重，也不自动下载；权重许可由你自行遵守。', defaultValue: '', visibleWhen: when('look_filter_enabled', true) },
+  { key: 'look_filter_outlier_threshold', type: 'number', label: '离群阈值', title: 'look_filter_outlier_threshold', desc: '与数据集整体风格的余弦相似度低于此值的图会被标记。调高更严格。', defaultValue: 0.45, min: 0, max: 1, step: 0.01, visibleWhen: when('look_filter_enabled', true) },
+  { key: 'likeness_device', type: 'select', label: 'Embedding 设备', title: 'likeness_device', desc: 'cpu 不占显存但慢；cuda 更快，会在预训练阶段与模型抢显存。', defaultValue: 'cpu', options: [{ value: 'cpu', label: 'CPU' }, { value: 'cuda', label: 'CUDA' }], visibleWhen: when('look_filter_enabled', true) },
   ...extra,
 ];
 
@@ -656,21 +668,21 @@ export const uiGroup = (title, desc = '', visibleWhen = null) => ({
 
 // ---- LoRA / LyCORIS 网络字段构造器 ----
 export const netLora = (mod, dim = 32, alpha = 32, maxDim = 512, extra = [], extraModules = [], includeLycoris = true) => [
-  { key: 'network_module', type: 'select', label: '训练网络模块', title: 'network_module', desc: '训练网络模块', defaultValue: mod, options: [mod, ...extraModules, ...(includeLycoris && !mod.includes('lycoris') ? ['lycoris.kohya'] : [])] },
-  { key: 'network_dim', type: 'slider', label: '网络维度', title: 'network_dim', desc: '网络维度', defaultValue: dim, min: 1, max: maxDim, step: 1 },
-  { key: 'network_alpha', type: 'slider', label: '网络 Alpha', title: 'network_alpha', desc: '网络 Alpha', defaultValue: alpha, min: 1, max: maxDim, step: 1 },
-  { key: 'network_dropout', type: 'number', label: '网络 Dropout', title: 'network_dropout', desc: '网络 Dropout', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: nonLycorisNetworkSelected },
+  { key: 'network_module', type: 'select', label: '训练网络模块', title: 'network_module', desc: '适配器网络实现（networks.lora / LyCORIS 类模块）。', defaultValue: mod, options: [mod, ...extraModules, ...(includeLycoris && !mod.includes('lycoris') ? ['lycoris.kohya'] : [])] },
+  { key: 'network_dim', type: 'slider', label: '网络维度', title: 'network_dim', desc: 'LoRA 秩（低秩矩阵维度），越大容量与显存越高。', defaultValue: dim, min: 1, max: maxDim, step: 1 },
+  { key: 'network_alpha', type: 'slider', label: '网络 Alpha', title: 'network_alpha', desc: 'LoRA 缩放 alpha，实际缩放 = alpha / network_dim。', defaultValue: alpha, min: 1, max: maxDim, step: 1 },
+  { key: 'network_dropout', type: 'number', label: '网络 Dropout', title: 'network_dropout', desc: 'LoRA 线性层权重的 dropout 概率。', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: nonLycorisNetworkSelected },
   { key: 'flexrank_lora_rank_range_min', type: 'number', label: 'FlexRank 最小 Rank', title: 'flexrank_lora_rank_range_min', desc: 'FlexRank 每步随机采样激活 rank 的下界', defaultValue: 1, min: 1, step: 1, visibleWhen: when('network_module', 'networks.flexrank_lora') },
   { key: 'dim_from_weights', type: 'boolean', label: '从权重推断 Dim', title: 'dim_from_weights', desc: '从已有 network_weights 自动推断 rank / dim', defaultValue: false },
   { key: 'scale_weight_norms', type: 'number', label: '最大范数正则化', title: 'scale_weight_norms', desc: '最大范数正则化。如果使用，推荐为 1', defaultValue: '', min: 0, step: 0.01 },
   uiGroup('LyCORIS 基础结构', '这里放算法类型、卷积维度、preset 这类决定网络骨架的参数。普通 LoRA 路线可直接忽略。', lycorisNetworkSelected),
   { key: 'lycoris_algo', type: 'select', label: 'LyCORIS 算法', title: 'lycoris_algo', desc: '后端原生支持：LoCon / LoHa / LoKr / GLoRA / GLoKr / IA3 / Full / Diag-OFT。', defaultValue: 'locon', options: SUPPORTED_LYCORIS_ALGOS, visibleWhen: lycorisNetworkSelected },
   { key: 'lycoris_loha_implementation', type: 'select', label: 'LoHa 实现方案', title: 'lycoris_loha_implementation', desc: '标准 LyCORIS LoHa 与外部训练器/加载器兼容；Lulynx 简化 LoHa 仅用于继续旧方案训练或加载旧权重。', defaultValue: 'lycoris_standard', options: LOHA_IMPLEMENTATION_OPTIONS, visibleWhen: all(lycorisNetworkSelected, when('lycoris_algo', 'loha')) },
-  { key: 'conv_dim', type: 'number', label: '卷积维度', title: 'conv_dim', desc: '卷积维度', defaultValue: 4, min: 1, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_CONV_ALGOS.includes(c.lycoris_algo) },
-  { key: 'conv_alpha', type: 'number', label: '卷积 Alpha', title: 'conv_alpha', desc: '卷积 Alpha', defaultValue: 1, min: 1, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_CONV_ALGOS.includes(c.lycoris_algo) },
+  { key: 'conv_dim', type: 'number', label: '卷积维度', title: 'conv_dim', desc: '卷积层 LoRA 的秩（卷积通道数），SDXL 常用 4。', defaultValue: 4, min: 1, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_CONV_ALGOS.includes(c.lycoris_algo) },
+  { key: 'conv_alpha', type: 'number', label: '卷积 Alpha', title: 'conv_alpha', desc: '卷积层 LoRA 的 alpha 缩放，实际缩放 = alpha / conv_dim。', defaultValue: 1, min: 1, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_CONV_ALGOS.includes(c.lycoris_algo) },
   // LyCORISInjector.PRESET_TARGETS 只认这三个;其他字符串会被当成模块名子串去匹配,
   // 匹配不到就静默注入 0 层。所以这里收成 select,不留自由文本。
-  { key: 'lycoris_preset', type: 'select', label: 'LyCORIS Preset', title: 'lycoris_preset', desc: '决定注入哪些层。full=Linear/Conv2d/Norm 全量;attn-only=只注意力投影;attn-mlp=注意力+前馈。留空 = 按算法默认目标。', defaultValue: '', options: [{ value: '', label: '不使用（默认目标）' }, { value: 'full', label: 'full（含 Norm，会自动开启训练 Norm 层）' }, { value: 'attn-only', label: 'attn-only（仅注意力投影）' }, { value: 'attn-mlp', label: 'attn-mlp（注意力 + 前馈）' }], visibleWhen: lycorisNetworkSelected },
+  { key: 'lycoris_preset', type: 'select', label: 'LyCORIS Preset', title: 'lycoris_preset', desc: '传给 LyCORIS 库的 preset。', defaultValue: '', options: [{ value: '', label: '不使用（默认目标）' }, { value: 'full', label: 'full（含 Norm，会自动开启训练 Norm 层）' }, { value: 'attn-only', label: 'attn-only（仅注意力投影）' }, { value: 'attn-mlp', label: 'attn-mlp（注意力 + 前馈）' }], visibleWhen: lycorisNetworkSelected },
   uiGroup('正则化与稳定性', 'LyCORIS 专用 dropout / 正则项。大多数训练保持默认即可。', lycorisNetworkSelected),
   { key: 'dropout', type: 'number', label: 'LyCORIS Dropout', desc: 'LyCORIS 主 dropout 概率。', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: (c) => LYCORIS_NETWORK_MODULES.includes(c.network_module) && LYCORIS_DELTA_ALGOS.includes(c.lycoris_algo) },
   { key: 'rank_dropout', type: 'number', label: 'LoKr Rank Dropout', title: 'rank_dropout', desc: 'LoKr 专用：按 rank/输出维度随机丢弃的概率。', defaultValue: '', min: 0, max: 1, step: 0.01, visibleWhen: all(lycorisNetworkSelected, when('lycoris_algo', 'lokr')) },
@@ -704,16 +716,16 @@ export const flowParams = (defaults = {}) => [
     { key: 'flow_logit_std', type: 'number', label: 'Logit Std', title: 'flow_logit_std', desc: 'logit_normal 时间步采样标准差（SD3 推荐 1）', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: when('timestep_sampling', 'logit_normal') },
   ] : []),
   { key: 'sigmoid_scale', type: 'number', label: 'sigmoid 缩放', title: 'sigmoid_scale', desc: 'sigmoid 缩放系数', defaultValue: defaults.ss || 1.0, step: 0.001 },
-  { key: 'model_prediction_type', type: 'select', label: '模型预测类型', title: 'model_prediction_type', desc: '模型预测类型', defaultValue: defaults.mp || 'raw', options: ['raw', 'additive', 'sigma_scaled'] },
+  { key: 'model_prediction_type', type: 'select', label: '模型预测类型', title: 'model_prediction_type', desc: '模型预测目标类型（epsilon/v-prediction/flow）。', defaultValue: defaults.mp || 'raw', options: ['raw', 'additive', 'sigma_scaled'] },
   { key: 'sdxl_model_prediction_type', type: 'select', label: 'Flow 预测目标', title: 'sdxl_model_prediction_type', desc: 'SDXL/SD1.5 Flow 路径的模型预测目标。', defaultValue: 'epsilon', options: ['epsilon', 'velocity', 'sample'], visibleWhen: flowEnabled },
   { key: 'sdxl_flow_weighting_scheme', type: 'select', label: 'Flow Loss 权重', title: 'sdxl_flow_weighting_scheme', desc: 'Flow loss 的 sigma 权重策略。', defaultValue: 'none', options: ['none', 'sigma_sqrt', 'cosmap', 'logit_normal'], visibleWhen: flowEnabled },
   { key: 'sdxl_flow_shift', type: 'number', label: 'Flow 离散偏移', title: 'sdxl_flow_shift', desc: '离散 flow shift，1.0 表示不偏移。', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: flowEnabled },
   { key: 'sdxl_sigmoid_scale', type: 'number', label: 'Flow Sigmoid Scale', title: 'sdxl_sigmoid_scale', desc: 'sigmoid 时间步采样缩放', defaultValue: 1.0, min: 0.001, step: 0.01, visibleWhen: all(flowEnabled, when('timestep_sampling', 'sigmoid')) },
   { key: 'discrete_flow_shift', type: 'number', label: '离散流位移', title: 'discrete_flow_shift', desc: '离散流位移值', defaultValue: defaults.dfs || 1.0, step: 0.001 },
-  { key: 'guidance_scale', type: 'number', label: 'CFG 引导缩放', title: 'guidance_scale', desc: 'CFG 引导缩放', defaultValue: defaults.gs || 1.0, step: 0.01 },
+  { key: 'guidance_scale', type: 'number', label: 'CFG 引导缩放', title: 'guidance_scale', desc: 'CFG 引导缩放系数。', defaultValue: defaults.gs || 1.0, step: 0.01 },
   { key: 'weighting_scheme', type: 'select', label: '权重策略', title: 'weighting_scheme', desc: '损失加权策略', defaultValue: defaults.ws || 'none', options: ['sigma_sqrt', 'logit_normal', 'mode', 'cosmap', 'none'] },
   { key: 'mode_scale', type: 'number', label: 'mode 权重缩放', title: 'mode_scale', desc: 'mode 权重策略的缩放系数', defaultValue: '', step: 0.01 },
-  { key: 'loss_type', type: 'select', label: '损失函数类型', title: 'loss_type', desc: '损失函数类型', defaultValue: defaults.lt || 'l2', options: ['l1', 'l2', 'huber', 'smooth_l1', 'pseudo_huber'] },
+  { key: 'loss_type', type: 'select', label: '损失函数类型', title: 'loss_type', desc: '重建 loss 的函数类型（l2/l1/huber/smooth_l1）。', defaultValue: defaults.lt || 'l2', options: ['l1', 'l2', 'huber', 'smooth_l1', 'pseudo_huber'] },
 ];
 
 export const rectifiedFlowParams = () => [

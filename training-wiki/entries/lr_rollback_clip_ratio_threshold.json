@@ -1,0 +1,36 @@
+{
+  "key": "lr_rollback_clip_ratio_threshold",
+  "title": "判定不稳定的 clip 比例",
+  "title_en": "Unstable Clip Ratio",
+  "category": "训练 / 稳定性",
+  "category_en": "Training / Stability",
+  "appliesTo": [],
+  "standard": {
+    "summary": "一个 epoch 里被梯度裁剪的优化步占比超过它，这一轮就算不稳定。默认 0.50，即一半以上的步都被裁。",
+    "effect": "只作用于回滚判定，不改变裁剪行为本身；裁剪强度由 max_grad_norm 决定。",
+    "whenToUse": "训练本来就长期贴着裁剪线跑（例如高 lr 起步）时上调，避免每轮都判成不稳定。",
+    "avoidWhen": "把它调到接近 1 —— 那样基本不会触发回滚，等于花钱留副本不用。"
+  },
+  "standard_en": {
+    "summary": "An epoch counts as unstable when the share of optimizer steps that hit gradient clipping exceeds this. Default 0.50, i.e. more than half the steps clipped.",
+    "effect": "It only feeds the rollback decision and never changes clipping itself; clipping strength comes from max_grad_norm.",
+    "whenToUse": "Raise it when the run legitimately rides the clip line (for example a high starting lr), so every epoch does not read as unstable.",
+    "avoidWhen": "Pushing it near 1 all but disables the rollback, which means paying for snapshots you never use."
+  },
+  "advanced": {
+    "principle": "训练循环每轮把 optimizer 侧统计的裁剪命中比例（optimizer_update._read_clip_ratio_and_reset）交给 guard，与阈值比较后清零重新累计；两个触发条件（本字段与 norm 涨幅）是「或」关系。",
+    "intervention": "epoch 边界的判定，一次浮点比较。",
+    "expectedImpact": "无计算开销，只改变回滚触发频率。",
+    "tradeoffs": "log 里能看到 clip_ratio 与 norm_growth 两个实测值，先按日志里的实际量级定阈值，别按默认值猜。"
+  },
+  "advanced_en": {
+    "principle": "Each epoch the training loop hands the clip-hit share gathered by the optimizer side (optimizer_update._read_clip_ratio_and_reset) to the guard, compares it with the threshold, and resets the accumulator; the two triggers (this field and norm growth) are OR-ed.",
+    "intervention": "An epoch-boundary decision, one float comparison.",
+    "expectedImpact": "No compute cost; only the rollback frequency changes.",
+    "tradeoffs": "The log shows the measured clip_ratio and norm_growth -- set the threshold from those numbers rather than guessing around the default."
+  },
+  "relatedConfigs": [
+    "lr_rollback_enabled",
+    "max_grad_norm"
+  ]
+}

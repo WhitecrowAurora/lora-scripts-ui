@@ -1,28 +1,40 @@
 {
   "key": "train_text_encoder",
   "title": "训练文本编码器",
-  "category": "LoRA / 训练目标",
+  "title_en": "Train Text Encoder",
+  "category": "模型 / 文本编码器",
+  "category_en": "Model / Text Encoder",
   "appliesTo": [
-    "sdxl-lora",
-    "sd-lora"
-  ],
-  "aliases": [
-    "train_text_encoder_1",
-    "train_text_encoder_2"
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-dreambooth"
   ],
   "standard": {
-    "summary": "是否同时训练文本编码器（CLIP 等）的 LoRA 权重。开启后可以让模型更好地理解和绑定触发词。",
-    "effect": "关闭（默认）= 只训练 UNet/DiT，文本编码器固定；开启 = TE 同时训练，触发词与概念绑定更紧密，但显存增加约 20%~50%。",
-    "whenToUse": "训练新概念/角色且触发词响应不佳时开启。简单风格 LoRA 或数据集图说对应简单时可关闭。",
-    "avoidWhen": "数据集极小（<10张）时训练 TE 容易过拟合，导致其他提示词失效。显存不足时优先关闭。"
+    "summary": "同时微调 CLIP 文本编码器。开启表示「UNet 与 TE 一起训」，关闭表示「只训 UNet、不训 TE」。",
+    "effect": "启动路径把它翻成 network_train_unet_only 的相反值，并清掉 network_train_text_encoder_only，避免旧输入把语义翻转成「只训 TE」。anima 全参微调有单独分支：请求会转成显存的 TE 策略字段，而 network_train_unet_only 一律为真。",
+    "whenToUse": "概念在文本里表达不出来、需要让 TE 跟着适应时；或全参微调想让 TE 也更新。",
+    "avoidWhen": "显存紧张时——TE 的优化器状态会额外占一大块。数据集很小的时候打开容易过拟合到 caption 的措辞上。"
+  },
+  "standard_en": {
+    "summary": "Also fine-tune the CLIP text encoder. On means \"train UNet and TE together\"; off means \"train UNet only, not the TE\".",
+    "effect": "The launch path turns it into the negation of network_train_unet_only and clears network_train_text_encoder_only, so stale input cannot flip the meaning to \"TE only\". anima full fine-tuning has its own branch: the request becomes a stored TE policy field while network_train_unet_only is forced true.",
+    "whenToUse": "When a concept cannot be expressed in text and the TE has to adapt; or when a full fine-tune should update the TE too.",
+    "avoidWhen": "When VRAM is tight -- the TE optimizer state takes a sizeable extra block. On a very small dataset it tends to overfit to caption wording."
   },
   "advanced": {
-    "principle": "TE LoRA 通过改变 CLIP 的 token embedding 空间，使特定触发词的嵌入向量更接近概念的视觉特征。UNet LoRA 学习在给定 TE 输出时如何生成，两者协同工作。",
-    "tradeoffs": "训练 TE 会略微改变整个文本编码空间，可能影响与其他 LoRA 的兼容性。一般 TE LR 应远低于 UNet LR。"
+    "principle": "TrainingRouteService.build_config_json 在通用分支里做 network_train_unet_only = not train_text_encoder，并 pop 掉 network_train_text_encoder_only；anima-finetune 走更早的分支，把请求折成 anima_full_finetune_train_text_encoder_requested 与 anima_full_finetune_text_encoder_policy，强制 network_train_unet_only=True 并把阶段标成 dit_only_cache_first。schema_default_inheritance 把它列进 NEVER_SKIP，因为它是「存在即改变行为」的键。",
+    "intervention": "请求归一化阶段的三个键改写，训练循环按这些键决定哪些参数参与反传。",
+    "expectedImpact": "开启后每步多一次 TE 前向与反传；收敛形态会变，caption 措辞的影响被放大。",
+    "tradeoffs": "这个键刻意不是 UnifiedTrainingConfig 字段，只在启动路径上存在；直接把裸键写进 config 文件不会生效，必须走路由归一化。"
+  },
+  "advanced_en": {
+    "principle": "TrainingRouteService.build_config_json sets network_train_unet_only = not train_text_encoder on the generic branch and pops network_train_text_encoder_only; anima-finetune takes an earlier branch that folds the request into anima_full_finetune_train_text_encoder_requested and anima_full_finetune_text_encoder_policy, forces network_train_unet_only=True and tags the phase dit_only_cache_first. schema_default_inheritance lists it in NEVER_SKIP because its presence alone changes behaviour.",
+    "intervention": "Three key rewrites during request normalisation; the training loop reads those keys to decide which parameters receive gradients.",
+    "expectedImpact": "On, every step gains one TE forward and backward; the convergence shape changes and caption wording matters more.",
+    "tradeoffs": "The key is deliberately not a UnifiedTrainingConfig field and only exists on the launch path, so writing the bare key into a config file does nothing -- it has to go through route normalisation."
   },
   "relatedConfigs": [
-    "text_encoder_lr",
-    "unet_lr",
-    "learning_rate"
+    "network_train_unet_only",
+    "anima_full_finetune_text_encoder_policy"
   ]
 }

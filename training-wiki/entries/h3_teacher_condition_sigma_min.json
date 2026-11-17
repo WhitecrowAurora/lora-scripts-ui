@@ -1,0 +1,18 @@
+{
+  "key": "h3_teacher_condition_sigma_min",
+  "title": "Teacher 噪声区间下限",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora"
+  ],
+  "standard": {
+    "summary": "噪声水平低于此值时使用 Student 条件的底模预测，默认 0。",
+    "effect": "与 sigma_max 一起构成「Teacher 额外参考生效」的区间：区间内用额外参考，区间外用 Student 条件。",
+    "whenToUse": "只想在特定噪声段蒸馏 Teacher 行为时设区间。",
+    "avoidWhen": "下限 >= 上限会让区间为空，Teacher 条件完全不起作用。"
+  },
+  "relatedConfigs": [
+    "h3_teacher_condition_sigma_max",
+    "h3_teacher_matching"
+  ]
+}

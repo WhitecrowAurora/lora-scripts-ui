@@ -1,0 +1,17 @@
+{
+  "key": "universal_dit_text_encoder_path",
+  "title": "文本编码器目录（可选）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "自定义文本编码器目录；留空表示训练无条件模型。",
+    "effect": "填了就必须能加载——加载失败直接报错，不会静默退回无条件训练。",
+    "whenToUse": "训练条件模型（带文本提示）时填写。",
+    "avoidWhen": "只训练无条件/类别条件模型时留空。"
+  },
+  "relatedConfigs": [
+    "universal_dit_caption_pooling"
+  ]
+}

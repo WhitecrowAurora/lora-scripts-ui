@@ -6,6 +6,7 @@ import {
   renderLogLines,
 } from './logRender.js';
 import { formatDuration } from './trainingMetrics.js';
+import { applyTrainingRunMetrics, loadTrainingRunStatus } from './trainingStructuredMetrics.js';
 import {
   getActiveTasks,
   getRunningTasks,
@@ -21,6 +22,7 @@ export function createTrainingLivePolling({
   collectTrainingMetrics,
   resetTrainingMetrics,
   buildSysMonitorHTML,
+  loadRunStatus = loadTrainingRunStatus,
 }) {
   let trainingLogPollTimer = null;
   let trainingLogCursor = createTrainingLogCursor();
@@ -259,10 +261,10 @@ export function createTrainingLivePolling({
     view.error = '';
 
     try {
-      const resp = await api.getTaskOutput(targetId, 500, {
-        cursor: requestCursor,
-        limit: 500,
-      });
+      const [resp, runStatus] = await Promise.all([
+        api.getTaskOutput(targetId, 500, { cursor: requestCursor, limit: 500 }),
+        loadRunStatus(target),
+      ]);
       if (view.taskId !== targetId || view.generation !== generation) return { stale: true };
       const activeNow = getActiveTrainingLogTask();
       const activeId = activeNow ? getTaskId(activeNow) : state.activeTrainingTaskId;
@@ -282,7 +284,9 @@ export function createTrainingLivePolling({
       const resolvedId = String(data.resolved_run_id || targetId || '');
       const isRunningTarget = isTaskRunning(target)
         || state.tasks.some((task) => isTaskRunning(task) && getTaskId(task) === targetId);
-      if (pageLines.length && isRunningTarget) collectTrainingMetrics(pageLines);
+      if (pageLines.length) collectTrainingMetrics(pageLines);
+      const latestTarget = state.tasks.find((task) => getTaskId(task) === targetId) || target;
+      applyTrainingRunMetrics(state.trainingMetrics, runStatus, latestTarget);
 
       const renderedLines = mergeTrainingLogLines(view.logLines, liveLine);
       let nextLogHtml = renderedLines.length

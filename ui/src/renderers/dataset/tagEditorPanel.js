@@ -1,4 +1,7 @@
-export function createTagEditorPanel({ api, $, showToast }) {
+import { createTagEditorWorkspace } from './tagEditorWorkspace.js';
+import { createMaskEditorPanel } from './maskEditorPanel.js';
+
+export function createTagEditorPanel({ api, $, showToast, state, escapeHtml }) {
   function renderTagEditor() {
     const content = $('#dataset-content');
     if (!content) return;
@@ -8,7 +11,9 @@ export function createTagEditorPanel({ api, $, showToast }) {
         <header class="section-header">
           <h3>标签编辑器 (Tag Editor)</h3>
         </header>
-        <div class="section-summary">当前版本使用集成式 Tag Editor，不再依赖外部 28001 iframe。下面是常用入口。</div>
+        <div class="section-summary">编辑 Caption 或结构化标签，逐文件保存；失败草稿保留并可重试。</div>
+        <div data-editor-workspace></div>
+        <details data-editor-mask-panel></details>
         <div class="section-content" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
           <button class="btn btn-outline" type="button" onclick="switchDatasetTab('tagger')">WD14 / CL 自动标注</button>
           <button class="btn btn-outline" type="button" onclick="switchDatasetTab('translation')">标签百科预翻译</button>
@@ -22,6 +27,9 @@ export function createTagEditorPanel({ api, $, showToast }) {
         </div>
       </section>
     `;
+    const maskPanel = createMaskEditorPanel({ container: content.querySelector('[data-editor-mask-panel]'), api, showToast });
+    createTagEditorWorkspace({ container: content.querySelector('[data-editor-workspace]'), api, state, escapeHtml, showToast,
+      onMask: path => maskPanel.load(path) });
     pollTagEditorStatus();
   }
 
@@ -45,7 +53,7 @@ export function createTagEditorPanel({ api, $, showToast }) {
       const text = labels[status] || `状态: ${status}`;
       statusEl.textContent = text + (payload.detail ? ` — ${payload.detail}` : '');
       if (!['ready', 'native', 'disabled', 'failed', 'missing_dependencies', 'missing_launcher'].includes(status)) {
-        setTimeout(pollTagEditorStatus, 2000);
+        setTimeout(() => { if (statusEl.isConnected) pollTagEditorStatus(); }, 2000);
       }
     } catch (error) {
       statusEl.textContent = '无法获取状态';

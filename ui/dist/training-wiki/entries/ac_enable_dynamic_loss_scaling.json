@@ -1,19 +1,31 @@
 {
   "key": "ac_enable_dynamic_loss_scaling",
-  "title": "动态损失缩放",
+  "title": "动态损失缩放（预留）",
+  "title_en": "Dynamic loss scaling (reserved)",
   "category": "训练 / 自动化",
+  "category_en": "Training / Automation",
   "appliesTo": [
     "anima-lora"
   ],
   "standard": {
-    "summary": "根据梯度范数动态调整 loss 的缩放系数，防止梯度爆炸或消失。",
-    "effect": "梯度范数过大时缩小 loss 缩放，过小时放大，维持梯度在健康范围内。",
-    "whenToUse": "使用 FP16 混合精度训练且梯度不稳定时考虑开启。",
-    "avoidWhen": "已使用 GradScaler 或 BF16（不需要动态缩放）时避免与系统级 loss scaler 冲突。"
+    "summary": "预留字段，当前版本未实现。开启它不会改变 loss 缩放或梯度行为，只保留配置兼容性。",
+    "effect": "无运行时效果。",
+    "whenToUse": "暂无。需要混合精度缩放时请使用现有的 AMP GradScaler 或 BF16 精度设置。",
+    "avoidWhen": "任何时候都不要依赖它处理梯度溢出或消失，它不会生效。"
+  },
+  "standard_en": {
+    "summary": "Reserved field, not implemented in this version. Enabling it does not change loss scaling or gradient behaviour; it is kept for config compatibility only.",
+    "effect": "No runtime effect.",
+    "whenToUse": "None yet. Use the existing AMP GradScaler or BF16 precision settings when you need mixed-precision scaling.",
+    "avoidWhen": "Do not rely on it for gradient overflow or vanishing gradients; it does nothing."
   },
   "advanced": {
-    "principle": "基于历史梯度范数动态调整 loss 缩放系数，类似 AMP GradScaler 的自定义实现。",
-    "tradeoffs": "与系统级 GradScaler 可能冲突，需要确认不重复开启。"
+    "principle": "字段与开关保留以便旧配置继续加载；真实动态缩放仍由 GradScaler 体系负责。",
+    "tradeoffs": "无。"
+  },
+  "advanced_en": {
+    "principle": "The field and switch stay so old configs keep loading; actual dynamic scaling remains owned by the GradScaler stack.",
+    "tradeoffs": "None."
   },
   "relatedConfigs": [
     "ac_enabled"

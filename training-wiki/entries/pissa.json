@@ -1,0 +1,41 @@
+{
+  "key": "pissa",
+  "title": "PiSSA",
+  "title_en": "PiSSA",
+  "category": "LoRA / 初始化",
+  "category_en": "LoRA / Initialization",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora"
+  ],
+  "standard": {
+    "summary": "用底模权重的主奇异方向初始化 LoRA。开启后等价于把 adapter_init_strategy 设成 pissa。",
+    "effect": "启动路径先把它折成 use_pissa，再由 config adapter 折叠成 adapter_init_strategy=pissa 与 pissa_enabled=true；显式选了 o-lora / loftq 时不覆盖你的选择。",
+    "whenToUse": "大数据集或直接微调时，想让 LoRA 一开始就落在有意义的子空间里。",
+    "avoidWhen": "模型很大又要快速试验时——SVD 初始化会多花几分钟。它和 olora / loftq 是互斥的初始化策略，同开时只有 adapter_init_strategy 说了算。"
+  },
+  "standard_en": {
+    "summary": "Initialises the LoRA from the base weight's principal singular directions. Turning it on is equivalent to setting adapter_init_strategy to pissa.",
+    "effect": "The launch path first folds it into use_pissa, then the config adapter folds that into adapter_init_strategy=pissa and pissa_enabled=true; an explicit o-lora / loftq choice is not overridden.",
+    "whenToUse": "On large datasets or when fine-tuning directly, so the LoRA starts inside a meaningful subspace.",
+    "avoidWhen": "On a big model during quick experiments -- SVD initialisation adds minutes. It is mutually exclusive with olora / loftq; with both set, adapter_init_strategy wins."
+  },
+  "advanced": {
+    "principle": "FIELD_ALIAS_MAP 把 pissa 映射到 use_pissa；config adapter 的 _normalize_adapter_init_values 再看 pissa_enabled / use_pissa / pissa_init 三者任一为真，在 strategy 仍为 default 时把 strategy 提到 pissa，并回写 pissa_enabled 与 use_pissa。注入器只认 pissa_enabled。",
+    "intervention": "启动路径的别名折叠 + config adapter 的归一化 + LoRA 注入期的初始化。",
+    "expectedImpact": "常见报告是前若干步 loss 明显低于随机初始化，最终质量小幅提升；具体幅度随模型与数据变化。",
+    "tradeoffs": "PiSSA 把主成分从底模「搬」进 LoRA，因此底模本身被改动过；导出与后续合并要按 PiSSA 的方式做，别当成普通 LoRA 直接相加。"
+  },
+  "advanced_en": {
+    "principle": "FIELD_ALIAS_MAP maps pissa to use_pissa; the config adapter's _normalize_adapter_init_values then treats any of pissa_enabled / use_pissa / pissa_init as a request and, while strategy is still default, raises it to pissa and writes back pissa_enabled and use_pissa. The injector only reads pissa_enabled.",
+    "intervention": "Alias folding on the launch path, normalisation in the config adapter, then initialisation at LoRA injection.",
+    "expectedImpact": "Reports commonly show a clearly lower loss than random init over the first steps and a small final-quality gain; the size varies with model and data.",
+    "tradeoffs": "PiSSA moves the principal components out of the base weight into the LoRA, so the base model has effectively been altered; export and later merges must follow PiSSA's rules, not plain LoRA addition."
+  },
+  "relatedConfigs": [
+    "adapter_init_strategy",
+    "pissa_enabled",
+    "pissa_svd_algo",
+    "pissa_init_iters"
+  ]
+}

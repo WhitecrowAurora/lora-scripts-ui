@@ -1,0 +1,25 @@
+{
+  "key": "dop_trigger_words",
+  "title": "DOP 移除的触发词",
+  "category": "采样与优化",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "每行一个触发词或短语，填写后以「去触发条件」对照学生和冻结基座。留空沿用训练条件。",
+    "effect": "区分大小写并按完整词匹配；用于构造 DOP（去触发）对照的基线条件。仅支持 SD1.5/SDXL 标准 LoRA，且必须保留冻结文本编码器。",
+    "whenToUse": "想让模型学会在缺少某些触发词时仍保持概念（去触发泛化）时填写。",
+    "avoidWhen": "文本编码器一起训练时该对照失效，不要开。"
+  },
+  "relatedConfigs": [
+    "dop_trigger_replacement"
+  ]
+}

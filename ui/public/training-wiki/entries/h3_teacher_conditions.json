@@ -1,0 +1,17 @@
+{
+  "key": "h3_teacher_conditions",
+  "title": "Teacher 参考条件",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora"
+  ],
+  "standard": {
+    "summary": "Teacher 使用的参考条件类型，默认 ref（参考图）。",
+    "effect": "决定 Teacher 侧从清单里取哪类条件；目前支持的取值以 UI 下拉为准。",
+    "whenToUse": "Ref2VA Teacher 训练时与清单中的字段配套使用。",
+    "avoidWhen": "没开 Teacher 训练时此项不生效。"
+  },
+  "relatedConfigs": [
+    "h3_teacher_matching"
+  ]
+}

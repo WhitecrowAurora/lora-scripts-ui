@@ -1,25 +1,61 @@
 {
   "key": "distillation_mode",
-  "title": "蒸馏模式",
-  "category": "训练参数",
-  "appliesTo": [],
-  "layers": [],
+  "title": "蒸馏模式（DP-DMD / AnyFlow）",
+  "title_en": "Distillation mode (DP-DMD / AnyFlow)",
+  "category": "训练 / 蒸馏",
+  "category_en": "Training / Distillation",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "layers": [
+    "DiT",
+    "LoRA Adapter"
+  ],
+  "layers_en": [
+    "DiT",
+    "LoRA adapter"
+  ],
   "standard": {
-    "summary": "dp_dmd_turbo=少步蒸馏",
-    "effect": "",
-    "whenToUse": "不确定时先保持默认，小步数短测后再调。",
-    "avoidWhen": "与预检冲突或与其它互斥选项同时开启时。",
-    "optionDescriptions": {
-      "dp_dmd_turbo": "DMD/Turbo 管线。",
-      "anyflow": "AnyFlow 管线（FM 一致性）。注意 AnyFlow 分支只接受 anima / newbie 两族；在其他训练类型上选它，后端会回落到 dp_dmd_turbo。"
-    }
+    "summary": "选择少步蒸馏路线：dp_dmd_turbo 是主少步路径；anyflow 是 flow-matching 一致性蒸馏，需配合「自蒸馏教师」才是少步加速路径。",
+    "effect": "dp_dmd_turbo 走 DP-DMD 家族（实现模式见「DP-DMD 实现模式」）；anyflow 走 FM 一致性蒸馏，单独打开不会获得少步加速。",
+    "whenToUse": "目标是用更少采样步数出图时选择；默认 dp_dmd_turbo。",
+    "avoidWhen": "只想正常多步训练、没有蒸馏诉求时不要开启 distillation_enabled。"
+  },
+  "standard_en": {
+    "summary": "Pick the few-step distillation route: dp_dmd_turbo is the primary few-step path; anyflow is flow-matching consistency distillation and only becomes a few-step accelerator together with the self-distillation teacher.",
+    "effect": "dp_dmd_turbo goes through the DP-DMD family (see DP-DMD implementation mode); anyflow goes through FM consistency distillation and does not yield few-step speedups on its own.",
+    "whenToUse": "Choose this when the goal is sampling with fewer steps; the default is dp_dmd_turbo.",
+    "avoidWhen": "Do not enable distillation_enabled when you just want normal multi-step training."
   },
   "advanced": {
-    "principle": "dp_dmd_turbo=少步蒸馏；anyflow=AnyFlow 一致性蒸馏。",
-    "intervention": "",
-    "expectedImpact": "",
-    "tradeoffs": "",
-    "codePath": ""
+    "principle": "蒸馏模式决定损失构造路线；DP-DMD 的 provider 组合与更新节奏由 dp_dmd_variant 决定。",
+    "intervention": "trainer_anima_cache_runtime.py → anima_standard_cache_migration.py → dp_dmd_standard_anima_runtime.py → training_step_loss_execution_specialized.py",
+    "expectedImpact": "理论上降低推理步数；训练成本取决于 teacher 生成和 质量门槛。",
+    "tradeoffs": "standard 当前为单进程路径且需要三套独立 DiT；旧 cache 迁移会重新编码数据。它不会退回 raw-Qwen 或 teacher MSE，两种模式的训练成本和质量不能互相外推。"
   },
-  "relatedConfigs": []
+  "advanced_en": {
+    "principle": "The distillation mode picks the loss-construction route; the provider combination and update cadence of DP-DMD are decided by dp_dmd_variant.",
+    "intervention": "trainer_anima_cache_runtime.py → anima_standard_cache_migration.py → dp_dmd_standard_anima_runtime.py → training_step_loss_execution_specialized.py",
+    "expectedImpact": "Theoretically reduces inference steps; training cost depends on teacher generation and the quality gate.",
+    "tradeoffs": "standard is currently a single-process path requiring three independent DiTs; legacy cache migration re-encodes data. It does not fall back to raw-Qwen or teacher MSE, and the two modes' training cost and quality cannot be extrapolated to each other."
+  },
+  "relatedConfigs": [
+    "distillation_enabled",
+    "dp_dmd_variant",
+    "teacher_steps",
+    "student_steps",
+    "guidance_scale",
+    "anima_faithful_forward"
+  ],
+  "aliases": [
+    "dp_dmd_turbo"
+  ]
 }

@@ -1,0 +1,17 @@
+{
+  "key": "moss_image_block_offload_prefill_budget_mb",
+  "title": "CPU 预填充预算（MiB）",
+  "category": "速度 / 显存",
+  "appliesTo": [
+    "moss-image-lora"
+  ],
+  "standard": {
+    "summary": "预填充可用的锁页暂存内存预算，默认 128 MiB。",
+    "effect": "决定锁页暂存池大小。低于 128 MiB 时沿用直接上传；调高不会让暂存池变大（当前实现以 128 MiB 为候选上限）。",
+    "whenToUse": "预填充已开启、日志提示暂存池不足时才调。",
+    "avoidWhen": "预填充没开时改它没有任何效果。"
+  },
+  "relatedConfigs": [
+    "moss_image_block_offload_prefill_enabled"
+  ]
+}

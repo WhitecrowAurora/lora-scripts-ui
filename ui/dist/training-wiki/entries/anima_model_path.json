@@ -1,0 +1,39 @@
+{
+  "key": "anima_model_path",
+  "title": "Anima 模型",
+  "title_en": "Anima Model",
+  "category": "模型 / 基础",
+  "category_en": "Model / Basics",
+  "appliesTo": [
+    "anima-ileco",
+    "anima-addift"
+  ],
+  "standard": {
+    "summary": "anima 原生路线的主模型路径。没有它又没填通用底模路径时，配置校验直接报「Anima 原生路线需要指定主模型路径」。",
+    "effect": "与 pretrained_model_name_or_path 互为回退：两者都空才报错；预览采样也从这个字段取模型，缺失时错误信息会点名两者。",
+    "whenToUse": "跑 anima 的 iLECO / ADDifT / ControlNet 等原生路线时。",
+    "avoidWhen": "跑 SDXL 系路线时留空即可；把 SDXL 底模填进来只会让预检更难读。"
+  },
+  "standard_en": {
+    "summary": "The primary model path for anima native routes. With neither this nor the generic base-model path filled, config validation fails with \"Anima native route requires a main model path\".",
+    "effect": "It falls back against pretrained_model_name_or_path: only when both are empty is it an error. Preview sampling also reads the model from this field and names both keys in the error when neither is set.",
+    "whenToUse": "For anima iLECO / ADDifT / ControlNet and other native routes.",
+    "avoidWhen": "Leave empty on SDXL-family routes; putting an SDXL base model here only makes preflight harder to read."
+  },
+  "advanced": {
+    "principle": "configs_legacy_compat 的模型路径校验把 anima_model_path 与 pretrained_model_name_or_path 合成一个「原生 bundle 是否存在」的判定；随后逐项做路径格式检查，标签写作「Anima 主模型路径」。",
+    "intervention": "配置校验阶段只读不改；模型加载与预览采样在运行时再解析一次。",
+    "expectedImpact": "无运行时开销；填错只影响启动前的报错信息。",
+    "tradeoffs": "字段在 anima-ileco / anima-addift 两个 schema 上暴露，但 anima-lora 等路线同样会读它——不要因为表单里没出现就以为跑 lora 时不需要。"
+  },
+  "advanced_en": {
+    "principle": "configs_legacy_compat's model-path validation folds anima_model_path and pretrained_model_name_or_path into one \"does a native bundle exist\" test, then format-checks each path under the label \"Anima main model path\".",
+    "intervention": "Read-only at validation time; the model loader and preview sampler resolve it again at runtime.",
+    "expectedImpact": "No runtime cost; a wrong value only changes the pre-start error message.",
+    "tradeoffs": "The field is exposed on the anima-ileco / anima-addift schemas, but anima-lora routes read it too -- do not assume a route needs nothing from it just because the form never shows it."
+  },
+  "relatedConfigs": [
+    "pretrained_model_name_or_path",
+    "train_data_dir"
+  ]
+}

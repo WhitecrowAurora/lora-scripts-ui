@@ -220,7 +220,7 @@ export function buildSummaryFromMetrics(m, elapsedMs) {
  * @param {object} metrics - state.trainingMetrics
  */
 export function generateTrainingSummary(metrics) {
-  const elapsed = metrics.startTime ? Date.now() - metrics.startTime : 0;
+  const elapsed = metrics.structuredElapsedMs ?? (metrics.startTime ? Date.now() - metrics.startTime : 0);
   const summary = buildSummaryFromMetrics(metrics, elapsed);
   _appendSageEnvNote(summary);
   return summary;

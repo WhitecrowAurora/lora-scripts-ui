@@ -1,0 +1,54 @@
+{
+  "key": "weight_compression_allow_offload_combo",
+  "title": "允许与 Offload 同开",
+  "title_en": "Allow Offload Combo",
+  "category": "显存优化 / 压缩",
+  "category_en": "VRAM Optimization / Compression",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "sd-lora",
+    "flux-lora",
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-dreambooth",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "anima-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "权重压缩与模块级 offload 同时开启时的放行开关。默认关闭，此时两者同开会被判定为冲突、直接失败。",
+    "effect": "关闭时 compression + module_offload 让决策 ok=False 并给出明文冲突原因；打开则不拦，但两条显存路径同时生效，出问题更难定位。",
+    "whenToUse": "确实需要同时压权重和挪模块、并且已经做好会难查问题的准备时。",
+    "avoidWhen": "默认别开。冲突提示出现时，先考虑只留其中一条路径，而不是把这个开关打开。"
+  },
+  "standard_en": {
+    "summary": "The release valve for running weight compression and module-level offload at the same time. Off by default, in which case the combination is reported as a conflict and fails.",
+    "effect": "While off, compression + module_offload makes the decision ok=False with an explicit conflict reason; while on it is not blocked, but both VRAM paths are live at once and problems are much harder to localise.",
+    "whenToUse": "Only when you genuinely need both compressed weights and moved modules, and accept that debugging gets harder.",
+    "avoidWhen": "Keep it off by default. When the conflict appears, drop one of the two paths rather than flipping this switch."
+  },
+  "advanced": {
+    "principle": "quant/train_quant_product 的决策函数读 compression_on、module_offload_enabled 与这个开关：三者同时成立且未放行时写 conflicts 并把 ok 置假。它是一条「允许组合」的闸，不是压缩或 offload 的开关本身。",
+    "intervention": "训练量化决策阶段的一次组合校验，不改变任一条路径的实现。",
+    "expectedImpact": "打开后不带来额外收益，只是不再被拦；显存占用仍由压缩与 offload 各自决定。",
+    "tradeoffs": "两条路径的显存账不叠加也不抵消，同时开启时峰值取决于执行顺序；官方口径是「不推荐」，因为排查难度显著上升。"
+  },
+  "advanced_en": {
+    "principle": "The decision function in quant/train_quant_product reads compression_on, module_offload_enabled and this switch: when all three hold and the combo is not released, it records a conflict and sets ok to false. It is a permission gate for the combination, not a switch for compression or offload themselves.",
+    "intervention": "One combination check during the training-quantisation decision; neither path's implementation changes.",
+    "expectedImpact": "Turning it on brings no extra benefit beyond not being blocked; VRAM use is still decided by compression and offload individually.",
+    "tradeoffs": "The two paths' memory budgets neither add up nor cancel out; with both on the peak depends on execution order, and the product stance is \"not recommended\" because diagnosis becomes markedly harder."
+  },
+  "relatedConfigs": [
+    "weight_compression_enabled",
+    "weight_compression_preset",
+    "module_offload_enabled"
+  ]
+}

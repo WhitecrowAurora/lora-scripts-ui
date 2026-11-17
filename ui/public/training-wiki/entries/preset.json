@@ -1,0 +1,49 @@
+{
+  "key": "preset",
+  "title": "训练预设",
+  "title_en": "Training Preset",
+  "category": "Newbie / 配置",
+  "category_en": "Newbie / Configuration",
+  "appliesTo": [
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "Newbie 工作流的预设名称。当前只是登记在配置里的一个字符串，后端还没有把它展开成实际参数。",
+    "effect": "会原样写进 run config 与产物清单，方便外部工具识别；训练行为不随它改变。",
+    "whenToUse": "需要让外部流程知道你用的是哪套 Newbie 配方时填。",
+    "avoidWhen": "指望它自动填充推荐参数——这一点尚未实现，参数仍要自己填。真要改最优化器相关配置，用 optimizer_preset。",
+    "optionDescriptions": {
+      "quick_lora": "快速试跑用的名字标签。",
+      "character_lora": "角色 LoRA 用的名字标签。",
+      "style_lora": "风格 LoRA 用的名字标签。",
+      "custom": "自定义配方的名字标签。"
+    }
+  },
+  "standard_en": {
+    "summary": "Preset name for the Newbie workflow. As it stands this is a string recorded in the config; the backend does not expand it into actual parameters yet.",
+    "effect": "It is written verbatim into the run config and artifact manifest so external tools can recognise it; training behaviour does not change with it.",
+    "whenToUse": "When an external pipeline needs to know which Newbie recipe you used.",
+    "avoidWhen": "Expecting it to auto-fill recommended parameters -- that is not implemented and the values still have to be filled in. To change optimizer-related settings use optimizer_preset.",
+    "optionDescriptions": {
+      "quick_lora": "A name tag for quick trial runs.",
+      "character_lora": "A name tag for character LoRAs.",
+      "style_lora": "A name tag for style LoRAs.",
+      "custom": "A name tag for your own recipe."
+    }
+  },
+  "advanced": {
+    "principle": "字段声明在 configs_base 上并注明「general preset name for newbie workflow」。全仓没有训练期读取点：trainer 侧的 preset 读取只出现在 block_weight 与 lycoris_preset 两条无关路径上，training_service.list_presets() 也是空实现。",
+    "intervention": "无。当前只有写入，没有消费。",
+    "expectedImpact": "零。选任何档位训练行为都一样。",
+    "tradeoffs": "这是一处「表单说有、后端没做」的缺口：文案不能宣称自动填充推荐参数。要么补上展开逻辑，要么把选项与描述改掉。"
+  },
+  "advanced_en": {
+    "principle": "The field is declared on configs_base with the note \"general preset name for newbie workflow\". Nothing reads it during training: the trainer's preset reads appear only on the unrelated block_weight and lycoris_preset paths, and training_service.list_presets() is a stub returning an empty list.",
+    "intervention": "None. Currently write-only, with no consumer.",
+    "expectedImpact": "Zero. Training behaves identically whichever option is chosen.",
+    "tradeoffs": "This is a \"the form claims it, the backend does not do it\" gap: the copy must not promise that it auto-fills recommended parameters. Either implement the expansion or change the options and description."
+  },
+  "relatedConfigs": [
+    "optimizer_preset"
+  ]
+}

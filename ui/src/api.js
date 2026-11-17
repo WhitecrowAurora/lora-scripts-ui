@@ -126,7 +126,7 @@ export const api = {
   },
 
   terminateTask(taskId) {
-    return request(`/api/tasks/terminate/${taskId}`);
+    return request(`/api/tasks/terminate/${encodeURIComponent(taskId)}`, { method: 'POST' });
   },
 
   /**
@@ -269,10 +269,16 @@ export const api = {
   /**
    * 启动数据集质量扫描（异步后台任务）。
    * @param {string} datasetDir  数据集目录绝对路径
+   * @param {object} captionConfig current training caption settings
    * @returns {{ task_id: string, status: 'running' }}
    */
-  startDatasetQualityScan(datasetDir) {
-    return postJson('/api/dataset/start_quality_scan', { dataset_dir: datasetDir, recursive: true });
+  startDatasetQualityScan(datasetDir, captionConfig = {}) {
+    return postJson('/api/dataset/start_quality_scan', {
+      dataset_dir: datasetDir,
+      recursive: true,
+      caption_extension: captionConfig.caption_extension || '.txt',
+      prefer_json_caption: Boolean(captionConfig.prefer_json_caption),
+    });
   },
 
   /**
@@ -680,17 +686,17 @@ export const api = {
 
   /** P5 本地内容扫描（opt-in；非合规保证） */
   contentScan(params) {
-    return postJson('/api/dataset/content_scan', params);
+    return postJson('/dataset/content_scan', params);
   },
 
   /** P5 离群一键隔离 */
   outliersCull(params) {
-    return postJson('/api/dataset/outliers/cull', params);
+    return postJson('/dataset/outliers/cull', params);
   },
 
   /** 缓存健康：report / repair_plan / quarantine_bad（只动 cache 产物） */
   cacheHealth(params) {
-    return postJson('/api/dataset/cache_health', params);
+    return postJson('/dataset/cache_health', params);
   },
 
   /** P1.4 频率/类别批量 - 预览 */

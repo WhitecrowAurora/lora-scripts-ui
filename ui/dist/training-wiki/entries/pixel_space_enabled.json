@@ -1,0 +1,17 @@
+{
+  "key": "pixel_space_enabled",
+  "title": "像素空间训练",
+  "category": "像素空间训练",
+  "appliesTo": [
+    "anima-edit-model",
+    "anima-lora"
+  ],
+  "standard": {
+    "summary": "研究储备，当前训练器尚未接入。",
+    "effect": "像素数据和模型前向尚未连通；配置为 true 会被明确拒绝。",
+    "whenToUse": "当前应保持关闭。",
+    "avoidWhen": "不能用此开关跳过 VAE 或把 latent 损失当作像素监督。"
+  },
+  "advanced": null,
+  "relatedConfigs": []
+}

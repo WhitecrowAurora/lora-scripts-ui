@@ -1,0 +1,42 @@
+{
+  "key": "image_cache_vram_strategy",
+  "title": "图片缓存显存策略",
+  "title_en": "Image cache VRAM strategy",
+  "category": "速度 / 缓存",
+  "category_en": "Speed / Caching",
+  "appliesTo": [
+    "qwen-image-lora",
+    "qwen-image-finetune",
+    "qwen-image-2-lora",
+    "qwen-image-2-finetune"
+  ],
+  "standard": {
+    "summary": "建 latent/文本缓存时如何分配显存和内存，默认自动。切换策略不会让已有缓存失效。",
+    "effect": "auto=按空闲显存和可用内存自动选择：内存放不下 DiT+文本编码器时走阶梯式，VAE 编码显存不够时 Qwen Image 走分块、Qwen Image 2.1 走阶梯式；staged=阶梯式，先编码全部文本并释放文本编码器，再编码图片，缓存建完才加载 DiT，训练期也不再常驻文本编码器；tiled=VAE 分块编码（仅 Qwen Image）；bf16_vae=VAE 用 bf16 编码（仅 Qwen Image 2.1）。",
+    "whenToUse": "一般保持自动。内存只有 24G 左右、或建缓存时爆显存，可以手动选阶梯式；只想压低 VAE 显存时选第三档。",
+    "avoidWhen": "需要训练文本编码器时阶梯式不生效。bf16 VAE 与「不使用半精度 VAE」(no_half_vae) 互斥，选了 bf16 VAE 后后者会被忽略。",
+    "optionDescriptions": {
+      "auto": "按显存和内存自动选择。",
+      "staged": "文本、图片分两遍编码，最后才加载 DiT，显存和内存峰值最低。",
+      "tiled": "Qwen Image 的 VAE 分块编码，误差约 0.6%，1024² 显存约 5.4G→3.0G。",
+      "bf16_vae": "Qwen Image 2.1 的 VAE 用 bf16 编码，误差约 2%。"
+    }
+  },
+  "standard_en": {
+    "summary": "How VRAM and RAM are spent while building the latent/text cache. The default is auto. Changing it does not invalidate an existing cache.",
+    "effect": "auto picks from free VRAM and available RAM: staged when RAM cannot hold the DiT and the text encoder together; when VAE encoding does not fit in VRAM, Qwen Image uses tiled and Qwen Image 2.1 uses staged. staged encodes every caption first, releases the text encoder, then encodes the images, and loads the DiT only after the cache is built, so the text encoder is not kept in memory during training either. tiled encodes with VAE tiling (Qwen Image only). bf16_vae encodes with a bf16 VAE (Qwen Image 2.1 only).",
+    "whenToUse": "Leave it on auto in most cases. With about 24 GB of RAM, or when cache building runs out of VRAM, choose staged. Choose the third option when you only want to lower VAE VRAM.",
+    "avoidWhen": "staged does not apply when the text encoder is being trained. bf16_vae and no_half_vae are mutually exclusive; with bf16_vae selected, no_half_vae is ignored.",
+    "optionDescriptions": {
+      "auto": "Chooses from VRAM and RAM automatically.",
+      "staged": "Encodes text and images in two passes and loads the DiT last; lowest VRAM and RAM peaks.",
+      "tiled": "Tiled VAE encoding for Qwen Image; about 0.6% error, 1024² VRAM about 5.4 GB to 3.0 GB.",
+      "bf16_vae": "bf16 VAE encoding for Qwen Image 2.1; about 2% error."
+    }
+  },
+  "relatedConfigs": [
+    "no_half_vae",
+    "cache_latents",
+    "cache_text_encoder_outputs"
+  ]
+}

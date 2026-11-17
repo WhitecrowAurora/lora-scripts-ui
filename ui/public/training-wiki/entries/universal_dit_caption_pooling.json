@@ -1,0 +1,17 @@
+{
+  "key": "universal_dit_caption_pooling",
+  "title": "Caption 池化方式",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "文本条件的形态：逐 token 序列或每样本一个池化向量，默认 none（不池化）。",
+    "effect": "none=输出逐 token 序列；mean=逐 token 平均成一条向量；cls=取 CLS token。必须与模型族期望的形态一致，本工具不做猜测。",
+    "whenToUse": "按目标模型族的文本编码器契约选；不确定时先查模型说明。",
+    "avoidWhen": "形态填错会在加载或前向阶段直接报错，不要靠试。"
+  },
+  "relatedConfigs": [
+    "universal_dit_text_encoder_path"
+  ]
+}

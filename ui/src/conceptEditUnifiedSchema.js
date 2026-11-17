@@ -20,7 +20,7 @@ import {
 } from './schemaFieldGroups.js';
 import {
   NATIVE_ADAPTER_TYPES, ADAPTER_INIT_STRATEGY_OPTIONS, ADAPTER_INIT_EXPORT_MODE_OPTIONS,
-  LOFTQ_QUANT_TYPE_OPTIONS, LYCORIS_DELTA_ALGOS, nativeLoraInitSelected, loftqInitSelected,
+  LOFTQ_QUANT_TYPE_OPTIONS, LYCORIS_DELTA_ALGOS, LYCORIS_METHOD_TYPES, nativeLoraInitSelected, loftqInitSelected,
 } from './schemaCommon.js';
 
 // 判断函数
@@ -192,11 +192,11 @@ const NETWORK_FIELDS = [
   { key: 'network_alpha', type: 'slider', label: '网络 Alpha', title: 'network_alpha', desc: '常用值：等于 network_dim 或更小。', defaultValue: 16, min: 1, max: 256, step: 1 },
   { key: 'dim_from_weights', type: 'boolean', label: '从权重推断 Dim', title: 'dim_from_weights', desc: '从已有 network_weights 自动推断 rank / dim', defaultValue: false },
   { key: 'scale_weight_norms', type: 'number', label: '最大范数正则化', title: 'scale_weight_norms', desc: '最大范数正则化。如果使用，推荐从 1 附近开始', defaultValue: '', min: 0, step: 0.01 },
-  { key: 'train_norm', type: 'boolean', label: '训练 Norm 层', title: 'train_norm', desc: '额外训练归一化层。概念编辑一般先关闭。', defaultValue: false },
+  { key: 'train_norm', type: 'boolean', label: '训练 Norm 层', title: 'train_norm', desc: '额外训练归一化层。概念编辑一般先关闭。只有 LyCORIS 系适配器会训练 Norm 层，原生 LoRA/DoRA 等选它没有效果。', defaultValue: false, visibleWhen: (c) => LYCORIS_METHOD_TYPES.includes(c.lora_type) && c.lora_type !== 'ia3' },
   { key: 'dora_wd', type: 'boolean', label: '启用 DoRA', title: 'dora_wd', desc: 'DoRA 开启后会把权重分成方向与幅度两部分训练。', defaultValue: false, visibleWhen: when('lora_type', 'lora') },
   { key: 'adapter_init_strategy', type: 'select', label: 'LoRA 初始化策略', title: 'adapter_init_strategy', desc: '默认 LoRA / PiSSA / OLoRA。', defaultValue: 'default', options: ADAPTER_INIT_STRATEGY_OPTIONS, visibleWhen: (c) => c.lora_type === 'lora' && !c.dora_wd },
   { key: 'adapter_init_export_mode', type: 'select', label: '初始化导出模式', title: 'adapter_init_export_mode', desc: 'auto 导出为可加载 LoRA；raw 保留训练状态用于恢复。', defaultValue: 'auto', options: ADAPTER_INIT_EXPORT_MODE_OPTIONS, visibleWhen: (c) => c.lora_type === 'lora' && nativeLoraInitSelected(c) },
-  { key: 'loftq_bits', type: 'number', label: 'LoftQ 量化位宽', title: 'loftq_bits', desc: 'LoftQ 量化位宽', defaultValue: 4, min: 2, max: 8, step: 1, visibleWhen: all(when('lora_type', 'lora'), loftqInitSelected) },
+  { key: 'loftq_bits', type: 'number', label: 'LoftQ 量化位宽', title: 'loftq_bits', desc: 'LoftQ 初始化的量化位宽（如 4/8），量化感知的低秩初始化。', defaultValue: 4, min: 2, max: 8, step: 1, visibleWhen: all(when('lora_type', 'lora'), loftqInitSelected) },
   { key: 'loftq_quant_type', type: 'select', label: 'LoftQ 量化粒度', title: 'loftq_quant_type', desc: 'rowwise 按输出通道量化，tensorwise 按整层张量量化。', defaultValue: 'rowwise', options: LOFTQ_QUANT_TYPE_OPTIONS, visibleWhen: all(when('lora_type', 'lora'), loftqInitSelected) },
   { key: 'lokr_factor', type: 'number', label: 'LoKr 系数', title: 'lokr_factor', desc: 'LoKr 分解因子', defaultValue: 8, min: -1, visibleWhen: when('lora_type', 'lokr') },
   { key: 'network_dropout', type: 'number', label: 'Dropout', title: 'network_dropout', desc: 'Dropout 概率', defaultValue: 0, min: 0, max: 1, step: 0.01, visibleWhen: (c) => ['lora', 'dora', 'lora_plus', 'rs_lora', 'lora_fa', 'vera', 'tlora', 'flexrank', 'hydralora', 'fera', ...LYCORIS_DELTA_ALGOS].includes(c.lora_type) },
@@ -209,7 +209,7 @@ const TRAINING_FIELDS = [
   { key: 'max_train_steps', type: 'number', label: '最大训练步数', title: 'max_train_steps', desc: 'iLECO 常见 300~1000；ADDifT 常见 30~150。', defaultValue: 500, min: 1 },
   { key: 'train_batch_size', type: 'slider', label: '批量大小', title: 'train_batch_size', desc: '概念编辑建议从小 batch 开始。ADDifT 一般推荐 1~2。', defaultValue: 1, min: 1, max: 8, step: 1 },
   ditGradientCheckpointingField('DiT'),
-  { key: 'gradient_accumulation_steps', type: 'number', label: '梯度累加步数', title: 'gradient_accumulation_steps', desc: '每 N 次 microbatch 才执行一次', defaultValue: 1, min: 1 },
+  { key: 'gradient_accumulation_steps', type: 'number', label: '梯度累加步数', title: 'gradient_accumulation_steps', desc: '多个 micro-batch 的梯度累加后再执行一次 optimizer.step，等效放大 batch。', defaultValue: 1, min: 1 },
   { key: 'gradient_accumulation_mode', type: 'select', label: '梯度累加模式', title: 'gradient_accumulation_mode', desc: 'fast（默认）：仅在真正 optimizer.step 的那一步做梯度同步与检查；classic：保留逐 microbatch 检查的旧行为。', defaultValue: 'fast', options: [
     { value: 'fast', label: 'fast（推荐）' },
     { value: 'classic', label: 'classic（逐 microbatch 检查）' }

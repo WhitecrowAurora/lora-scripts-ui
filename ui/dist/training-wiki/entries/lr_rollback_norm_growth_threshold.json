@@ -1,0 +1,35 @@
+{
+  "key": "lr_rollback_norm_growth_threshold",
+  "title": "判定不稳定的权重涨幅",
+  "title_en": "Unstable Weight Growth",
+  "category": "训练 / 稳定性",
+  "category_en": "Training / Stability",
+  "appliesTo": [],
+  "standard": {
+    "summary": "可训练权重范数相对上一份稳定副本涨过这个比例，这一轮就算不稳定。默认 0.30，即涨了 30% 以上。",
+    "effect": "只看增长方向；权重变小不触发。与 clip 比例是「或」关系。",
+    "whenToUse": "loss 看着还行但权重在悄悄膨胀（常见于高 lr 后期）时靠它兜底。",
+    "avoidWhen": "训练早期权重本来就会快速长大时把它设得太小，会判成频繁不稳定、反复回滚、训不动。"
+  },
+  "standard_en": {
+    "summary": "An epoch counts as unstable when the trainable weight norm grows past this fraction of the last stable copy. Default 0.30, i.e. more than 30% growth.",
+    "effect": "Only growth counts; shrinking weights never trigger it. It is OR-ed with the clip ratio.",
+    "whenToUse": "As a backstop when loss looks fine but the weights are quietly inflating, which is common late in a high-lr run.",
+    "avoidWhen": "Set too low early in training, when the weights naturally grow fast, it reads as constantly unstable and rollbacks block learning."
+  },
+  "advanced": {
+    "principle": "快照时记录可训练张量的总范数；下一轮把当前范数与它比较，涨幅超过阈值即判定不稳定。判定基于范数而非逐张量，所以个别张量暴涨会被整体稀释。",
+    "intervention": "epoch 边界的范数计算与比较。",
+    "expectedImpact": "每轮一次范数计算，开销相对训练可忽略。",
+    "tradeoffs": "大范数张量占主导时，小张量的异常不容易被这个指标抓到——那种情况要靠 loss 曲线或逐层诊断。"
+  },
+  "advanced_en": {
+    "principle": "The snapshot records the total norm of the trainable tensors; the next epoch compares the current norm against it and declares instability once growth exceeds the threshold. Judging on the total rather than per tensor means one exploding tensor can be diluted by the rest.",
+    "intervention": "A norm computation and comparison at the epoch boundary.",
+    "expectedImpact": "One norm pass per epoch, negligible next to training.",
+    "tradeoffs": "When a few large-norm tensors dominate, an anomaly in a small tensor is easy for this metric to miss -- that case needs the loss curve or per-layer diagnostics."
+  },
+  "relatedConfigs": [
+    "lr_rollback_enabled"
+  ]
+}

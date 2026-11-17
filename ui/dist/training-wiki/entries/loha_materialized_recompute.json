@@ -1,0 +1,28 @@
+{
+  "key": "loha_materialized_recompute",
+  "title": "LoHa 物化权重重算",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "anima-lora",
+    "moss-image-lora",
+    "sdxl-lora",
+    "sd-lora",
+    "krea2-lora"
+  ],
+  "standard": {
+    "summary": "标准 LoHa 生成完整增量权重时，反向重新生成大矩阵，减少图内保存。",
+    "effect": "默认关闭；只保存输入和四个小因子，保留原完整矩阵乘法和舍入顺序。",
+    "whenToUse": "较高 rank 或当前形状实际选择物化路径，显存比速度更重要时。",
+    "avoidWhen": "低 rank 已走因子化时没有新增收益；编译区域继续原物化路径。"
+  },
+  "advanced": {
+    "principle": "复用已有反向重计算机制，普通 PyTorch 分支不依赖 Triton。原 native 融合优先级、因子化和简化 LoHa 路径不变。",
+    "tradeoffs": "实际 INT8/ConvRot 8192×2048 层、BF16、rank64/80 对照中，稳态额外 allocated 峰值约196.5→103–104.6MiB，三次更新逐位一致。该值覆盖前后向但不含随后优化器更新，属于单层证据，不能直接按层数推算整训收益。反向增加计算，可能变慢。"
+  },
+  "relatedConfigs": [
+    "lycoris_loha_implementation",
+    "lycoris_algo",
+    "network_dim",
+    "gradient_checkpointing"
+  ]
+}

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-PolyFormNoncommercial-1.0.0
 import { escapeHtml } from '../utils/dom.js';
+import { describeJobStatus } from '../utils/jobStatus.js';
 
 const COLORS = {
   timestep: '#38bdf8', noise: '#a78bfa', sample_difficulty: '#f59e0b',
@@ -120,7 +121,7 @@ export function createWeightComposerActions({ state, api, updateConfigValue, sho
       scoringTimer = window.setInterval(async () => {
         try {
           const job = unwrap(await api.getSampleDifficultyScoring(jobId));
-          statusEl.textContent = `状态：${job.status} · ${Math.round(Number(job.progress || 0) * 100)}%`;
+          statusEl.textContent = `状态：${describeJobStatus(job.status)} · ${Math.round(Number(job.progress || 0) * 100)}%`;
           if (job.status === 'completed') {
             window.clearInterval(scoringTimer);
             button.disabled = false;

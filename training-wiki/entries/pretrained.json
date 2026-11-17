@@ -1,0 +1,38 @@
+{
+  "key": "pretrained",
+  "title": "使用预训练",
+  "title_en": "Use pretrained",
+  "category": "训练 / 基础",
+  "category_en": "Training / Basics",
+  "appliesTo": [
+    "yolo"
+  ],
+  "standard": {
+    "summary": "YOLO 从预训练权重起手还是从结构随机初始化。默认开启。",
+    "effect": "开启时把 pretrained=True 交给 ultralytics；从已有 checkpoint 续训时该值被忽略，因为续训本身已经带着权重。",
+    "whenToUse": "绝大多数场景保持开启——从零开始训检测器需要多得多的数据与步数。",
+    "avoidWhen": "做结构消融、或刻意要一组随机初始化的对照时关掉。"
+  },
+  "standard_en": {
+    "summary": "Whether YOLO starts from pretrained weights or a randomly initialised architecture. On by default.",
+    "effect": "When on, pretrained=True is handed to ultralytics; resuming from an existing checkpoint ignores the value, since the checkpoint already carries the weights.",
+    "whenToUse": "Keep it on almost always -- training a detector from scratch needs far more data and steps.",
+    "avoidWhen": "Turn it off for architecture ablations or when you deliberately want a random-init control arm."
+  },
+  "advanced": {
+    "principle": "entry_yolo 只在 pretrained 有值且没有 resume 路径时写 train_kwargs['pretrained']，然后按 resume 与否决定用 YOLO(resume) 还是 YOLO(model)。",
+    "intervention": "worker 组装 ultralytics kwargs 时的一次条件写入。",
+    "expectedImpact": "开启后前若干 epoch 的收敛明显更快；关闭时速度不变但需要更长时间。",
+    "tradeoffs": "与 pretrained_model_name_or_path（权重路径）是两件事：这个开关决定「用不用」，那个决定「用哪个」。"
+  },
+  "advanced_en": {
+    "principle": "entry_yolo writes train_kwargs['pretrained'] only when the value is present and there is no resume path, then picks YOLO(resume) or YOLO(model) depending on resume.",
+    "intervention": "One conditional write while assembling the ultralytics kwargs.",
+    "expectedImpact": "Convergence over the first epochs is clearly faster with it on; off does not change speed, just how long the run needs.",
+    "tradeoffs": "It is distinct from pretrained_model_name_or_path: this switch decides whether weights are used, that one decides which."
+  },
+  "relatedConfigs": [
+    "dataset_yaml",
+    "save_period"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "key": "h3_preview_cfg",
+  "title": "预览 CFG",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "H3 预览出图使用的 CFG 强度，默认 1（不做无分类器引导）。",
+    "effect": "只有配合条件丢弃样本时 CFG 才有意义；1 表示纯条件预测。",
+    "whenToUse": "想让预览更贴近推理时的引导效果时调到推理常用值。",
+    "avoidWhen": "训练没有做 caption/条件丢弃时调高 CFG 只会让预览失真。"
+  },
+  "relatedConfigs": [
+    "h3_preview_cache_index"
+  ]
+}

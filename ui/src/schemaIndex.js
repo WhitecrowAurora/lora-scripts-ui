@@ -1,3 +1,10 @@
+import { optimizationDefaults } from './features/optimizationPreferences.js';
+import { withOptimizationSettings } from './features/optimizationSettings.js';
+import { withBlockOffloadPrefill } from './features/blockOffloadPrefillFields.js';
+import { withRuntimeMemoryFields } from './features/runtimeMemoryFields.js';
+import { withTargetFamilyFields } from './features/targetFamilyFields.js';
+import { withEmbedAnchorFields } from './features/embedAnchorFields.js';
+import { withModelQkvFields } from './features/modelQkvFields.js';
 // ================================================================
 // schemaIndex.js — 训练族 schema 汇总入口 + 公共 API
 // 把各族(sdxl / anima / 长尾 / DiT 长尾 / 实验)的 section 汇成 SECTIONS_MAP,
@@ -7,6 +14,11 @@
 import { TRAINING_TYPES as ALL_TRAINING_TYPES, VISIBLE_TRAINING_TYPES, UI_TABS } from './trainingTypeRegistry.js';
 import { TARGET_LORA_OPTIMIZERS, schedulerOptions } from './features/settingsOptions.js';
 import { buildRunConfigFromSections } from './runConfigBuilder.js';
+import { withConceptDirection } from './conceptDirectionSchema.js';
+import { withDistilledPreview } from './distilledPreviewSchema.js';
+import { withSubjectIsolation } from './subjectIsolationSchema.js';
+import { withAdapterScaffolds } from './adapterScaffoldSchema.js';
+import { withBiloraFields } from './features/biloraFields.js';
 import {
   SDXL_LORA_SECTIONS, SDXL_ILECO_SECTIONS, SDXL_ADDIFT_SECTIONS, SDXL_MULTI_ADDIFT_SECTIONS,
   SDXL_FT_SECTIONS, SDXL_CN_SECTIONS, SDXL_CN_LLLITE_SECTIONS, SDXL_TI_SECTIONS,
@@ -22,7 +34,7 @@ import {
 import {
   FLUX_LORA_SECTIONS, SD3_LORA_SECTIONS, LUMINA_LORA_SECTIONS, QWEN_IMAGE_LORA_SECTIONS, HUNYUAN_DIT_LORA_SECTIONS,
   HUNYUAN_IMAGE_COMPAT_SECTIONS, FLUX_FT_SECTIONS, LUMINA_FT_SECTIONS, FLUX_CN_SECTIONS, NEWBIE_LORA_SECTIONS,
-  KREA2_LORA_SECTIONS, KREA2_FT_SECTIONS, FLUX2_LORA_SECTIONS, ZIMAGE_LORA_SECTIONS, WAN22_TI2V_LORA_SECTIONS, WAN22_T2V_A14B_LORA_SECTIONS, LTX23_LORA_SECTIONS, LTX25_LORA_SECTIONS, BOOGU_LORA_SECTIONS, BOOGU_EDIT_LORA_SECTIONS, BOOGU_FT_SECTIONS, LTX23_FT_SECTIONS, LTX25_FT_SECTIONS, FLUX2_FT_SECTIONS, ZIMAGE_FT_SECTIONS, WAN22_FT_SECTIONS,
+  KREA2_LORA_SECTIONS, KREA2_FT_SECTIONS, FLUX2_LORA_SECTIONS, FLUX3_LORA_SECTIONS, ZIMAGE_LORA_SECTIONS, WAN22_TI2V_LORA_SECTIONS, WAN22_T2V_A14B_LORA_SECTIONS, LTX23_LORA_SECTIONS, LTX25_LORA_SECTIONS, BOOGU_LORA_SECTIONS, BOOGU_EDIT_LORA_SECTIONS, BOOGU_FT_SECTIONS, LTX23_FT_SECTIONS, LTX25_FT_SECTIONS, FLUX2_FT_SECTIONS, FLUX3_FT_SECTIONS, ZIMAGE_FT_SECTIONS, WAN22_FT_SECTIONS, QWEN_IMAGE_FT_SECTIONS,
 } from './otherDitSchemas.js';
 import { MINIMAX_H3_LORA_SECTIONS, MINIMAX_H3_FT_SECTIONS } from './minimaxH3Schema.js';
 import {
@@ -40,6 +52,24 @@ export const TRAINING_TYPES = VISIBLE_TRAINING_TYPES;
 // ================================================================
 // SECTIONS_MAP
 // ================================================================
+function ipAdapterSection(typeId) {
+  return {
+    id: 'ip-adapter-settings', tab: 'network', title: 'IP-Adapter 设置',
+    description: 'IP-Adapter 图像编码器与注入 token 配置。',
+    fields: [
+      { key: 'ip_image_encoder_path', type: 'string', label: '图像编码器路径', title: 'ip_image_encoder_path', desc: 'CLIP 视觉编码器路径。', defaultValue: 'openai/clip-vit-large-patch14' },
+      { key: 'ip_num_tokens', type: 'number', label: '图像 Token 数', title: 'ip_num_tokens', desc: '注入 UNet 的 IP-Adapter token 数。', defaultValue: typeId === 'sdxl-ip-adapter' ? 16 : 4, min: 1, max: 64, step: 1 },
+    ],
+  };
+}
+function createIpAdapterSections(baseSections, typeId) {
+  const sections = baseSections.map((section) => section.id !== 'model-settings'
+    ? section
+    : { ...section, fields: section.fields.map((field) => field.key === 'model_train_type' ? { ...field, defaultValue: typeId } : field) });
+  const index = sections.findIndex((section) => section.id === 'network-settings');
+  sections.splice(index >= 0 ? index + 1 : sections.length, 0, ipAdapterSection(typeId));
+  return sections;
+}
 const SECTIONS_MAP = {
   'sdxl-lora':              SDXL_LORA_SECTIONS,
   'sdxl-ileco':             SDXL_ILECO_SECTIONS,
@@ -63,6 +93,7 @@ const SECTIONS_MAP = {
   'newbie-lora':            NEWBIE_LORA_SECTIONS,
   'krea2-lora':             KREA2_LORA_SECTIONS,
   'flux2-lora':             FLUX2_LORA_SECTIONS,
+  'flux3-lora':             FLUX3_LORA_SECTIONS,
   'zimage-lora':            ZIMAGE_LORA_SECTIONS,
   'wan22-ti2v-lora':        WAN22_TI2V_LORA_SECTIONS,
   'wan22-t2v-a14b-lora':     WAN22_T2V_A14B_LORA_SECTIONS,
@@ -82,10 +113,12 @@ const SECTIONS_MAP = {
   'lumina-finetune':        LUMINA_FT_SECTIONS,
   'anima-finetune':         ANIMA_FT_SECTIONS,
   'krea2-finetune':         KREA2_FT_SECTIONS,
+  'qwen-image-finetune':    QWEN_IMAGE_FT_SECTIONS,
   'boogu-finetune':         BOOGU_FT_SECTIONS,
   'ltx23-finetune':         LTX23_FT_SECTIONS,
   'ltx25-finetune':         LTX25_FT_SECTIONS,
   'flux2-finetune':         FLUX2_FT_SECTIONS,
+  'flux3-finetune':         FLUX3_FT_SECTIONS,
   'zimage-finetune':        ZIMAGE_FT_SECTIONS,
   'wan22-finetune':         WAN22_FT_SECTIONS,
   'minimax-h3-finetune':    MINIMAX_H3_FT_SECTIONS,
@@ -96,6 +129,8 @@ const SECTIONS_MAP = {
   'flux-controlnet':        FLUX_CN_SECTIONS,
   'sd-textual-inversion':   SD_TI_SECTIONS,
   'sdxl-textual-inversion': SDXL_TI_SECTIONS,
+  'sd-ip-adapter':          createIpAdapterSections(SD15_LORA_SECTIONS, 'sd-ip-adapter'),
+  'sdxl-ip-adapter':        createIpAdapterSections(SDXL_LORA_SECTIONS, 'sdxl-ip-adapter'),
   'yolo':                   YOLO_SECTIONS,
   'aesthetic-scorer':       AESTHETIC_SCORER_SECTIONS,
   'universal-dit-lora':     UNIVERSAL_DIT_SECTIONS,
@@ -121,6 +156,7 @@ const TRAINING_INTENT_SUPPORTED_TYPES = new Set([
   'newbie-lora',
   'krea2-lora',
   'flux2-lora',
+  'flux3-lora',
   'zimage-lora',
   'boogu-lora',
   'boogu-edit-lora',
@@ -157,12 +193,20 @@ export const SDXL_SECTIONS = SDXL_LORA_SECTIONS;
 // ================================================================
 export function getSectionsForType(typeId) {
   if (!_profiledSectionsCache[typeId]) {
-    const base = withDatasetIntelligence(SECTIONS_MAP[typeId] || SDXL_LORA_SECTIONS);
-    _profiledSectionsCache[typeId] = TRAINING_INTENT_SUPPORTED_TYPES.has(typeId)
+    // 每个 with* 都以"目标 section 存在"为前置条件，不维护训练类型名单：
+    // 名单一多必漂移，而"有没有预览设置/数据集设置/网络设置"就是能力本身。
+    const base = withAdapterScaffolds(withDistilledPreview(withSubjectIsolation(
+      withConceptDirection(withDatasetIntelligence(withBlockOffloadPrefill(
+        withModelQkvFields(SECTIONS_MAP[typeId] || SDXL_LORA_SECTIONS, SECTIONS_MAP[typeId] ? typeId : undefined),
+        SECTIONS_MAP[typeId] ? typeId : undefined,
+      )), typeId || 'sdxl-lora'),
+    )));
+    _profiledSectionsCache[typeId] = withBiloraFields(TRAINING_INTENT_SUPPORTED_TYPES.has(typeId)
       ? [TRAINING_INTENT_PROFILE_SECTION, ...base]
-      : base;
+      : base, SECTIONS_MAP[typeId] ? typeId : undefined);
   }
-  return _profiledSectionsCache[typeId];
+  const existingType = SECTIONS_MAP[typeId] ? typeId : undefined;
+  return withOptimizationSettings(withEmbedAnchorFields(withTargetFamilyFields(withRuntimeMemoryFields(_profiledSectionsCache[typeId], typeId), existingType), existingType));
 }
 
 function buildFieldMap(sections) {
@@ -292,7 +336,7 @@ export function createDefaultConfig(typeId) {
   for (const s of getSectionsForType(typeId || 'sdxl-lora'))
     for (const f of s.fields)
       config[f.key] = Array.isArray(f.defaultValue) ? [...f.defaultValue] : (f.defaultValue ?? '');
-  return config;
+  return Object.assign(config, optimizationDefaults());
 }
 
 export function normalizeDraftValue(field, rawValue) {

@@ -1,0 +1,20 @@
+{
+  "key": "moss_image_block_residency",
+  "title": "DiT 块驻留策略",
+  "category": "速度 / 显存",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "决定 MOSS-Image 的 DiT 块全部驻留显存还是分块卸载到 CPU，默认 block_offload。",
+    "effect": "resident=全部块常驻 GPU，步速最快、显存需求最高；block_offload=逐块从 CPU 换入换出，显存需求最低。只有选 block_offload 后，GPU 槽位、预取深度、pin memory、CPU 预填充这些参数才有作用面。",
+    "whenToUse": "显存装得下整个 DiT 时选 resident；装不下再选 block_offload，并用预填充/预取参数把搬运停顿压下去。",
+    "avoidWhen": "选 resident 后再去调预填充类参数不会有任何效果。"
+  },
+  "relatedConfigs": [
+    "moss_image_block_offload_gpu_slots",
+    "moss_image_block_offload_prefetch_depth",
+    "moss_image_block_offload_prefill_enabled"
+  ]
+}

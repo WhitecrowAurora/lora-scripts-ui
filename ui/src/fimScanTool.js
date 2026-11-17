@@ -12,6 +12,7 @@
 // 该工具只读取/写回 webui 训练配置，不承载 launcher 功能，不新增训练入口。
 
 import { escapeHtml } from './utils/dom.js';
+import { describeJobStatus } from './utils/jobStatus.js';
 
 const MODAL_CLASS = 'training-option-help-modal fim-scan-modal';
 const POLL_INTERVAL_MS = 1200;
@@ -116,6 +117,8 @@ export function createFimScanTool({ state, api, showToast, buildRunConfig }) {
         const pct = Math.round((data.progress || 0) * 100);
         if (statusEl && data.status === 'running') {
           statusEl.innerHTML = busyLine(`扫描中 ${pct}%（Fisher 校准）`);
+        } else if (statusEl && data.status === 'cancel_timeout') {
+          statusEl.innerHTML = busyLine(describeJobStatus(data.status));
         }
         if (data.status === 'completed') {
           clearInterval(pollTimer);

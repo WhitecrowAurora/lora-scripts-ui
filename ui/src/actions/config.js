@@ -1,3 +1,5 @@
+import { rememberOptimizationChoice } from '../features/optimizationPreferences.js';
+import { OPTIMIZATION_CONFIG_KEYS } from '../features/optimizationSettings.js';
 // actions/config.js — 配置读写 actions
 //   isTruthyConfigFlag / enforceLycorisDoraSafety / mergeConfigPatch /
 //   syncConfigState / refreshFieldHighlights / getPresetLabel /
@@ -5,6 +7,8 @@
 //   resetAllParams / applyPreset
 import { OPTIMIZER_ARG_TEMPLATES } from '../features/optimizerParams.js';
 import { normalizeTheoryNameAliases } from '../utils/theoryNameAliases.js';
+import { invalidateModelCodeTrust, withoutModelCodeTrust } from '../features/modelCodeTrust.js';
+import { normalizeImportedConfig } from '../utils/configImport.js';
 //
 // 依赖（工厂注入）：state, getFieldDefinition, normalizeDraftValue,
 //   createDefaultConfig, CONDITIONAL_KEYS,DRAFT_STORAGE_KEY,
@@ -24,6 +28,7 @@ updateJSONPreview,
   onConfigChanged,
 }) {
   function notifyConfigChanged(key = '') {
+    invalidateModelCodeTrust(state, key);
     onConfigChanged?.(key);
   }
 
@@ -49,16 +54,17 @@ updateJSONPreview,
     return false;
   }
 
-  function mergeConfigPatch(patch) {
+  function mergeConfigPatch(patch, { preserveResolution = false } = {}) {
     if (!patch || typeof patch !== 'object') {
       return;
     }
 
     // Migrate legacy theory names before field lookup; unknown legacy keys would
     // otherwise be dropped before the canonical schema can receive their values.
-    patch = normalizeTheoryNameAliases(patch);
+    patch = normalizeTheoryNameAliases(withoutModelCodeTrust(patch));
+    patch = normalizeImportedConfig(patch, getFieldDefinition);
     const incomingType = patch.__training_type__ || patch.model_train_type || state.activeTrainingType || '';
-    if (incomingType.startsWith('sdxl-') && patch.resolution === '512,512') {
+    if (!preserveResolution && incomingType.startsWith('sdxl-') && patch.resolution === '512,512') {
       patch = { ...patch, resolution: '1024,1024' };
     }
 
@@ -117,6 +123,7 @@ updateJSONPreview,
     if (options.explicit !== false) markExplicitField(key);
     const field = getFieldDefinition(key);
     const normalizedValue = normalizeDraftValue(field, rawValue);
+    rememberOptimizationChoice(key, normalizedValue);
     const previousValue = state.config[key];
     if (String(previousValue ?? '') !== String(normalizedValue ?? '')) {
       state.fieldUndo[key] = previousValue;
@@ -146,7 +153,7 @@ updateJSONPreview,
       }
     }
 
-    if (CONDITIONAL_KEYS.has(key) && state.activeModule === 'config') {
+    if ((CONDITIONAL_KEYS.has(key) || OPTIMIZATION_CONFIG_KEYS.includes(key)) && state.activeModule === 'config') {
       saveDraft();
       renderView('config');
       return;

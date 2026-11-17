@@ -1,0 +1,26 @@
+{
+  "key": "lulynx_freq_texture_band_levels",
+  "title": "频段金字塔层数",
+  "category": "感知锚/频域纹理损失",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "频域损失的多尺度金字塔层数，默认 3（逐级 2 倍下采样，最后一层保留低频）。",
+    "effect": "层数越多覆盖的频段越宽；输入尺寸小时会自动减少实际层数，不会报错。",
+    "whenToUse": "训练分辨率高、想让损失同时约束粗细两种纹理尺度时保持或上调。",
+    "avoidWhen": "小分辨率训练时调大没有意义，实际层数会被尺寸限制。"
+  },
+  "relatedConfigs": [
+    "lulynx_freq_texture_mode",
+    "lulynx_freq_texture_focal_alpha"
+  ]
+}

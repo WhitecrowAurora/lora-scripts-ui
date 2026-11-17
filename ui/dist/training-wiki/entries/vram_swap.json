@@ -1,0 +1,51 @@
+{
+  "key": "vram_swap",
+  "title": "VRAM Swap",
+  "title_en": "VRAM Swap",
+  "category": "显存 / 交换",
+  "category_en": "VRAM / Swap",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "sd-lora",
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-dreambooth",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "把部分模型层换到 CPU 内存以省显存。开启等价于把 blocks_to_swap 设成 2，关闭则设成 0。",
+    "effect": "这是个布尔外壳：启动路径把它翻译成整数 blocks_to_swap 后就不再保留原键。已经填了 blocks_to_swap 时，开启不会覆盖更大的值；关闭则无条件清零。",
+    "whenToUse": "显存差一点、又不想手动数 block 数时，用它开一个保守的交换量。",
+    "avoidWhen": "需要精确控制换出层数时直接填 blocks_to_swap。追求速度时别开——每次换入换出都要走 PCIe。在 AMD ROCm 路线上它只是建议性提示，官方不建议叠加。"
+  },
+  "standard_en": {
+    "summary": "Offloads part of the model to CPU memory to save VRAM. Turning it on is equivalent to blocks_to_swap = 2; turning it off sets it to 0.",
+    "effect": "This is a boolean shell: the launch path translates it into an integer blocks_to_swap and does not keep the original key. When blocks_to_swap is already set, turning this on does not overwrite a larger value; turning it off zeroes it unconditionally.",
+    "whenToUse": "When VRAM is just short and you would rather not count blocks by hand -- it opens a conservative swap amount.",
+    "avoidWhen": "Set blocks_to_swap directly when you need an exact layer count. Skip it for speed -- every swap crosses PCIe. On AMD ROCm it is only an advisory hint and the guidance is not to stack it."
+  },
+  "advanced": {
+    "principle": "TrainingRouteService.build_config_json 先 pop 掉 vram_swap，再按布尔值写 blocks_to_swap：真且原本没有值时写 2，假则写 0。因此下游只看见整数，config 里也没有 vram_swap 这个字段。",
+    "intervention": "请求归一化阶段的一次键转换，不进入训练循环。",
+    "expectedImpact": "换出 2 层通常省几百 MB 到 1 GB 级显存，代价是每步额外的传输开销。",
+    "tradeoffs": "「开 = 2」是写死的映射，与模型总层数无关；层数很多的模型上这个值偏保守，层数少的模型上又可能不够。"
+  },
+  "advanced_en": {
+    "principle": "TrainingRouteService.build_config_json pops vram_swap first, then writes blocks_to_swap from the boolean: 2 when true and nothing was set, 0 when false. Downstream only ever sees the integer, and vram_swap is not a config field at all.",
+    "intervention": "One key conversion during request normalisation; it never reaches the training loop.",
+    "expectedImpact": "Swapping 2 layers typically saves hundreds of MB up to the 1 GB range, at the cost of extra transfer per step.",
+    "tradeoffs": "The on-equals-2 mapping is hard-coded and unrelated to the model's layer count: conservative for deep models, possibly too little for shallow ones."
+  },
+  "relatedConfigs": [
+    "blocks_to_swap",
+    "weight_compression_allow_offload_combo"
+  ]
+}

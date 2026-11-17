@@ -1,0 +1,19 @@
+{
+  "key": "fp_1f_enabled",
+  "title": "启用 Ref2VA 单帧训练",
+  "category": "LCM / Turbo 蒸馏参数",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "Ref2VA 图像训练开关，需要同时提供参考清单，当前仅支持单帧目标。默认关闭。",
+    "effect": "开启后训练按单帧目标组织（目标图 + 参考图），多帧目标会被拒。",
+    "whenToUse": "用单帧图像做 Ref2VA 训练时。",
+    "avoidWhen": "目标是视频/多帧时不要开。"
+  },
+  "relatedConfigs": [
+    "h3_ref2va_manifest_path",
+    "fp_1f_task"
+  ]
+}

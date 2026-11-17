@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: LicenseRef-PolyFormNoncommercial-1.0.0
+// Shared by the three training WebUIs; uses the existing runtime request keys.
+import { all, when } from '../schemaCommon.js';
+import { withWeightOffloadPrefill } from './weightOffloadPrefillFields.js';
+
+const FAMILIES = {
+  'krea2-lora': 'krea2',
+  'wan22-ti2v-lora': 'wan22',
+  'wan22-t2v-a14b-lora': 'wan22',
+  'flux-lora': 'flux',
+  'sd3-lora': 'sd3',
+  'qwen-image-lora': 'qwen_image',
+  'zimage-lora': 'zimage',
+  'flux2-lora': 'flux2',
+  'boogu-lora': 'boogu',
+  'qwen-image-2-lora': 'qwen_image_2',
+  'moss-image-lora': 'moss_image',
+  'flux3-lora': 'flux3',
+  'ltx23-lora': 'ltx23',
+  'ltx25-lora': 'ltx23',
+  'boogu-edit-lora': 'boogu',
+};
+
+export function withBlockOffloadPrefill(sections, typeId) {
+  const family = FAMILIES[typeId];
+  if (!family) return withWeightOffloadPrefill(sections, typeId);
+  const keys = new Set(sections.flatMap((section) => section.fields.map((field) => field.key)));
+  const pinKey = `${family}_block_offload_pin_memory`;
+  const enableKey = `${family}_block_offload_prefill_enabled`;
+  const residencyKey = family === 'flux' ? 'flux_transformer_offload' : `${family}_block_residency`;
+  const offloadMode = family === 'flux' ? 'block_residency' : 'block_offload';
+  const offload = when(residencyKey, offloadMode);
+  const ready = all(offload, when(pinKey, false),
+    ...(family === 'flux' ? [when('flux_trainer_backend', 'unified')] : []));
+  const target = sections.find((section) => section.fields.some((field) => field.key === pinKey))
+    || sections.find((section) => section.id === 'speed-settings');
+  if (!target) return sections;
+
+  const prerequisites = [];
+  if (family === 'flux' && !keys.has('flux_trainer_backend')) {
+    prerequisites.push({
+      key: 'flux_trainer_backend', type: 'select', label: 'FLUX 训练后端',
+      defaultValue: 'unified',
+      options: [{ value: 'unified', label: '统一训练（支持 CPU 预填充）' }, { value: 'legacy', label: '旧版兼容' }],
+      desc: 'CPU 预填充需要统一训练后端和分块卸载。',
+    });
+  }
+  if (!keys.has(residencyKey)) {
+    prerequisites.push({
+      key: residencyKey, type: 'select', label: '模型块驻留方式',
+      defaultValue: family === 'flux' ? 'auto' : 'block_offload',
+      options: family === 'flux'
+        ? [{ value: 'auto', label: '自动' }, { value: 'off', label: '关闭卸载' },
+          { value: 'aggressive', label: '激进卸载' }, { value: offloadMode, label: '分块卸载（支持 CPU 预填充）' }]
+        : [{ value: 'resident', label: '全部驻留 GPU' }, { value: offloadMode, label: '分块卸载到 CPU' }],
+    });
+  }
+  const pinHint = '关闭整块 Pin Memory 后可设置 CPU 预填充，以小型锁页暂存池搬运冻结权重。';
+  if (!keys.has(pinKey)) {
+    prerequisites.push({
+      key: pinKey, type: 'boolean', label: 'Block Offload Pin Memory',
+      defaultValue: false, visibleWhen: offload, desc: pinHint,
+    });
+  }
+  const fields = [
+    ...prerequisites,
+    {
+      key: enableKey, type: 'boolean', label: 'CPU 权重预填充（自动探测）',
+      defaultValue: false, visibleWhen: ready,
+      desc: `首次训练在第一个模型块计算前探测本机搬运策略；没有明确收益时沿用直接上传。适用于单 GPU、${family === 'krea2' ? '未编译或逐块编译' : '未编译'}的 LoRA 块卸载，不保证提速。`,
+    },
+    {
+      key: `${family}_block_offload_prefill_budget_mb`, type: 'number',
+      label: 'CPU 预填充预算（MiB）', defaultValue: 128, min: 0, step: 1,
+      visibleWhen: all(ready, when(enableKey, true)),
+      desc: '锁页暂存内存预算；当前候选使用 128 MiB。低于 128 时沿用直接上传，提高预算不会扩大暂存池。',
+    },
+  ];
+  const anchor = target.fields.findIndex((field) => field.key === pinKey);
+  const insertion = anchor < 0 ? target.fields.length : anchor + 1;
+  return sections.map((section) => section !== target ? section : {
+    ...section,
+    fields: [
+      ...section.fields.slice(0, insertion).map((field) => field.key === pinKey
+        ? { ...field, desc: `${field.desc || ''} ${pinHint}`.trim() } : field),
+      ...fields,
+      ...section.fields.slice(insertion),
+    ],
+  });
+}

@@ -1,0 +1,36 @@
+{
+  "key": "lab_distiller",
+  "title": "LAB Distiller",
+  "title_en": "LAB Distiller",
+  "category": "训练 / 蒸馏",
+  "category_en": "Training / Distillation",
+  "appliesTo": [],
+  "standard": {
+    "summary": "从传统 LoRA teacher 蒸馏出 Lulynx LAB sidecar 的专项入口。默认只验证契约，不做真实蒸馏。",
+    "effect": "输入是 UNet / SDXL 底模、teacher LoRA 与文本模型路径；输出是 sidecar 权重。dry-run 开启时不启动真实蒸馏，只检查配置链路是否走得通。",
+    "whenToUse": "想用一套已有的传统 LoRA 当 teacher、把它压成 LAB 形式的 sidecar 时。",
+    "avoidWhen": "想训普通 LoRA 时——这不是那条路。首次尝试也必须先用 dry-run 过一遍契约，别直接关掉它跑长训练。"
+  },
+  "standard_en": {
+    "summary": "A dedicated entry that distils a Lulynx LAB sidecar out of a conventional LoRA teacher. By default it only validates the contract and runs no real distillation.",
+    "effect": "Inputs are a UNet / SDXL base, a teacher LoRA and a text-model path; the output is sidecar weights. With dry-run on, no distillation starts and only the configuration chain is checked.",
+    "whenToUse": "When you already have a conventional LoRA to use as teacher and want it turned into a LAB-style sidecar.",
+    "avoidWhen": "Not the path for training an ordinary LoRA. Even the first attempt must go through dry-run to check the contract -- do not switch it off and start a long run."
+  },
+  "advanced": {
+    "principle": "表单分三段：蒸馏输入（unet_path / lora_path / teacher_path / llm_path / projector_path）、蒸馏参数（dry_run、steps、batch_size、learning_rate、dtype、device）与输出（output_path，默认写 output/lab_distiller）。",
+    "intervention": "独立于主训练路线的蒸馏任务，不经过 LoRA 注入器。",
+    "expectedImpact": "产出的是 sidecar 而不是 LoRA；能否加载取决于运行时是否识别该格式。",
+    "tradeoffs": "这个类型目前不在 launcher 的训练注册表里，启动路会因未知 schema 拒绝；表单填得再对也到不了 worker（已单独立项）。"
+  },
+  "advanced_en": {
+    "principle": "The form has three sections: distillation input (unet_path / lora_path / teacher_path / llm_path / projector_path), distillation parameters (dry_run, steps, batch_size, learning_rate, dtype, device) and output (output_path, defaulting under output/lab_distiller).",
+    "intervention": "A distillation job separate from the main training route; it does not go through the LoRA injector.",
+    "expectedImpact": "It produces a sidecar rather than a LoRA; whether it can be loaded depends on the runtime recognising that format.",
+    "tradeoffs": "This type is not in the launcher's training registry yet, so the launch path rejects it as an unknown schema -- however right the form is, it never reaches a worker (tracked separately)."
+  },
+  "relatedConfigs": [
+    "distillation_enabled",
+    "distill_method"
+  ]
+}

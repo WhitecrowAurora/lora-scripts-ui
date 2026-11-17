@@ -1,0 +1,38 @@
+{
+  "key": "save_period",
+  "title": "保存间隔",
+  "title_en": "Save period",
+  "category": "保存 / 间隔",
+  "category_en": "Saving / Intervals",
+  "appliesTo": [
+    "yolo"
+  ],
+  "standard": {
+    "summary": "YOLO 训练每隔多少轮存一次 checkpoint。-1 表示沿用 ultralytics 默认行为（只存 best/last）。",
+    "effect": "只有大于 0 的值才会作为 save_period 传给 ultralytics；0 与负数都不下发。",
+    "whenToUse": "长训练需要中途取权重复现某个阶段时。",
+    "avoidWhen": "磁盘紧张时——按间隔存会在权重目录里留下大量 epoch 快照。"
+  },
+  "standard_en": {
+    "summary": "How often YOLO training writes a checkpoint. -1 keeps the ultralytics default (only best/last).",
+    "effect": "Only values greater than 0 are forwarded as save_period; zero and negatives are not sent at all.",
+    "whenToUse": "For a long run where you want to pull a mid-training weight to reproduce a stage.",
+    "avoidWhen": "When disk is tight -- interval saves leave a pile of epoch snapshots in the weights directory."
+  },
+  "advanced": {
+    "principle": "router 先用 save_period or save_every_n_epochs 归一到一个值，默认 -1；entry_yolo 只在 int 值 > 0 时写进 train_kwargs，因此 0 / -1 都落回 ultralytics 自己的默认。",
+    "intervention": "请求归一化 + worker kwargs 组装两处，都不改训练循环。",
+    "expectedImpact": "只影响磁盘占用与恢复点数量，不影响训练速度。",
+    "tradeoffs": "与 LoRA 侧的 save_every_n_epochs 不是同一个键，也不共用目录策略。"
+  },
+  "advanced_en": {
+    "principle": "The router normalises save_period or save_every_n_epochs to one value defaulting to -1; entry_yolo writes it into train_kwargs only when the int is > 0, so both 0 and -1 fall back to ultralytics' own default.",
+    "intervention": "Request normalisation plus worker kwargs assembly; the training loop is untouched.",
+    "expectedImpact": "Affects disk usage and the number of restore points only, not training speed.",
+    "tradeoffs": "It is not the same key as the LoRA-side save_every_n_epochs and does not share its directory policy."
+  },
+  "relatedConfigs": [
+    "save_every_n_epochs",
+    "dataset_yaml"
+  ]
+}

@@ -1,11 +1,26 @@
 import { renderTaggerTemplate } from './taggerTemplate.js';
+import { createTaggerStagesPanel } from './taggerStagesPanel.js';
+import { createTaggerReviewPanel } from './taggerReviewPanel.js';
+import { createTaggerTaskSnapshot } from './taggerTaskSnapshot.js';
+import { bindPortableChannel } from './taggerPortablePreset.js';
 
 export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToast }) {
   let taggerPollTimer = null;
+  let stagesPanel = null;
+  let reviewPanel = null;
+  let taskSnapshot = null;
+  let formEvents = null;
 
   function renderTagger() {
     const content = $('#dataset-content');
     if (!content) return;
+    if (content.querySelector('#llm-tagger-path')) {
+      taskSnapshot?.capture();
+      state.taggerStagesDraft = stagesPanel?.read() || [];
+    }
+    taskSnapshot?.dispose();
+    formEvents?.abort();
+    formEvents = new AbortController();
 
     const allInterrogators = state.interrogators?.interrogators || [];
     const defaultModel = 'wd-eva02-large-v3';
@@ -44,6 +59,16 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
       conflictLabels,
       escapeHtml,
     });
+    stagesPanel = createTaggerStagesPanel({ container: $('#llm-stages-panel'), channels: llmChannels, escapeHtml });
+    reviewPanel = createTaggerReviewPanel({ container: $('#llm-review-panel'), api, escapeHtml, showToast });
+    stagesPanel.restore(state.taggerStagesDraft || []);
+    taskSnapshot = createTaggerTaskSnapshot({ container: content, state });
+    const recentLlmTask = state.taggerSession?.submissions?.llm;
+    if (recentLlmTask?.params?.llm_review_before_save) reviewPanel?.setTask(recentLlmTask.taskId);
+    bindPortableChannel({ container: content, channels: llmChannels, $, showToast });
+    for (const event of ['input', 'change', 'click']) {
+      content.addEventListener(event, () => { state.taggerStagesDraft = stagesPanel.read(); }, { signal: formEvents.signal });
+    }
     const preset = $('#llm-preset');
     preset?.addEventListener('change', () => {
       if (preset.value !== 'caption-rewrite') return;
@@ -91,7 +116,7 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
   function showTaggerErrorHint(hintId, message) {
     const hint = $('#' + hintId);
     if (hint) {
-      hint.innerHTML = '<span style="color:var(--danger);">' + _ico('x-circle') + ' ' + message + '</span>';
+      hint.innerHTML = '<span style="color:var(--danger);">' + _ico('x-circle') + ' ' + escapeHtml(message) + '</span>';
     }
   }
 
@@ -126,6 +151,7 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
     if (failed) parts.push(`失败 ${failed} 张`);
     if (empty && !skippedEmpty) parts.push(`空输出 ${empty} 张`);
     if (dryRun) parts.push(`预计写入 ${wouldWrite} 张`);
+    if (summary.review_count) parts.push(`待审核 ${Number(summary.review_count)} 张`);
     return (dryRun ? '预演完成：' : '标注完成：') + parts.join('，') + '。';
   }
 
@@ -158,6 +184,10 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
     const provider = $('#llm-channel-provider')?.value || 'openai_compatible';
     const model = $('#llm-channel-model')?.value?.trim() || '';
     const apiKeys = $('#llm-channel-keys')?.value || '';
+    if ($('#llm-channel-keys')?.dataset.importedPreset === 'true' && !apiKeys.trim()) {
+      showToast('导入的预设需要重新填写本机密钥后保存。');
+      return;
+    }
     const existing = (state.interrogators?.llm_channels || []).find((channel) => String(channel.id || '') === channelIdFromName(name));
     if (!name || !model) {
       showToast('请填写通道名称和模型。');
@@ -176,7 +206,10 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
         api_keys: apiKeys,
         replace_api_keys: !!apiKeys.trim(),
         enabled: true,
-        retries: parseInt($('#llm-retries')?.value, 10) || 1,
+        timeout: Number($('#llm-channel-timeout')?.value ?? 120),
+        retries: Number($('#llm-retries')?.value ?? 1),
+        interval: Number($('#llm-interval')?.value ?? 0),
+        retry_interval: Number($('#llm-retry-interval')?.value ?? 0),
       });
       updateChannelState(response?.data?.channels || []);
       renderTagger();
@@ -241,13 +274,19 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
         const targetTask = targetTaskId
           ? tasks.find((task) => String(task.id || task.task_id || '') === targetTaskId)
           : null;
+        if (targetTaskId && !targetTask) return;
         const running = targetTask
-          ? (String(targetTask.status || '').toUpperCase() === 'RUNNING' ? [targetTask] : [])
+          ? (['RUNNING', 'PENDING', 'QUEUED', 'STARTING'].includes(String(targetTask.status || '').toUpperCase()) ? [targetTask] : [])
           : tasks.filter((task) => task.status === 'RUNNING');
         if (running.length === 0) {
           clearInterval(taggerPollTimer);
           taggerPollTimer = null;
           const finished = targetTask || tasks.find((task) => ['COMPLETED', 'FINISHED'].includes(String(task.status || '').toUpperCase()) && String(task.type || '').toLowerCase() === 'tagging');
+          if (finished?.metadata?.summary?.review_available) reviewPanel?.setTask(targetTaskId, true);
+          if (['FAILED', 'ERROR', 'CANCELLED', 'CANCELED'].includes(String(finished?.status || '').toUpperCase())) {
+            showTaggerErrorHint(hintId, finished.error || '标注任务未完成；已生成的审核结果可继续查看。');
+            return;
+          }
           const doneMsg = formatTaggerSummary(finished?.metadata?.summary, imageCount);
           showTaggerDoneHint(hintId, doneMsg);
           showToast('✓ ' + doneMsg);
@@ -255,6 +294,11 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
         }
         const taskId = running[0].id || running[0].task_id;
         if (!taskId) return;
+        const summary = running[0].metadata?.summary;
+        if (summary) {
+          showTaggerRunningHint(hintId, `已处理 ${Number(summary.processed_count || 0)}/${Number(summary.total_images || 0)} 张，已写入 ${Number(summary.written_count || 0)} 张，失败 ${Number(summary.failed_count || 0)} 张。`);
+          return;
+        }
 
         const outResp = await api.getTaskOutput(taskId, 30);
         const lines = outResp?.data?.lines || [];
@@ -309,7 +353,11 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
       dry_run: $('#llm-dry-run')?.checked || false,
       llm_temperature: parseFloat($('#llm-temperature')?.value) || 0.2,
       llm_max_tokens: parseInt($('#llm-max-tokens')?.value, 10) || 300,
-      llm_retries: parseInt($('#llm-retries')?.value, 10) || 1,
+      llm_retries: Number($('#llm-retries')?.value ?? 1),
+      llm_interval: Number($('#llm-interval')?.value ?? 0),
+      llm_retry_interval: Number($('#llm-retry-interval')?.value ?? 0),
+      llm_stages: stagesPanel?.read() || [],
+      llm_review_before_save: $('#llm-review-before-save')?.checked || false,
       llm_min_tags: parseInt($('#llm-min-tags')?.value, 10) || 1,
       llm_max_tags: parseInt($('#llm-max-tags')?.value, 10) || 120,
       batch_input_recursive: $('#llm-recursive')?.checked || false,
@@ -328,12 +376,14 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
       }
       const response = await api.runInterrogate(params);
       const taskId = response?.data?.task_id || response?.task_id || '';
+      taskSnapshot?.submitted('llm', taskId, params);
+      if (params.llm_review_before_save) reviewPanel?.setTask(taskId);
       setTaggerButtonLoading('btn-run-llm-tagger', 'llm-tagger-status-hint', false);
       showTaggerRunningHint(
         'llm-tagger-status-hint',
         'LLM 标注后台运行中... 进度请查看后端控制台窗口（任务栏最小化窗口 "LoRA-Backend"）',
       );
-      showToast('✓ LLM 标注任务已提交到后端，正在后台运行。完成后 .txt 标签文件会自动生成在图片旁边。');
+      showToast(params.llm_review_before_save ? 'LLM 标注已提交；生成后可在「审核生成结果」中应用。' : '✓ LLM 标注任务已提交到后端，正在后台运行。完成后 .txt 标签文件会自动生成在图片旁边。');
       pollTaggerProgress('llm-tagger-status-hint', taskId);
     } catch (error) {
       setTaggerButtonLoading('btn-run-llm-tagger', 'llm-tagger-status-hint', false);
@@ -373,6 +423,7 @@ export function createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToas
       }
       const response = await api.runInterrogate(params);
       const taskId = response?.data?.task_id || response?.task_id || '';
+      taskSnapshot?.submitted('tagger', taskId, params);
       setTaggerButtonLoading('btn-run-tagger', 'tagger-status-hint', false);
       showTaggerRunningHint(
         'tagger-status-hint',

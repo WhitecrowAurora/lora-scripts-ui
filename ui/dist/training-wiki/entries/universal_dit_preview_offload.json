@@ -1,0 +1,18 @@
+{
+  "key": "universal_dit_preview_offload",
+  "title": "预览时启用层 offload",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "预览期间把冻结的 Linear 权重挪到内存、按需搬回，结束后还原。默认关闭。",
+    "effect": "只影响预览，不改训练。5B 级模型在 16G 卡上预览时建议开启。",
+    "whenToUse": "训练显存刚好够、预览一动就 OOM 时开启。",
+    "avoidWhen": "预览本来就宽裕时开启只会变慢。"
+  },
+  "relatedConfigs": [
+    "universal_dit_preview_offload_include",
+    "universal_dit_preview_offload_min_mb"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "key": "layersync_weight",
+  "title": "LayerSync 权重",
+  "category": "训练 / 表征对齐",
+  "appliesTo": [
+    "anima-edit-model",
+    "anima-lora",
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "辅助损失权重；大于 0 才参与训练，0 保持关闭。",
+    "effect": "由现有 LayerSync 损失消费；尚无通用推荐值。",
+    "whenToUse": "默认 0，无明确目标时保持默认。",
+    "avoidWhen": "一次只改一项，便于归因效果。"
+  },
+  "advanced": null,
+  "relatedConfigs": []
+}

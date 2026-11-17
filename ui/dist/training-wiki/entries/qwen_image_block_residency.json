@@ -1,0 +1,20 @@
+{
+  "key": "qwen_image_block_residency",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-lora",
+    "qwen-image-finetune"
+  ],
+  "title": "Qwen Image：DiT 块驻留策略",
+  "standard": {
+    "summary": "决定 DiT 块是全部驻留显存还是分块卸载到 CPU，默认 block_offload。",
+    "effect": "resident=全部块常驻 GPU，最快但显存需求最高；block_offload=逐块从 CPU 换入换出，显存需求最低。选 block_offload 后才能用下面的预填充/pin memory/prefetch 参数调速。",
+    "whenToUse": "显存装得下全模型就选 resident；装不下再选 block_offload 并配合预填充控制步速。",
+    "avoidWhen": "选了 resident 之后再去调预填充参数不会有任何效果。"
+  },
+  "relatedConfigs": [
+    "qwen_image_block_offload_prefill_budget_mb",
+    "qwen_image_block_offload_pin_memory",
+    "qwen_image_block_residency"
+  ]
+}

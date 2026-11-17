@@ -1,0 +1,47 @@
+{
+  "key": "h3_cfg_schedule",
+  "title": "CFG 调度（实验）",
+  "title_en": "CFG Schedule (Experimental)",
+  "category": "MiniMax H3 / 高级",
+  "category_en": "MiniMax H3 / Advanced",
+  "appliesTo": [
+    "minimax-h3-lora",
+    "minimax-h3-finetune"
+  ],
+  "standard": {
+    "summary": "H3 训练时 CFG 强度随 sigma 变化的调度。constant 全程用固定值；sigma 让 CFG 随噪声变小而回落到 1。",
+    "effect": "sigma 档的实际 CFG = 1 + (h3_cfg_scale - 1) × sigma。因此高噪声段接近设定的 CFG、低噪声段趋近无条件预测；steering 越大差别越明显。",
+    "whenToUse": "CFG 蒸馏式训练里想让低噪声段少被 guidance 塑形时试 sigma。",
+    "avoidWhen": "还没做对照就别改——两种调度产出的目标分布不同，loss 不能直接横向比较。video 与 audio 两支共用同一个调度。",
+    "optionDescriptions": {
+      "constant": "全程固定 CFG，与旧行为一致。",
+      "sigma": "按 sigma 线性收束到 1。"
+    }
+  },
+  "standard_en": {
+    "summary": "Schedule for H3 CFG strength against sigma during training. constant keeps one value throughout; sigma fades CFG back to 1 as noise shrinks.",
+    "effect": "In the sigma mode the effective CFG is 1 + (h3_cfg_scale - 1) x sigma, so the high-noise region sees close to the configured CFG and the low-noise region approaches the unconditional prediction; the larger the steering, the bigger the difference.",
+    "whenToUse": "Try sigma in CFG-distillation-style training when you want the low-noise region shaped less by guidance.",
+    "avoidWhen": "Do not change it without a control arm -- the two schedules produce different target distributions, so their losses are not comparable. Video and audio share one schedule.",
+    "optionDescriptions": {
+      "constant": "Fixed CFG throughout, identical to the old behaviour.",
+      "sigma": "Linear fade to 1 following sigma."
+    }
+  },
+  "advanced": {
+    "principle": "minimax_h3.guidance.effective_cfg_scale 在拼接 conditional / unconditional velocity 之前把标量 CFG 展开成按样本、按模态的张量：constant 直接广播，sigma 返回 1 + (scale - 1) * sigma。视频与音频各自用自己那条 sigma 求值后，再分别做 CFG 保真合成。",
+    "intervention": "train_step 的 CFG 合成处，只改条件强度，不改 loss 形式。",
+    "expectedImpact": "无额外计算；训练目标随之改变，需要重新观察收敛。",
+    "tradeoffs": "sigma_min 附近的样本还会被 h3_cfg_preservation_sigma_min 的门整体放行到纯 flow 目标，两处叠加时低噪声段的 guidance 影响接近零——调参要先分清是哪一层在起作用。"
+  },
+  "advanced_en": {
+    "principle": "minimax_h3.guidance.effective_cfg_scale expands the scalar CFG into per-sample, per-modality tensors before the conditional / unconditional velocities are combined: constant broadcasts it, sigma returns 1 + (scale - 1) * sigma. Video and audio each evaluate their own sigma and are then CFG-composed separately.",
+    "intervention": "At the CFG combination site in train_step; only the conditioning strength changes, not the loss form.",
+    "expectedImpact": "No extra compute; the training target changes, so convergence has to be re-observed.",
+    "tradeoffs": "Near sigma_min the h3_cfg_preservation_sigma_min gate additionally releases samples to the plain flow target, so with both in play guidance barely affects the low-noise region -- when tuning, first work out which layer is acting."
+  },
+  "relatedConfigs": [
+    "h3_cfg_scale",
+    "h3_cfg_preservation_sigma_min"
+  ]
+}

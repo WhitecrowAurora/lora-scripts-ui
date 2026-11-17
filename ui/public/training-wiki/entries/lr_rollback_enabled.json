@@ -1,0 +1,38 @@
+{
+  "key": "lr_rollback_enabled",
+  "title": "不稳定时回滚权重",
+  "title_en": "Roll Back Weights on an Unstable Epoch",
+  "category": "训练 / 稳定性",
+  "category_en": "Training / Stability",
+  "appliesTo": [],
+  "standard": {
+    "summary": "每个 epoch 边界留一份可训练权重的副本；某轮出现 clip 比例过高或权重范数暴涨时，把当前权重按 70/30 混回上一份稳定副本，并尽力恢复优化器状态。默认关闭。",
+    "effect": "两个触发条件任一命中就回滚；回滚不是「撤销整轮」，而是 w ← stable×keep + current×(1-keep) 的插值。副本只在内存里，因此续训后的第一个 epoch 无法回滚。",
+    "whenToUse": "长训练里偶发 loss 尖峰、又不想整天盯 loss 曲线时。",
+    "avoidWhen": "显存已经很紧时——每轮一份 CPU 副本，超过 2GiB 的副本会被跳过并记录原因，等于白开。也不要在频繁续训的流程里指望它。"
+  },
+  "standard_en": {
+    "summary": "Keeps one copy of the trainable weights at each epoch boundary; when an epoch shows an excessive clip ratio or a runaway weight norm, current weights are blended 70/30 back toward the last stable copy, and the optimizer state is restored on a best-effort basis. Off by default.",
+    "effect": "Either trigger is enough. A rollback is not \"undo the whole epoch\" but the interpolation w <- stable x keep + current x (1 - keep). Snapshots live in memory only, so the first epoch after a resume cannot roll back.",
+    "whenToUse": "Long runs that occasionally spike and that you would rather not babysit.",
+    "avoidWhen": "When VRAM is already tight -- one CPU copy per epoch, and a copy over 2 GiB is skipped with a recorded reason, making the switch useless. Also do not rely on it in a workflow that resumes often."
+  },
+  "advanced": {
+    "principle": "LrRollbackGuard 在 epoch 边界用快照待定（*_pending）的方式推进：本轮结束先比对 clip 比例与权重范数涨幅，再决定是否回滚，最后才把本轮状态提升为下一轮的基准——先拍后判会把不稳定本身混进基准里。前两轮不做判定（min_epochs 默认 2）。",
+    "intervention": "训练循环的 epoch 回调，优化器与模型结构都不变。",
+    "expectedImpact": "无训练速度影响，但每轮多一次可训练权重的 CPU 拷贝，占用主机内存。",
+    "tradeoffs": "优化器状态恢复是尽力而为：分页/量化优化器（如 turbo-core）不一定能往返 state_dict，失败时权重仍会回滚并把 optimizer_restored=False 写进事件日志，不要据此以为已完整复位。"
+  },
+  "advanced_en": {
+    "principle": "LrRollbackGuard advances by staging snapshots as pending: at an epoch boundary it first compares the clip ratio and weight-norm growth, decides whether to roll back, and only then promotes this epoch's state to the next baseline -- snapshotting before judging would blend the instability into the baseline. No decision is taken in the first two epochs (min_epochs defaults to 2).",
+    "intervention": "An epoch callback in the training loop; neither the optimizer nor the model structure changes.",
+    "expectedImpact": "No effect on training speed, but one extra CPU copy of the trainable weights per epoch, which costs host memory.",
+    "tradeoffs": "Optimizer-state restore is best effort: paged / quantized optimizers (turbo-core) do not always round-trip state_dict; when the restore fails the weights are still rolled back and optimizer_restored=False goes into the event log, so do not read that as a full reset."
+  },
+  "relatedConfigs": [
+    "lr_rollback_keep_ratio",
+    "lr_rollback_clip_ratio_threshold",
+    "lr_rollback_norm_growth_threshold",
+    "max_grad_norm"
+  ]
+}

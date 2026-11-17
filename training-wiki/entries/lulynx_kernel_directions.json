@@ -1,0 +1,27 @@
+{
+  "key": "lulynx_kernel_directions",
+  "title": "核投影数量",
+  "category": "感知锚/频域纹理损失",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "随机傅里叶特征的投影方向数，默认 256。",
+    "effect": "数量越多核近似越准确，同时线性增加计算量与显存占用。",
+    "whenToUse": "显存宽裕、希望 MMD 估计更稳时上调；小显存场景下调以省内存。",
+    "avoidWhen": "调数值时记得同时固定 lulynx_kernel_seed，否则两次训练不可比。"
+  },
+  "relatedConfigs": [
+    "lulynx_kernel_seed",
+    "lulynx_kernel_widths",
+    "lulynx_kernel_chunk_rows"
+  ]
+}

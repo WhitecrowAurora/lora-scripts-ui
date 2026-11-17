@@ -1,0 +1,17 @@
+{
+  "key": "universal_dit_caption_dropout",
+  "title": "Caption 丢弃率（CFG）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "建缓存时按样本确定性丢弃 caption、改存空提示 embedding，用于 CFG。默认 0（全部保留）。",
+    "effect": "丢掉的样本在训练时以空提示为条件，正是 CFG 需要的那一半；丢弃是确定性的（同一数据集重建缓存结果一致）。",
+    "whenToUse": "想训练出可用的 CFG 引导能力时给一个小比例（如 0.1）。",
+    "avoidWhen": "推理不用 CFG 时保持 0，丢弃只会浪费 caption 信息。"
+  },
+  "relatedConfigs": [
+    "universal_dit_caption_pooling"
+  ]
+}

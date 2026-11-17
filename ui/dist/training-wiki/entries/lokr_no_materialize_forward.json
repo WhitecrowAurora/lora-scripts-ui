@@ -1,0 +1,40 @@
+{
+  "key": "lokr_no_materialize_forward",
+  "title": "LoKr 实验前向",
+  "title_en": "LoKr Experimental Forward",
+  "category": "LoRA 变体 / Kronecker",
+  "category_en": "LoRA Variants / Kronecker",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "实验项：不先把 Kronecker 因子乘成完整 ΔW，而是直接在因子空间里做前向。可能省显存，但常常更慢。",
+    "effect": "只有若干条件同时满足才真正走这条路（factor > 1、输入末维等于设定维度、训练期无 rank dropout、形状可整除）；任一不满足就静默回落到常规物化前向，结果一致但没了省显存的效果。",
+    "whenToUse": "显存卡在 LoKr 的 ΔW 上、又愿意用速度换显存时，配合短测确认数值一致性。",
+    "avoidWhen": "卷积层永远走物化路径；追求速度时别开——多段 matmul 往往比一次物化更慢。"
+  },
+  "standard_en": {
+    "summary": "Experimental: run the forward in Kronecker-factor space instead of first multiplying the factors into a full dW. May save VRAM, but is often slower.",
+    "effect": "The path is only taken when several conditions hold at once (factor > 1, input last dim equals the configured dimension, no rank dropout while training, exact factorisation); otherwise it silently falls back to the regular materialising forward, which gives the same result without the VRAM saving.",
+    "whenToUse": "When VRAM is blocked by LoKr's dW and you will trade speed for memory, with a short test confirming numeric equivalence.",
+    "avoidWhen": "Convolution layers always materialise; do not enable it for speed -- several matmuls are usually slower than one materialisation."
+  },
+  "advanced": {
+    "principle": "LyCORIS 的 LoKr 模块先做可走性判定 _can_use_no_materialize_forward，再按策略选 legacy（F.linear 两段）或 matmul（reshape 后 torch.matmul 两段）。两条支路都是数学上等价的重排，差别在中间张量的形状与访存模式。",
+    "intervention": "LoKr 的 forward 分支，注入与权重存储都不变。",
+    "expectedImpact": "省下的是 [out, in] 大小的 ΔW 峰值；代价是每步多几次小矩阵乘与 reshape。",
+    "tradeoffs": "省显存不等于省时间：小隐藏维度下 matmul 分支的开销反而更高。想量化收益只能用真实形状做 A/B。"
+  },
+  "advanced_en": {
+    "principle": "LyCORIS' LoKr module first runs the reachability test _can_use_no_materialize_forward, then picks legacy (two F.linear stages) or matmul (two torch.matmul stages after reshaping) by strategy. Both are algebraically equivalent rearrangements; they differ in intermediate tensor shapes and memory access patterns.",
+    "intervention": "The LoKr forward branch; injection and weight storage are unchanged.",
+    "expectedImpact": "What is saved is the peak [out, in] dW; the cost is a few extra small matmuls and reshapes per step.",
+    "tradeoffs": "Saving VRAM is not saving time: at small hidden dimensions the matmul branch costs more. Quantify only with an A/B on real shapes."
+  },
+  "relatedConfigs": [
+    "lokr_no_materialize_strategy",
+    "lycoris_factor"
+  ]
+}

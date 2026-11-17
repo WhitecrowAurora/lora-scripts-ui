@@ -13,11 +13,13 @@ import { $ } from '../utils/dom.js';
 import {
   collectTrainingMetrics as _collectTrainingMetricsFromLines,
   generateTrainingSummary as _generateSummaryFromMetrics,
-  generateSummaryFromTaskLog,
+  buildSummaryFromMetrics,
+  parseLinesIntoMetrics,
   renderSummaryCard,
 } from '../utils/trainingMetrics.js';
 import { getMultiBatchEvidenceFromTask } from '../utils/multiBatchEvidence.js';
 import { getTrainingRuntimeSummaryFromTask } from '../utils/trainingRuntimeSummary.js';
+import { applyTrainingRunMetrics, loadTrainingRunStatus } from '../utils/trainingStructuredMetrics.js';
 import {
   getCanonicalRunId,
   loadTrainingQualityReport,
@@ -30,6 +32,7 @@ export function createTrainingMetadataActions({
   TRAINING_TYPES,
   saveLocalTaskHistory,
   _resetTrainingLogCursor,
+  loadRunStatus = loadTrainingRunStatus,
 }) {
   function collectTrainingMetrics(lines) {
     // 委托给 utils/trainingMetrics.js 中的纯函数；副作用（写入 state）保留在此层
@@ -111,6 +114,8 @@ export function createTrainingMetadataActions({
 
   // 主要工具函数已搬到 utils/trainingMetrics.js。此处保留 0参数封装。
   function generateTrainingSummary() {
+    const task = state.tasks.find((item) => getTaskId(item) === state.activeTrainingTaskId);
+    applyTrainingRunMetrics(state.trainingMetrics, null, task);
     return _generateSummaryFromMetrics(state.trainingMetrics);
   }
 
@@ -141,25 +146,25 @@ export function createTrainingMetadataActions({
     };
   }
 
-  async function fetchTaskLogLines(taskId, preferredTail = 5000) {
-    let tail = Math.max(1, Number(preferredTail || 5000) || 5000);
-    let resp = await api.getTaskOutput(taskId, tail);
-    let data = resp?.data || {};
-    let lines = data.lines || [];
-    const total = Number(data.total || 0) || 0;
-    if (total > lines.length && total > tail) {
-      tail = Math.min(5000, Math.max(total, tail));
-      resp = await api.getTaskOutput(taskId, tail);
-      data = resp?.data || {};
-      lines = data.lines || [];
-    }
-    return lines;
+  async function fetchTaskLogLines(taskId, preferredTail = 500) {
+    // The compatibility API exposes a bounded tail, not backward pagination.
+    // Keep the final legacy observations; full-run series come from run status.
+    const tail = Math.min(500, Math.max(1, Number(preferredTail) || 500));
+    const response = await api.getTaskOutput(taskId, tail);
+    return Array.isArray(response?.data?.lines) ? response.data.lines.slice(-tail) : [];
   }
 
   async function buildAndSaveSummaryFromTaskLog(taskId) {
-    const lines = await fetchTaskLogLines(taskId, 5000);
-    if (lines.length=== 0) return null;
-    const summary = generateSummaryFromTaskLog(lines);
+    const task = state.tasks.find((item) => getTaskId(item) === taskId) || null;
+    const [logResult, runStatus] = await Promise.all([
+      fetchTaskLogLines(taskId).catch(() => []),
+      loadRunStatus(task),
+    ]);
+    if (!logResult.length && !runStatus) return null;
+    const metrics = parseLinesIntoMetrics(logResult);
+    applyTrainingRunMetrics(metrics, runStatus, task);
+    const summary = buildSummaryFromMetrics(metrics, metrics.structuredElapsedMs || 0);
+    if (runStatus) summary._runMetricsVersion = 1;
     const multiBatchEvidence = getMultiBatchEvidenceForTask(taskId);
     const trainingRuntimeSummary = getTrainingRuntimeSummaryForTask(taskId);
     if (multiBatchEvidence && summary && typeof summary === 'object') {
@@ -242,9 +247,12 @@ await saveLocalTaskHistory();
     panel.style.display = 'block';
 
     const runId = getCanonicalRunId(task);
-    const cachedSummary = state.taskSummaries[taskId] && state.taskSummaries[taskId]._v >= 2
-      ? state.taskSummaries[taskId]
-      : null;
+    const candidate = state.taskSummaries[taskId];
+    // Refresh native summaries written before canonical run telemetry was read.
+    const cachedSummary = candidate?._v >= 2
+      && (!runId || (candidate._runMetricsVersion === 1
+        && candidate.lastStep >= Number(task?.metadata?.current_step || 0)))
+      ? candidate : null;
     const legacyPromise = cachedSummary
       ? Promise.resolve(cachedSummary)
       : buildAndSaveSummaryFromTaskLog(taskId);

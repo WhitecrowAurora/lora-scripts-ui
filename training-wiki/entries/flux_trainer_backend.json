@@ -1,0 +1,18 @@
+{
+  "key": "flux_trainer_backend",
+  "title": "FLUX 训练后端",
+  "category": "训练参数",
+  "appliesTo": [
+    "flux-lora"
+  ],
+  "standard": {
+    "summary": "选择 FLUX LoRA 的训练执行路径，默认 unified（统一训练）。",
+    "effect": "unified=统一训练路径，支持 CPU 权重预填充与分块卸载；legacy=旧版兼容路径。CPU 预填充（block offload prefill）只有 unified 后端支持。",
+    "whenToUse": "保持默认 unified；只有排查旧路径行为差异时才切 legacy。",
+    "avoidWhen": "想用 block offload prefill 时不要选 legacy，选了也不生效。"
+  },
+  "relatedConfigs": [
+    "flux_block_offload_prefill_enabled",
+    "flux_block_offload_prefill_budget_mb"
+  ]
+}

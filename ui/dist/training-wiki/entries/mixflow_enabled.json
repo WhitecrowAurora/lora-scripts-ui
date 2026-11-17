@@ -1,0 +1,18 @@
+{
+  "key": "mixflow_enabled",
+  "title": "MixFlow",
+  "category": "LCM / Turbo 蒸馏参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "训练时分离模型时间与输入插值，验证仍使用原 Sigma。默认关闭。",
+    "effect": "开启后训练侧的时间步与插值 sigma 解耦，验证/采样路径保持原始定义；属于蒸馏加速路线的一部分。",
+    "whenToUse": "配合少步/一致性蒸馏训练时开启。",
+    "avoidWhen": "普通多步训练不需要；与 MOSS clean-end 采样互斥。"
+  },
+  "relatedConfigs": [
+    "mixflow_gamma"
+  ]
+}

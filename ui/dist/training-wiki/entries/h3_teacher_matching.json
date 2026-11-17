@@ -1,0 +1,20 @@
+{
+  "key": "h3_teacher_matching",
+  "title": "Ref2VA Teacher 训练",
+  "category": "H3 音视频数据",
+  "appliesTo": [
+    "minimax-h3-lora"
+  ],
+  "standard": {
+    "summary": "让 Teacher 使用清单里的额外参考图、Student 学习它的预测。默认关闭。",
+    "effect": "开启后每条样本都必须提供 teacher_references，训练目标换成 Teacher 输出；缺参考会直接报错。",
+    "whenToUse": "想让 Student 蒸馏 Teacher 在更强参考条件下的行为时。",
+    "avoidWhen": "清单里没有 teacher_references 字段时不要开。"
+  },
+  "relatedConfigs": [
+    "h3_ref2va_manifest_path",
+    "h3_teacher_conditions",
+    "h3_teacher_condition_sigma_min",
+    "h3_teacher_condition_sigma_max"
+  ]
+}

@@ -21,22 +21,10 @@ const H3_SAVE_FIELDS = S_SAVE
     return field;
   });
 
-const H3_P2_FIELDS = [
-  { key: 'p2_weighting_mode', type: 'select', label: 'P2 感知加权模式', title: 'p2_weighting_mode', desc: '标准 P2 使用 (k+SNR)^-gamma；lulynx 模式保留原饱和工程权重；off 保持基线。', defaultValue: 'off', options: [
-    { value: 'off', label: '关闭' },
-    { value: 'p2', label: '标准 P2（论文公式）' },
-    { value: 'lulynx_structure', label: 'lulynx 结构增强（高噪声）' },
-    { value: 'lulynx_detail', label: 'lulynx 细节增强（低噪声）' },
-  ] },
-  { key: 'p2_weighting_strength', type: 'number', label: 'P2 加权强度', title: 'p2_weighting_strength', desc: '0 为恒等权重；建议从 0.25~0.5 起步。', defaultValue: 0.0, min: 0, max: 1, step: 0.05, visibleWhen: (config) => String(config.p2_weighting_mode || 'off') !== 'off' },
-];
-const H3_TRAIN_FIELDS = [
-  ...S_TRAIN(10).filter((field) => !new Set([
-    'gradient_checkpointing', 'te_dropout',
-    'network_train_unet_only', 'network_train_text_encoder_only',
-  ]).has(field.key)),
-  ...H3_P2_FIELDS,
-];
+const H3_TRAIN_FIELDS = S_TRAIN(10).filter((field) => !new Set([
+  'gradient_checkpointing', 'te_dropout',
+  'network_train_unet_only', 'network_train_text_encoder_only',
+]).has(field.key));
 const H3_LR_FIELDS = S_LR_DIT.filter((field) => field.key !== 'text_encoder_lr').map((field) => (
   ['learning_rate', 'unet_lr'].includes(field.key)
     ? { ...field, defaultValue: '1e-5' }
@@ -110,7 +98,7 @@ export const MINIMAX_H3_LORA_SECTIONS = [
       { value: 'auto', label: 'Auto' },
     ] },
     { key: 'h3_preserve_lora_master_dtype', type: 'boolean', label: 'FP32 LoRA Master', title: 'h3_preserve_lora_master_dtype', desc: '保持 LoRA 参数为 FP32，避免 BF16 小更新被量化吞掉；主干仍为 BF16/INT8。', defaultValue: true },
-    { key: 'h3_checkpoint_mode', type: 'select', label: '激活检查点模式', title: 'h3_checkpoint_mode', desc: 'Block Swap 开启时必须使用 Unsloth；FFN-only/Full/Selective 仅适合所有 block 常驻 GPU 的场景。', defaultValue: 'unsloth', options: getMiniMaxH3CheckpointOptions },
+    { key: 'h3_checkpoint_mode', type: 'select', label: '激活检查点模式', title: 'h3_checkpoint_mode', desc: 'Block Swap 开启时必须使用 Unsloth；FFN-only/Full/Selective 仅适合所有 block 常驻 GPU 的诊断。', defaultValue: 'unsloth', options: getMiniMaxH3CheckpointOptions },
     { key: 'h3_activation_offload_min_tensor_mb', type: 'number', label: '激活卸载阈值 (MB)', title: 'h3_activation_offload_min_tensor_mb', desc: '只卸载达到该大小的保存张量。', defaultValue: 10.0, min: 0, step: 1 },
   ]),
   // H3 两个类型手写了全部段落,所以从来没拿到 S_ADV 那批系统字段:界面上既选不了执行环境 Profile
@@ -142,7 +130,7 @@ export const MINIMAX_H3_FT_SECTIONS = MINIMAX_H3_LORA_SECTIONS
       .filter((field) => !H3_FT_EXCLUDED_FIELDS.has(field.key))
       .map((field) => {
         if (field.key === 'model_train_type') return { ...field, defaultValue: 'minimax-h3-finetune' };
-        if (field.key === 'output_name') return { ...field, label: '底座输出名称', desc: '完整 H3 扩展底座输出名称', defaultValue: 'minimax-h3-expanded' };
+        if (field.key === 'output_name') return { ...field, label: '模型保存名称', desc: '输出文件名（不含扩展名），中间 checkpoint 自动追加 -步数 后缀。', defaultValue: 'minimax-h3-expanded' };
         return field;
       });
     if (section.id !== 'model-settings') return { ...section, fields };

@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_2_latent_sample",
+  "title": "Latent 采样缓存",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-2-lora",
+    "qwen-image-2-finetune"
+  ],
+  "standard": {
+    "summary": "缓存阶段是否对 VAE latent 做采样，默认开启。",
+    "effect": "开=缓存时按分布采样一份 latent；关=缓存完整 latent 分布后再在训练时采样。关掉更贴近原始分布但缓存体积/读取开销更大。",
+    "whenToUse": "想严格对齐原生训练分布、且不在意缓存体积时关闭。",
+    "avoidWhen": "磁盘或读取带宽吃紧时保持开启。"
+  },
+  "relatedConfigs": [
+    "cache_latents_to_disk"
+  ]
+}

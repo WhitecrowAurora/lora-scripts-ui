@@ -1,4 +1,5 @@
 import { buildBBoxHandleSpecs } from './bboxGeometry.js';
+import { describeJobStatus } from '../../utils/jobStatus.js';
 
 export function renderBBoxBatchJobPanelHtml({ job, jobId, escapeHtml }) {
   if (!job || !jobId) return '';
@@ -16,7 +17,7 @@ export function renderBBoxBatchJobPanelHtml({ job, jobId, escapeHtml }) {
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
         <strong>批量预标注任务 ${escapeHtml(job.id || jobId || '')}</strong>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span class="module-list-meta">${escapeHtml(job.status || 'pending')} · ${percent}%</span>
+          <span class="module-list-meta">${escapeHtml(describeJobStatus(job.status))} · ${percent}%</span>
           ${canCancel ? `<button class="btn btn-outline btn-sm" type="button" onclick="cancelBBoxBatchPredict('${escapeHtml(job.id || jobId || '')}')">取消</button>` : ''}
         </div>
       </div>

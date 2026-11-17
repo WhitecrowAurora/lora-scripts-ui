@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_reference_max_pixels",
+  "title": "参考图最大像素数",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "参考图预处理的分辨率上限，默认 1048576（1024×1024）。",
+    "effect": "超出上限的参考图等比缩小，控制显存与序列长度。",
+    "whenToUse": "显存紧张时下调。",
+    "avoidWhen": "上调会拉长序列，容易 OOM。"
+  },
+  "relatedConfigs": [
+    "moss_image_vision_max_pixels"
+  ]
+}

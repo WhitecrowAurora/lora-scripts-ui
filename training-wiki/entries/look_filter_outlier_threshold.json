@@ -1,0 +1,51 @@
+{
+  "key": "look_filter_outlier_threshold",
+  "title": "离群阈值",
+  "title_en": "Outlier Threshold",
+  "category": "数据集 / 预处理",
+  "category_en": "Dataset / Preprocessing",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "sd-lora",
+    "flux-lora",
+    "sdxl-finetune",
+    "anima-finetune",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "anima-controlnet",
+    "sdxl-controlnet-lllite",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "与数据集整体风格的相似度低于这个值的图标成离群。调高更严格，调低更宽松。默认 0.45。",
+    "effect": "取值范围 0~1，越界会被夹回。阈值只改报告里的离群名单，不改变任何图片。",
+    "whenToUse": "先按默认跑一次，看报告里离群数量占数据集的比例，再决定往哪边调。",
+    "avoidWhen": "数据集本身就刻意混合多种风格时不要上调——那会把「有意为之的多样性」当成噪声。"
+  },
+  "standard_en": {
+    "summary": "Images whose similarity to the dataset's overall look falls below this value are flagged as outliers. Higher is stricter, lower is looser. Default 0.45.",
+    "effect": "The range is 0-1 and out-of-range values are clamped. The threshold only changes the outlier list in the report; no image is modified.",
+    "whenToUse": "Run once at the default, read what share of the dataset is flagged, then decide which way to move it.",
+    "avoidWhen": "Do not raise it when the dataset deliberately mixes styles -- that treats intended variety as noise."
+  },
+  "advanced": {
+    "principle": "settings 用 _finite 把值夹进 [0.0, 1.0]，非法输入回落到 0.45；相似度按数据集自身的风格质心计算，所以阈值是相对量，和绝对像素/画质无关。",
+    "intervention": "只在报告生成阶段使用，训练图不做任何替换或丢弃。",
+    "expectedImpact": "无运行时开销，只影响报告内容。",
+    "tradeoffs": "风格集中的数据集里分数普遍偏高，同一阈值会显得「太宽松」；先看分布再定数。"
+  },
+  "advanced_en": {
+    "principle": "settings clamps the value into [0.0, 1.0] with _finite and falls back to 0.45 on bad input; similarity is measured against the dataset's own look centroid, which makes the threshold relative rather than tied to absolute pixel or quality.",
+    "intervention": "Used only when producing the report; training images are never substituted or dropped.",
+    "expectedImpact": "No runtime cost; only the report content changes.",
+    "tradeoffs": "On a tightly clustered dataset scores run high and the same threshold reads as too loose -- look at the distribution before picking a number."
+  },
+  "relatedConfigs": [
+    "look_filter_enabled",
+    "look_filter_action"
+  ]
+}

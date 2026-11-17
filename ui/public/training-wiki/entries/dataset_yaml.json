@@ -1,0 +1,39 @@
+{
+  "key": "dataset_yaml",
+  "title": "YOLO data.yaml",
+  "title_en": "YOLO data.yaml",
+  "category": "数据集 / 基础",
+  "category_en": "Dataset / Basics",
+  "appliesTo": [
+    "yolo"
+  ],
+  "standard": {
+    "summary": "已有 YOLO 数据集配置文件时填这里。留空则由「训练目录 + 类别名」现场生成一份临时 yaml，训练结束后删除。",
+    "effect": "只接受 .yaml / .yml 单文件；填了它就不再读训练目录与类别名，两条路互斥。",
+    "whenToUse": "数据集已经按 YOLO 目录规范准备好、并且已有 data.yaml 时。",
+    "avoidWhen": "类别名还没定、或图片目录还在调整时——手写 yaml 里写死的 train/val 路径不会跟着变。"
+  },
+  "standard_en": {
+    "summary": "Use this when you already have a YOLO dataset config file. Left empty, the run builds a temporary yaml from the train directory plus class names and deletes it afterwards.",
+    "effect": "Only a single .yaml / .yml file is accepted; once filled, the train directory and class names are not read, so the two inputs are mutually exclusive.",
+    "whenToUse": "When the dataset is already laid out in YOLO structure and a data.yaml exists.",
+    "avoidWhen": "While class names or image directories are still changing -- train/val paths hard-coded in a hand-written yaml will not follow."
+  },
+  "advanced": {
+    "principle": "/api/yolo/train 按 data → dataset_yaml → dataset → dataset_path → yolo_data_config_path 的优先级取显式路径，用 validate_read_path 限制扩展名；都没有时才读 train_data_dir / val_data_dir / class_names 拼出 yaml，写进临时文件并登记到清理清单。entry_yolo 只认最终的 data 字段。",
+    "intervention": "路由层归一化请求；worker 侧拿到的永远是可直接交给 ultralytics 的路径。",
+    "expectedImpact": "无额外开销；显式 yaml 省掉一次临时文件写入与清理。",
+    "tradeoffs": "UI 字段叫 dataset_yaml，worker 参数叫 data，中间那层归一化是唯一的桥。改字段名要同时改路由。"
+  },
+  "advanced_en": {
+    "principle": "/api/yolo/train resolves the explicit path in the order data -> dataset_yaml -> dataset -> dataset_path -> yolo_data_config_path and constrains the extension with validate_read_path; only when all are absent does it read train_data_dir / val_data_dir / class_names to assemble a yaml, write it to a temp file and register it for cleanup. entry_yolo only knows the final data field.",
+    "intervention": "The router normalises the request, so the worker always receives a path ultralytics can consume directly.",
+    "expectedImpact": "No extra cost; an explicit yaml saves one temp write and its cleanup.",
+    "tradeoffs": "The UI field is dataset_yaml while the worker parameter is data; that normalisation layer is the only bridge, so renaming the field means changing the router too."
+  },
+  "relatedConfigs": [
+    "train_data_dir",
+    "val_data_dir",
+    "class_names"
+  ]
+}

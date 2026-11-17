@@ -1,3 +1,5 @@
+import { describeJobStatus } from '../utils/jobStatus.js';
+
 // renderers/dataset.js — 数据集处理页面（标签器 / 标签编辑器 / 图像预处理 / 数据集分析 / Caption 清洗 / Mutate 预览 / Caption 备份 / 蒙版损失审查）
 //
 // 包含 7 个 render 函数 + 4 个 hint 辅助 + gatherCleanupParams + _pollTaggerProgress
@@ -36,8 +38,8 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
   const captionMutatePreviewPanel = createCaptionMutatePreviewPanel({ api, $, escapeHtml, showToast });
   const maskedLossAudit = createMaskedLossAudit({ api, $, escapeHtml, showToast });
   const imageResizePanel = createImageResizePanel({ api, $, _ico, escapeHtml, showToast });
-  const advancedTagToolsPanel = createAdvancedTagToolsPanel({ api, $, escapeHtml, showToast });
-  const tagEditorPanel = createTagEditorPanel({ api, $, showToast });
+  const advancedTagToolsPanel = createAdvancedTagToolsPanel({ api, $, escapeHtml, showToast, state });
+  const tagEditorPanel = createTagEditorPanel({ api, $, showToast, state, escapeHtml });
   const tagTranslationPanel = createTagTranslationPanel({ api, $, escapeHtml, showToast });
   const taggerWorkflow = createTaggerWorkflow({ state, api, $, _ico, escapeHtml, showToast });
 
@@ -450,7 +452,7 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
       try {
         const data = await api.getJob(jobId);
         if (jobEl) {
-          jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(data.status || 'pending')} ${(Math.round((data.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelTagManagerJob('${escapeHtml(jobId)}')">取消</button>`;
+          jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(describeJobStatus(data.status))} ${(Math.round((data.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelTagManagerJob('${escapeHtml(jobId)}')">取消</button>`;
         }
         if (data.status === 'completed') {
           clearInterval(timer);
@@ -556,4 +558,3 @@ export function createDatasetRenderer({ state, api, showToast, renderView }) {
     runAdvCrossResult: advancedTagToolsPanel.runAdvCrossResult,
   };
 }
-

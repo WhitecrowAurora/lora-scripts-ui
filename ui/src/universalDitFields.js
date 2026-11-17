@@ -8,6 +8,7 @@ const passthroughSaveFields = S_SAVE.filter((field) => [
   'output_name', 'output_dir', 'save_model_as', 'save_precision',
   'save_every_n_epochs', 'save_every_n_steps', 'save_state',
   'save_state_on_train_end', 'log_with', 'logging_dir',
+  'save_state_to_huggingface', 'huggingface_repo_id', 'huggingface_path_in_repo',
 ].includes(field.key));
 
 const basicTrainingFields = S_TRAIN(10).filter((field) => [

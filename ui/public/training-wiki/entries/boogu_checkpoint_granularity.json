@@ -1,0 +1,26 @@
+{
+  "key": "boogu_checkpoint_granularity",
+  "title": "Boogu 重算粒度",
+  "category": "显存优化 / 运行时",
+  "appliesTo": [
+    "boogu-lora",
+    "boogu-edit-lora",
+    "boogu-finetune"
+  ],
+  "standard": {
+    "summary": "选择完整块重算，或在块内再重算注意力与 FFN。",
+    "effect": "默认 block。sub_block 保留外层完整块重算，在反向块执行中减少同时保存的注意力和 FFN 激活。",
+    "whenToUse": "Boogu 反向重算的激活峰值限制显存时做单项对照。",
+    "avoidWhen": "梯度检查点关闭时无效；增加重算可能降低速度。本次局部编译数值未通过，不建议同时开启编译。"
+  },
+  "advanced": {
+    "principle": "沿用原模块、调制和残差顺序，内层使用非重入检查点，不改变参数命名和保存格式。与 MOSS 分别执行注意力/FFN 的外层替换方案不同，Boogu 保留外层整块。",
+    "tradeoffs": "完整 Boogu 1024/BS1/BF16/LoRA8、shared 激活卸载与 frozen 反向三步对照逐位一致，活跃显存峰值约4.056→3.573GiB（减少11.9%），后两步中位14.34→17.22秒（增加20.1%）。普通整块卸载的真实单块对照也通过；Inductor 单块执行但输出和梯度不一致。Edit、完整微调及其它组合未作GPU验收。"
+  },
+  "relatedConfigs": [
+    "gradient_checkpointing",
+    "boogu_block_residency",
+    "module_offload_frozen_backward",
+    "activation_cpu_offload_enabled"
+  ]
+}

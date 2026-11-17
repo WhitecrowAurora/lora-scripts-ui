@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_sample_shift",
+  "title": "采样 Shift",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "采样时的噪声水平偏移量，默认 5。",
+    "effect": "把采样时间步整体向某一噪声段偏移；数值越大偏向高噪声端的程度越强（具体方向随采样实现）。影响预览出图的分布而非训练损失。",
+    "whenToUse": "预览出图过糊或细节不足时调整，配合 timestep_sampling=shift 使用。",
+    "avoidWhen": "采样分布是 uniform 时调它影响有限；它不改变训练时的时间步采样。"
+  },
+  "relatedConfigs": [
+    "moss_image_timestep_sampling"
+  ]
+}

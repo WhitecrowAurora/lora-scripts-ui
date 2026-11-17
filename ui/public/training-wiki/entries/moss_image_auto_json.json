@@ -1,0 +1,19 @@
+{
+  "key": "moss_image_auto_json",
+  "title": "Caption 转为原生布局 JSON",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "把纯文本 caption 在本地包装成 summary/items 形式的布局 JSON，默认关闭。",
+    "effect": "已手写 JSON 的 caption 只做规范化与画布边界校验，不会被改写；纯文本则补成原生布局结构。全程本地处理，不调用外部服务。",
+    "whenToUse": "caption 以自然语言为主、想让 MOSS-Image 走它的原生布局条件通道时开启。",
+    "avoidWhen": "caption 已经是手写布局 JSON 且字段完整时不必开，规范化会自动进行。"
+  },
+  "relatedConfigs": [
+    "moss_image_prompt_upsample",
+    "moss_image_max_text_length"
+  ]
+}

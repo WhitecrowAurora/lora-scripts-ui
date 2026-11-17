@@ -1,0 +1,35 @@
+{
+  "key": "lycoris_conv_alpha",
+  "title": "卷积 Alpha",
+  "category": "LoRA / 网络结构",
+  "appliesTo": [
+    "moss-image-lora",
+    "sdxl-lora",
+    "sdxl-ileco",
+    "sdxl-addift",
+    "sdxl-multi-addift",
+    "flux-lora",
+    "lumina-lora",
+    "qwen-image-lora",
+    "qwen-image-2-lora",
+    "hunyuan-dit-lora",
+    "sd-lora",
+    "sd-ileco",
+    "sd-addift",
+    "sd-multi-addift",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter",
+    "sd3-lora"
+  ],
+  "standard": {
+    "summary": "卷积层 LyCORIS 的 alpha 缩放（conv_alpha）。0 = 跟随 network_alpha。",
+    "effect": "Conv2d 层的缩放系数（scale = alpha / rank），控制 conv 侧更新的相对幅度。",
+    "whenToUse": "conv_dim 调整后按 alpha=dim 的一半到同值经验配套。",
+    "avoidWhen": "未训练 conv 层时不生效。"
+  },
+  "advanced": null,
+  "relatedConfigs": [],
+  "aliases": [
+    "conv_alpha"
+  ]
+}

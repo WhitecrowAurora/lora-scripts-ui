@@ -1180,6 +1180,29 @@ body.compact-layout .form-container {
   background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
+/* 必填项缺失（提交前检查，requiredFields.js）：整组标红 + 输入框红边。 */
+.config-group.field-required-error {
+  border-left: 3px solid var(--danger);
+  padding-left: 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.config-group.field-required-error .input-picker,
+.config-group.field-required-error input[type="text"],
+.config-group.field-required-error input[type="number"],
+.config-group.field-required-error input:not([type]),
+.config-group.field-required-error select,
+.config-group.field-required-error textarea {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent);
+}
+.config-group.field-required-error label {
+  color: var(--danger);
+}
+.light-theme .config-group.field-required-error {
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
 .config-group label {
   display: block;
   font-size: 0.98rem;
@@ -7816,3 +7839,63 @@ body.compact-layout .config-group.row {
   .train-log-search-input { width: 130px; }
   .train-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Compact embedded/mobile layout. Keep the existing navigator controls, but
+   make the second column an overlay so the workspace retains usable width. */
+@media (max-width: 760px) {
+  :root {
+    --sidebar-width: 60px;
+    --navigator-width: min(280px, calc(100vw - var(--sidebar-width)));
+  }
+
+  .sidebar {
+    padding: 10px 0;
+  }
+
+  .logo {
+    margin-bottom: 14px;
+  }
+
+  .logo-text {
+    font-size: 11px;
+  }
+
+  .nav-links {
+    gap: 2px;
+  }
+
+  .nav-item {
+    padding: 8px 0;
+  }
+
+  .nav-item span {
+    font-size: 8px;
+    margin-top: 3px;
+  }
+
+  .sidebar-footer {
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .navigator {
+    position: fixed;
+    inset: 0 auto 0 var(--sidebar-width);
+    z-index: 95;
+    width: var(--navigator-width);
+    max-width: calc(100vw - var(--sidebar-width));
+    box-shadow: 18px 0 42px rgba(0, 0, 0, 0.38);
+  }
+
+  .navigator.collapsed {
+    width: 0;
+    box-shadow: none;
+  }
+}
+
+/* Optimization allowlists use the full section width. */
+.optimization-choices { grid-column: 1 / -1; min-width: 0; }
+.optimization-choice-actions { display: flex; gap: 8px; margin: 12px 0; }
+.optimization-choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; }
+.optimization-choice-grid .optimization-choice { display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; }
+.optimization-choice input[type=checkbox] { flex: none; margin-top: 3px; }

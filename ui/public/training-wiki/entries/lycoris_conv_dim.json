@@ -1,0 +1,35 @@
+{
+  "key": "lycoris_conv_dim",
+  "title": "卷积维度",
+  "category": "LoRA / 网络结构",
+  "appliesTo": [
+    "moss-image-lora",
+    "sdxl-lora",
+    "sdxl-ileco",
+    "sdxl-addift",
+    "sdxl-multi-addift",
+    "flux-lora",
+    "lumina-lora",
+    "qwen-image-lora",
+    "qwen-image-2-lora",
+    "hunyuan-dit-lora",
+    "sd-lora",
+    "sd-ileco",
+    "sd-addift",
+    "sd-multi-addift",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter",
+    "sd3-lora"
+  ],
+  "standard": {
+    "summary": "卷积层 LyCORIS 的秩（conv_dim）。0 = 跟随 network_dim。",
+    "effect": "Conv2d 层的 LoRA/LyCORIS rank；设 0 时跟随 network_dim，部分实现默认用 dim 的一半或同值。",
+    "whenToUse": "数据集含大量纹理/低频结构、卷积层也想充分训练时调高。",
+    "avoidWhen": "纯 attention 注入（network_module 不含 conv）时不生效。"
+  },
+  "advanced": null,
+  "relatedConfigs": [],
+  "aliases": [
+    "conv_dim"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "key": "moss_image_checkpoint_granularity",
+  "title": "MOSS 重算粒度",
+  "category": "显存优化 / 运行时",
+  "appliesTo": ["moss-image-lora"],
+  "standard": {
+    "summary": "选择完整块、分别重算注意力与 FFN，或仅重算 FFN。",
+    "effect": "默认 block 保留完整块重算。sub_block 分别重算注意力与 FFN；ffn 保留注意力激活，只重算 FFN。",
+    "whenToUse": "MOSS 文生图需要更低显存时对照 sub_block。使用块卸载时须启用冻结 Linear 反向按需读取，并完整覆盖受管理块。",
+    "avoidWhen": "局部模式要求梯度检查点开启，不支持编辑训练。RAM 有限时不要使用 ffn。"
+  },
+  "advanced": {
+    "principle": "通过 non-reentrant checkpoint 划分两个连续计算区域，避免重复套用外层整块重算；关闭与重新开启重算保持配置粒度。",
+    "tradeoffs": "MOSS 42 层、1024/BS2、LoHa r16 的 sub_block 实测活跃分配约 1.65 GiB、整卡峰约 3.56 GiB、RSS 约 16 GiB、步时约 15.4 秒。ffn 虽降低活跃分配至约 1.56 GiB，但 RSS 约 62 GiB、步时约 29 秒。未启用编译的三种路径短程数值逐位一致。BF16 sub_block 与 per-block Inductor 组合已修复归一化和中间舍入差异，普通/专用归一化分别完成三步全量逐位对照；专用归一化下未观察到编译提速，编译仍可选且会略增显存。DDP 组合未验收。"
+  },
+  "relatedConfigs": ["gradient_checkpointing", "module_offload_frozen_backward", "activation_cpu_offload_policy", "moss_image_block_residency"]
+}

@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_2_timestep_sampling",
+  "title": "时间步采样分布",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-2-lora",
+    "qwen-image-2-finetune"
+  ],
+  "standard": {
+    "summary": "Qwen Image 2.1 的时间步采样方式，默认 uniform。",
+    "effect": "uniform=均匀采样；sigmoid=向中等噪声集中；shift=按 shift 偏移分布（配合动态 shift 使用）。",
+    "whenToUse": "发现中段噪声学得不够时试 sigmoid；其余场景保持 uniform 便于与历史结果对照。",
+    "avoidWhen": "改采样分布后不要直接沿用旧学习率结论，需要重新短测。"
+  },
+  "relatedConfigs": [
+    "qwen_image_2_dynamic_shift"
+  ]
+}

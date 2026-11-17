@@ -1,0 +1,41 @@
+{
+  "key": "lulynx_caption_tail",
+  "title": "文本后缀",
+  "category": "数据集 / 图说",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "anima-edit-model",
+    "flux-lora",
+    "lumina-lora",
+    "qwen-image-lora",
+    "qwen-image-2-lora",
+    "hunyuan-dit-lora",
+    "sd-lora",
+    "sdxl-finetune",
+    "flux-finetune",
+    "anima-finetune",
+    "qwen-image-finetune",
+    "qwen-image-2-finetune",
+    "lumina-finetune",
+    "sd-dreambooth",
+    "sd-controlnet",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "anima-controlnet",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "在处理后的非空 caption 正文后统一加一段文字（空格连接），默认空。",
+    "effect": "前后缀保持固定顺序，不参与标签打乱；修改后需重建文本缓存（图像缓存可复用）。",
+    "whenToUse": "想统一追加风格词或画质词时使用。",
+    "avoidWhen": "依赖 shuffle 把后缀词打散到不同位置的场景不适用——后缀始终在末尾。"
+  },
+  "relatedConfigs": [
+    "lulynx_caption_lead",
+    "lulynx_caption_line_mode"
+  ]
+}

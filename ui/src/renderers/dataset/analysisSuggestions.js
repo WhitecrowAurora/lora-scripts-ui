@@ -1,3 +1,5 @@
+import { describeJobStatus } from '../../utils/jobStatus.js';
+
 export function createAnalysisSuggestions({ state, api, $, escapeHtml, showToast, renderView }) {
   // ========== 数据集分析 ==========
   function renderDatasetAnalysis() {
@@ -263,7 +265,7 @@ export function createAnalysisSuggestions({ state, api, $, escapeHtml, showToast
           const response = await api.getJob(jobId);
           const data = response || {};
           if (jobEl) {
-            jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(data.status || 'pending')} ${(Math.round((data.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelDatasetAnalysisJob('${escapeHtml(jobId)}')">取消</button>`;
+            jobEl.innerHTML = `任务 ${escapeHtml(jobId)}: ${escapeHtml(describeJobStatus(data.status))} ${(Math.round((data.progress || 0) * 100))}% <button class="btn btn-outline btn-sm" type="button" onclick="cancelDatasetAnalysisJob('${escapeHtml(jobId)}')">取消</button>`;
           }
           if (data.status === 'completed') {
             clearInterval(timer);

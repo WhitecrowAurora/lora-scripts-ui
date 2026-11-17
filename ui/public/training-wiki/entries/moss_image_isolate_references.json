@@ -1,0 +1,18 @@
+{
+  "key": "moss_image_isolate_references",
+  "title": "隔离参考图注意力",
+  "category": "训练参数",
+  "appliesTo": [
+    "moss-image-lora",
+    "moss-image-finetune"
+  ],
+  "standard": {
+    "summary": "让参考图像 token 与目标 token 在注意力里彼此隔离，默认关闭。",
+    "effect": "开启后参考图只作为条件注入、不与生成 token 互相 attend，避免内容泄漏到输出；训练与预览都生效。",
+    "whenToUse": "参考图内容容易整块复制到结果里（复制风险高）时开启。",
+    "avoidWhen": "需要参考图与目标做强交互（风格迁移类）时开启可能削弱效果。"
+  },
+  "relatedConfigs": [
+    "moss_image_edit_mode"
+  ]
+}

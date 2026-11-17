@@ -1,0 +1,37 @@
+{
+  "key": "image_worker_uint8",
+  "title": "紧凑图像传输（worker 8 位 RGB）",
+  "category": "训练参数",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "anima-edit-model",
+    "flux-lora",
+    "lumina-lora",
+    "qwen-image-lora",
+    "qwen-image-2-lora",
+    "hunyuan-dit-lora",
+    "sd-lora",
+    "sdxl-finetune",
+    "flux-finetune",
+    "anima-finetune",
+    "qwen-image-finetune",
+    "qwen-image-2-finetune",
+    "lumina-finetune",
+    "sd-dreambooth",
+    "sd-textual-inversion",
+    "sdxl-textual-inversion",
+    "sd-ip-adapter",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "在线图像训练时 DataLoader worker 保留 8 位 RGB、传输后再归一化，目标图像张量内存降为 FP32 的四分之一。默认关闭。",
+    "effect": "仅作用于 SD15/SDXL 在线（非缓存）训练路径；缓存训练与自定义 transform 沿用原路径不受影响。",
+    "whenToUse": "大分辨率、大 batch 的在线训练吃内存带宽时开启。",
+    "avoidWhen": "用了自定义 transform 或依赖 worker 侧浮点精度的预处理时保持关闭。"
+  },
+  "relatedConfigs": [
+    "cache_latents_to_disk",
+    "num_workers"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "key": "qwen_image_block_offload_pin_memory",
+  "category": "训练参数",
+  "appliesTo": [
+    "qwen-image-lora"
+  ],
+  "title": "Qwen Image：Block Offload Pin Memory",
+  "standard": {
+    "summary": "整块搬运时是否按块实际大小锁页，默认开启。锁页总量有上限（Windows 约为总内存的 45%），并始终保留 8 GiB 空闲；内存不够时只锁一部分，其余走普通内存。",
+    "effect": "开启后冻结权重块锁页，搬运能和计算同时进行；关闭后可改用小型锁页暂存池的 CPU 预填充方案。两者是二选一的搬运策略。",
+    "whenToUse": "使用分块卸载时保持开启即可；内存小的机器会自动少锁一些。",
+    "avoidWhen": "训练时还要同时运行很吃内存的程序，或打算用 CPU 预填充（prefill）时关闭。"
+  },
+  "relatedConfigs": [
+    "qwen_image_block_offload_prefill_enabled",
+    "qwen_image_block_residency"
+  ]
+}

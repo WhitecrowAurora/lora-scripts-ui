@@ -1,0 +1,27 @@
+{
+  "key": "lulynx_freq_texture_mode",
+  "title": "频域损失模式",
+  "category": "感知锚/频域纹理损失",
+  "appliesTo": [
+    "sdxl-lora",
+    "anima-lora",
+    "newbie-lora",
+    "anima-edit-model",
+    "sdxl-finetune",
+    "sdxl-controlnet",
+    "sdxl-controlnet-lllite",
+    "sdxl-textual-inversion",
+    "sdxl-ip-adapter"
+  ],
+  "standard": {
+    "summary": "频域纹理损失的比较方式，默认 log_power（高通功率谱）。",
+    "effect": "log_power=比较高通功率谱，关注纹理统计；focal=难频率加权（FFL），需要空间对齐；noise_bands=按实际 sigma 与 clean/noise 功率调整各层权重的噪声相关频段约束，同样需要空间对齐。后两种仍需质量对照验证。",
+    "whenToUse": "想改善细节纹理但不需要空间逐点对齐时用 log_power；有准确配对数据、要压高频误差时试 focal。",
+    "avoidWhen": "数据集本身配对不准时不要用 focal / noise_bands——它们依赖空间对齐，错位会直接惩罚正确结果。"
+  },
+  "relatedConfigs": [
+    "lulynx_freq_texture_focal_alpha",
+    "lulynx_freq_texture_band_levels",
+    "lulynx_latent_anchor_metric"
+  ]
+}

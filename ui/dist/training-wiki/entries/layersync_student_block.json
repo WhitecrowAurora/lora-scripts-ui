@@ -1,0 +1,18 @@
+{
+  "key": "layersync_student_block",
+  "title": "Student 块索引",
+  "category": "训练 / 表征对齐",
+  "appliesTo": [
+    "anima-edit-model",
+    "anima-lora",
+    "newbie-lora"
+  ],
+  "standard": {
+    "summary": "从 0 开始的中间层索引；0 是第一个块。",
+    "effect": "-1 自动选约 1/3 深度；必须小于 teacher。",
+    "whenToUse": "默认 -1，无明确目标时保持默认。",
+    "avoidWhen": "一次只改一项，便于归因效果。"
+  },
+  "advanced": null,
+  "relatedConfigs": []
+}

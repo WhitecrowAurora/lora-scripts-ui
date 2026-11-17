@@ -5,6 +5,19 @@ const SCHEMA_ID = 'lulynx.training_quality_report';
 const reportCache = new Map();
 const pendingRequests = new Map();
 
+/** Keep open reports and their pending async writes attached during a dashboard refresh. */
+export function preserveTrainingSummaryPanels(container) {
+  const panels = new Map([...container.querySelectorAll('[id^="task-summary-"]')]
+    .filter((panel) => panel.style.display !== 'none' || panel.dataset.qualityLoaded === 'true')
+    .map((panel) => [panel.id, panel]));
+  return () => {
+    for (const replacement of container.querySelectorAll('[id^="task-summary-"]')) {
+      const panel = panels.get(replacement.id);
+      if (panel) replacement.replaceWith(panel);
+    }
+  };
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -155,6 +168,6 @@ export function renderTrainingSummaryWithQuality({ legacyHtml = '', report = nul
     + qualityHtml
     + '<div style="border-top:1px dashed var(--border);padding-top:8px;">'
     + '<div style="margin-bottom:5px;"><b style="font-size:0.74rem;">旧版 Loss 摘要</b>'
-    + '<span style="display:block;color:var(--text-muted);font-size:0.62rem;margin-top:2px;">仅由控制台日志 Loss 生成，与上方后端多指标质量报告不是同一结论。</span></div>'
+    + '<span style="display:block;color:var(--text-muted);font-size:0.62rem;margin-top:2px;">根据本次训练 Loss 生成，与上方后端多指标质量报告不同。</span></div>'
     + legacy + '</div></div>';
 }

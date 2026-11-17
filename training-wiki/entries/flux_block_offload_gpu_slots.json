@@ -1,0 +1,39 @@
+{
+  "key": "flux_block_offload_gpu_slots",
+  "title": "Block Offload GPU 槽位",
+  "title_en": "Block Offload GPU slots",
+  "category": "训练参数",
+  "category_en": "Training Parameters",
+  "appliesTo": [],
+  "layers": [],
+  "standard": {
+    "summary": "同时留在 GPU 的 FLUX.1 block 数，每个约 680MB 显存；默认 2。",
+    "effect": "",
+    "whenToUse": "仅在 FLUX Transformer Offload 为 block_residency 时生效；不确定时保持默认 2。",
+    "avoidWhen": "16G 卡调到 4 个以上收益不大，只会多占显存。"
+  },
+  "standard_en": {
+    "summary": "How many FLUX.1 blocks stay on the GPU at once, about 680MB of VRAM each; default 2.",
+    "whenToUse": "Only applies when FLUX Transformer Offload is block_residency; keep the default of 2 when unsure.",
+    "avoidWhen": "On a 16GB card, going above 4 gains little and only takes more VRAM."
+  },
+  "advanced": {
+    "principle": "槽位是显存里同时驻留的 block 数，与电脑内存大小无关。默认 2 配合预取深度 1，在 16G 卡上显存池约 12.3GB。",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "槽位越多，可预取的 block 越多，但每多一个约多占 680MB 显存。",
+    "codePath": ""
+  },
+  "advanced_en": {
+    "principle": "Slots are blocks held in VRAM at the same time and do not depend on system RAM. The default of 2 with prefetch depth 1 keeps the pool near 12.3GB on a 16GB card.",
+    "intervention": "",
+    "expectedImpact": "",
+    "tradeoffs": "More slots allow more prefetched blocks, but each one costs about 680MB more VRAM.",
+    "codePath": ""
+  },
+  "relatedConfigs": [
+    "flux_block_offload_prefetch_depth",
+    "flux_block_offload_pin_memory",
+    "flux_transformer_offload"
+  ]
+}

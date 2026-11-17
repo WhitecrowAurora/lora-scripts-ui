@@ -1,0 +1,17 @@
+{
+  "key": "universal_dit_beta_schedule",
+  "title": "Beta 调度（无目录时用）",
+  "category": "Batch / Objective / Forward 契约",
+  "appliesTo": [
+    "universal-dit-lora"
+  ],
+  "standard": {
+    "summary": "不填调度目录时，用 beta 名称构造默认 1000 步 DDPM 调度，默认留空（不指定）。",
+    "effect": "linear / scaled_linear / squaredcos_cap_v2 各自对应一种经典 beta 曲线；留空表示不指定，此时 ddpm 目标必须提供 scheduler 目录。",
+    "whenToUse": "没有导出的 scheduler 目录、但知道底模用的是哪种 beta 曲线时用它兜底。",
+    "avoidWhen": "已知底模调度时优先用目录——名称构造只是近似。"
+  },
+  "relatedConfigs": [
+    "universal_dit_scheduler_path"
+  ]
+}
